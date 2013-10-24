@@ -1,0 +1,15 @@
+simulator
+ACT PLC remote simulator programme - to be run from a remote computer connected to the ACT control/testing computer via male-to-male serial (RS-232) cable.
+
+Introduction:
+This programme was written to test the ACT PLC driver using another computer (call it the remote computer) connected to the control computer via a serial cable - the same connection as the control computer would have with the PLC. This programme runs on the remote computer and in essence constructs a status string and sends it through the serial cable when a status request from the control computer is received and interprets command strings coming from the control computer. Commands from the control computer are displayed on the screen with a series of labelled indicator lights which indicate which commands have been activated. The user can toggle status feedback using a series of checkboxes and entry boxes, which are relayed to the control computer when the control computer requests the status.
+
+This programme is based on the integrated simulator, the main difference being that the integrated simulator connects directly to the PLC driver and must be executed on the same computer as the driver, whereas the remote simulator must be run on a different computer (well, technically it CAN be run on the same computer as the PLC driver and ACT control software by looping, say, COM1 back into COM2, but this is less convenient).
+
+Compiling:
+The programme is compiled with the following command:
+  gcc -Wall -Wextra `pkg-config --cflags --libs gtk+-2.0` -I<act_plc_directory> simulator.c -o simulator
+    Where <act_plc_directory> is the directory where the act_plc driver source files are stored - specifically where the plc_definitions.h header file can be found. Since this programme (most likely) not be run on the control computer, you may simply copy the plc_definitions.h file over from the control computer and into the remote simulator source directory (this directory), but make sure that the plc_definitions.h file you compile the remote simulator against is the same version of the file you compiled the act_plc driver against on the control computer.
+
+Executing:
+The executable must be called from the remote computer with a tty device filename as its only parameter. This tty device must correspond to the COM port on the remote computer that connects the remote computer with the control computer - this is usually /dev/ttyS0 for the first COM port, /dev/ttyS1 for the second COM port and the like. Please make sure not to use the /dev/tty1,2,etc. device files (note the difference between /dev/tty* and /dev/ttyS*), as this may make the computer inoperable.

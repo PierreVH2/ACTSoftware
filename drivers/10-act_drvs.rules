@@ -1,0 +1,7 @@
+# Rule for ACT PMT
+KERNEL=="act_pmt" GROUP="act_users" MODE="0660"
+KERNEL=="act_time" GROUP="act_users" MODE="0660"
+KERNEL=="act_merlin" GROUP="act_users" MODE="0660"
+KERNEL=="act_motors" GROUP="act_users" MODE="0660"
+KERNEL=="act_plc" GROUP="act_users" MODE="0660"
+
