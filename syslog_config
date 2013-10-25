@@ -1,0 +1,6 @@
+$template ACTKernFormat,"%timegenerated% %msg%\n"$
+$template ACTSoftwFormat,"%timegenerated% %msg%\n"$
+local0.*                /var/log/ACT_cur.log;ACTSoftwFormat
+:msg, startswith, "[ACT_"
+kern.*          /var/log/ACT_cur.log;ACTKernFormat
+
