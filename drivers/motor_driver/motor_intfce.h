@@ -12,8 +12,6 @@ void stop_move(void);
 unsigned long get_steps_ha(void);
 unsigned long get_steps_dec(void);
 unsigned char get_limits(void);
-void zero_ha_steps(void);
-void zero_dec_steps(void);
 char motor_ramp(void);
 #ifdef MOTOR_SIM
  void set_sim_steps(unsigned long steps);

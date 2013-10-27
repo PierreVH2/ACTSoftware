@@ -39,6 +39,7 @@ static struct plc_status G_cur_plc_stat;
 static struct fasync_struct *G_async_queue;
 static wait_queue_head_t G_readq;
 static unsigned long G_ha_pulses=0, G_dec_pulses=0;
+static void (*G_handset_handler) (const unsigned char old_hs, const unsigned char new_hs) = NULL;
 #ifndef PLC_SIM
 static struct workqueue_struct *G_plcdrv_workq;
 static struct delayed_work G_plcstat_work;
@@ -208,7 +209,10 @@ static int parse_plc_status(char *old_status, const char *new_status)
   if ((old_status[STAT_HANDSET_OFFS1] != new_status[STAT_HANDSET_OFFS1]) ||
     (old_status[STAT_HANDSET_OFFS2] != new_status[STAT_HANDSET_OFFS2]))
   {
-    G_cur_plc_stat.handset = hexchar2int(new_status[STAT_HANDSET_OFFS1]) | (hexchar2int(new_status[STAT_HANDSET_OFFS2]) << 4);
+    unsigned char new_hs = hexchar2int(new_status[STAT_HANDSET_OFFS1]) | (hexchar2int(new_status[STAT_HANDSET_OFFS2]) << 4);
+    if (G_handset_handler != NULL)
+      G_handset_handler(G_cur_plc_stat.handset, new_hs);
+    G_cur_plc_stat.handset = new_hs;
     old_status[STAT_HANDSET_OFFS1] = new_status[STAT_HANDSET_OFFS1];
     old_status[STAT_HANDSET_OFFS2] = new_status[STAT_HANDSET_OFFS2];
     ret = 1;
@@ -533,6 +537,12 @@ unsigned long get_enc_dec_pulses(void)
   return G_dec_pulses;
 }
 EXPORT_SYMBOL(get_enc_dec_pulses);
+
+void set_handset_handler(void (*handler)(const unsigned char old_hs, const unsigned char new_hs))
+{
+  G_handset_handler = handler;
+}
+EXPORT_SYMBOL(set_handset_handler);
 
 static int actplc_open(struct inode *inode, struct file *filp)
 {

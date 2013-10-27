@@ -5,55 +5,33 @@
 
 #define PRINTK_PREFIX "[ACT_MOTOR] "
 
-#define    DIR_WEST_MASK    0x01
-#define    DIR_EAST_MASK    0x02
-#define    DIR_NORTH_MASK   0x04
-#define    DIR_SOUTH_MASK   0x08
-#define    DIR_HA_MASK      (DIR_EAST_MASK|DIR_WEST_MASK)
-#define    DIR_DEC_MASK     (DIR_NORTH_MASK|DIR_SOUTH_MASK)
-#define    DIR_MASK         (DIR_HA_MASK|DIR_DEC_MASK)
-#define    TRK_OFF_MASK     0x40
-#define    POWER_OFF_MASK   0x80
+#define    MOTOR_DIR_WEST_MASK    0x01
+#define    MOTOR_DIR_EAST_MASK    0x02
+#define    MOTOR_DIR_NORTH_MASK   0x04
+#define    MOTOR_DIR_SOUTH_MASK   0x08
+#define    MOTOR_DIR_HA_MASK      (MOTOR_DIR_EAST_MASK|MOTOR_DIR_WEST_MASK)
+#define    MOTOR_DIR_DEC_MASK     (MOTOR_DIR_NORTH_MASK|MOTOR_DIR_SOUTH_MASK)
+#define    MOTOR_DIR_MASK         (MOTOR_DIR_HA_MASK|MOTOR_DIR_DEC_MASK)
+#define    MOTOR_TRK_OFF_MASK     0x40
+#define    MOTOR_POWER_OFF_MASK   0x80
 
-#define    SID_RATE         57381U    /* previously 57388, 60000U autoscope value 27890U */
-#define    SLEW_RATE          200U    /* originally 139U, then 400U  */
-#define    SET_RATE          5578U
-#define    GUIDE_RATE       55780U
-#define    NUDGE_RATE       57300U
+#define    MOTOR_SID_RATE         57381U    /* previously 57388, 60000U autoscope value 27890U */
+#define    MOTOR_SLEW_RATE          200U    /* originally 139U, then 400U  */
+#define    MOTOR_SET_RATE          5578U
+#define    MOTOR_GUIDE_RATE       55780U
+#define    MOTOR_NUDGE_RATE       57300U
 
-// #define DEF_TEL_LIM_W_MSEC 18657180
-// #define DEF_TEL_LIM_W_MSEC 18648000
-// #define DEF_TEL_LIM_W_MSEC 18544897
-// #define DEF_TEL_LIM_W_MSEC 18775912
-// #define DEF_TEL_LIM_W_MSEC 18711956
-// #define DEF_TEL_LIM_W_MSEC 18683716
-// #define DEF_TEL_LIM_W_MSEC 18681956
-// #define DEF_TEL_LIM_W_MSEC 18624432
-// #define DEF_TEL_LIM_W_MSEC 18773535
-// #define DEF_TEL_LIM_W_MSEC 18875435
-#define DEF_TEL_LIM_W_MSEC 18726882
-// #define DEF_TEL_LIM_E_MSEC -18496440
-// #define DEF_TEL_LIM_E_MSEC -18504000
-// #define DEF_TEL_LIM_E_MSEC -18119940
-// #define DEF_TEL_LIM_E_MSEC -18438138
-// #define DEF_TEL_LIM_E_MSEC -18471069
-// #define DEF_TEL_LIM_E_MSEC -18544300
-// #define DEF_TEL_LIM_E_MSEC -18501069
-// #define DEF_TEL_LIM_E_MSEC -18556868
-// #define DEF_TEL_LIM_E_MSEC -18544300
-// #define DEF_TEL_LIM_E_MSEC -18442400
-#define DEF_TEL_LIM_E_MSEC -18424269
-// #define DEF_TEL_LIM_N_ASEC 151148
-// #define DEF_TEL_LIM_N_ASEC 150367
-#define DEF_TEL_LIM_N_ASEC 150368
-// #define DEF_TEL_LIM_N_ASEC 150095
-// #define DEF_TEL_LIM_N_ASEC 150641
-// #define DEF_TEL_LIM_S_ASEC -380746
-// #define DEF_TEL_LIM_S_ASEC -381097
-#define DEF_TEL_LIM_S_ASEC -381161
-// #define DEF_TEL_LIM_S_ASEC -380832
-// #define DEF_TEL_LIM_S_ASEC -381489
+#define MOTOR_LIM_W_MSEC 18726882
+#define MOTOR_LIM_E_MSEC -18424269
+#define MOTOR_LIM_N_ASEC 150368
+#define MOTOR_LIM_S_ASEC -381161
 
-#define POINT_W_MOTORS
+#define MOTOR_STEPS_E_LIM  1155976
+#define MOTOR_STEPS_N_LIM  563056
+#define MOTOR_ENCOD_E_LIM  417151
+#define MOTOR_ENCOD_N_LIM  298207
+
+#define MOTOR_SID_PER_MOTOR_STEP     32
+#define MOTOR_SID_PER_ENCOD_PULSE    89
 
 #endif

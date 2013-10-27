@@ -104,6 +104,7 @@ void close_pmt_shutter(void);
 short dome_azm_d(void);
 unsigned long get_enc_ha_pulses(void);
 unsigned long get_enc_dec_pulses(void);
+void set_handset_handler(void (*handler)(const unsigned char old_hs, const unsigned char new_hs));
 
 /// IOCTL to retrieve current status
 #define IOCTL_GET_STATUS _IOR(PLC_IOCTL_NUM, 0, unsigned long*)
