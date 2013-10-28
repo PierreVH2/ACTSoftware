@@ -5,21 +5,8 @@
 
 #define PRINTK_PREFIX "[ACT_MOTOR] "
 
-#define    MOTOR_DIR_WEST_MASK    0x01
-#define    MOTOR_DIR_EAST_MASK    0x02
-#define    MOTOR_DIR_NORTH_MASK   0x04
-#define    MOTOR_DIR_SOUTH_MASK   0x08
-#define    MOTOR_DIR_HA_MASK      (MOTOR_DIR_EAST_MASK|MOTOR_DIR_WEST_MASK)
-#define    MOTOR_DIR_DEC_MASK     (MOTOR_DIR_NORTH_MASK|MOTOR_DIR_SOUTH_MASK)
-#define    MOTOR_DIR_MASK         (MOTOR_DIR_HA_MASK|MOTOR_DIR_DEC_MASK)
-#define    MOTOR_TRK_OFF_MASK     0x40
-#define    MOTOR_POWER_OFF_MASK   0x80
-
-#define    MOTOR_SID_RATE         57381U    /* previously 57388, 60000U autoscope value 27890U */
-#define    MOTOR_SLEW_RATE          200U    /* originally 139U, then 400U  */
-#define    MOTOR_SET_RATE          5578U
-#define    MOTOR_GUIDE_RATE       55780U
-#define    MOTOR_NUDGE_RATE       57300U
+#define TRUE    1
+#define FALSE   0
 
 #define MOTOR_LIM_W_MSEC 18726882
 #define MOTOR_LIM_E_MSEC -18424269

@@ -2,23 +2,30 @@
 #define MOTOR_INTFCE_H
 
 #include "motor_defs.h"
+#include "motor_driver.h"
 
 #define MIN_RATE GUIDE_RATE
 
-char start_move(unsigned char dir, unsigned long speed);
-void change_speed(unsigned long new_speed);
-char end_move(void);
-void stop_move(void);
-unsigned long get_steps_ha(void);
-unsigned long get_steps_dec(void);
-unsigned char get_limits(void);
-char motor_ramp(void);
+void motordrv_init(void (*stat_update)(void));
+void motordrv_finalise(void);
+unsigned char get_motor_stat(void);
+unsigned char get_motor_limits(void);
+int start_goto(struct tel_goto_cmd *cmd);
+void end_goto(void);
+int start_card(struct tel_card_cmd *cmd);
+void end_card(void);
+void toggle_all_stop(unsigned char stop_on);
+void toggle_tracking(unsigned char tracking_on);
+void adjust_tracking(int adj_ha, int adj_dec);
+void get_coord_motor(struct tel_coord *coord);
+void get_coord_encod(struct tel_coord *coord);
+void handset_handler(unsigned char old_hs, unsigned char new_hs);
 #ifdef MOTOR_SIM
- void set_sim_steps(unsigned long steps);
- void set_sim_limits(unsigned char limits);
- unsigned long get_sim_steps(void);
- unsigned char get_sim_dir(void);
- unsigned long get_sim_speed(void);
+void set_sim_steps(unsigned long steps);
+void set_sim_limits(unsigned char limits);
+unsigned long get_sim_steps(void);
+unsigned char get_sim_dir(void);
+unsigned long get_sim_speed(void);
 #endif
 
 #endif

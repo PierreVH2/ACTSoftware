@@ -80,12 +80,12 @@ char start_goto(int targ_ha, int targ_dec, unsigned char use_encod, unsigned lon
   return start_move(G_goto_params.direction, G_goto_params.max_speed);
 }
 
-char cancel_goto(void)
+void cancel_goto(void)
 {
   printk(KERN_DEBUG PRINTK_PREFIX "Goto cancel requested\n");
   if (G_goto_params.max_speed < MIN_RATE)
   {
-    printk(KERN_DEBUG PRINTK_PREFIX "Activating ramp required.\n");
+    printk(KERN_DEBUG PRINTK_PREFIX "Ramp required.\n");
     G_ramp_reqd = TRUE;
     change_speed(MIN_RATE);
   }

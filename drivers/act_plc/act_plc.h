@@ -32,10 +32,15 @@
 #define HS_DIR_NORTH_MASK    0x02
 #define HS_DIR_EAST_MASK     0x04
 #define HS_DIR_WEST_MASK     0x08
+#define HS_DIR_DEC_MASK      (HS_DIR_NORTH_MASK | HS_DIR_SOUTH_MASK)
+#define HS_DIR_HA_MASK       (HS_DIR_EAST_MASK | HS_DIR_WEST_MASK)
+#define HS_DIR_MASK          (HS_DIR_HA_MASK | HS_DIR_DEC_MASK)
 #define HS_FOC_IN_MASK       0x10
 #define HS_FOC_OUT_MASK      0x20
+#define HS_FOC_MASK          (HS_FOC_IN_MASK | HS_FOC_OUT_MASK)
 #define HS_SPEED_SLEW_MASK   0x40
 #define HS_SPEED_GUIDE_MASK  0x80
+#define HS_SPEED_MASK        (HS_SPEED_GUIDE_MASK | HS_SPEED_SLEW_MASK)
 
 #define DOME_POS_DEG(status) (status->dome_pos / 10.0)
 #define SHUTTER_OPEN(status) ((status->shutter & 0x1) != 0)

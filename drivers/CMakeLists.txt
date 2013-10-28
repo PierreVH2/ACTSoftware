@@ -17,6 +17,13 @@ set(MODULE_SOURCE_FILES     merlin_driver/merlin_driver.c
 
 set(MODULE_DEPENDS          ${MODULE_HEADER_FILES} ${MODULE_SOURCE_FILES})
 
+
+set(MOTOR_DRIVER_INPUT_FILES   motor_driver/motor_driver.c
+                               motor_driver/motor_driver.h
+                               motor_driver/motor_intfce.c
+                               motor_driver/motor_intfce.h
+                               motor_driver/motor_defs.h)
+
 set(MOTOR_DRIVER_OUTPUT_FILES  motor_driver.mod.o
                                .motor_driver.ko.cmd
                                .motor_driver.o.cmd
@@ -31,6 +38,10 @@ set(MOTOR_DRIVER_OUTPUT_FILES  motor_driver.mod.o
                                motor_driver.ko
                                motor_driver.o)
 
+
+set(ACT_PLC_INPUT_FILES       act_plc/act_plc.c
+                              act_plc/act_plc.h
+                              act_plc/plc_definitions.h)
 
 set(ACT_PLC_OUTPUT_FILES       .act_plc.ko.cmd
                                act_plc.mod.c
@@ -51,6 +62,10 @@ set(ACT_PLC_OUTPUT_FILES       .act_plc.ko.cmd
                                .act_plc.o.cmd)
 
 
+set(MERLIN_DRIVER_INPUT_FILES  merlin_driver/merlin_driver.c
+                               merlin_driver/merlin_driver.h
+                               merlin_driver/ccd_defs.h)
+
 set(MERLIN_DRIVER_OUTPUT_FILES merlin_driver.mod.o
                                merlin_driver.ko
                                merlin_driver.o
@@ -60,7 +75,10 @@ set(MERLIN_DRIVER_OUTPUT_FILES merlin_driver.mod.o
                                .merlin_driver.mod.o.cmd
                                .merlin_driver.o.cmd
                                .merlin_driver.ko.cmd)
-                               
+
+
+set(PLC_LDISC_INPUT_FILES      plc_ldisc/plc_ldisc.c
+                               plc_ldisc/plc_ldisc.h)                               
 
 set(PLC_LDISC_OUTPUT_FILES     .plc_ldisc.ko.cmd
                                plc_ldisc.mod.c
@@ -72,6 +90,11 @@ set(PLC_LDISC_OUTPUT_FILES     .plc_ldisc.ko.cmd
                                plc_ldisc.mod.o
                                plc_ldisc.ko)
 
+
+set(PMT_DRIVER_INPUT_FILES     pmt_driver/pmt_driver.c
+                               pmt_driver/pmt_driver.h
+                               pmt_driver/pmt_defs.h)
+
 set(PMT_DRIVER_OUTPUT_FILES    pmt_driver.o
                                .pmt_driver.o.cmd
                                pmt_driver.mod.c
@@ -82,6 +105,9 @@ set(PMT_DRIVER_OUTPUT_FILES    pmt_driver.o
                                pmt_driver.mod.o
                                .pmt_driver.mod.o.cmd)
 
+
+set(TIME_DRIVER_INPUT_FILES    time_driver/time_driver.c
+                               time_driver/time_driver.h)
 
 set(TIME_DRIVER_OUTPUT_FILES   time_driver.mod.c
                                .time_driver.o.cmd
@@ -120,14 +146,25 @@ set(KERNEL_DIR                 "/lib/modules/${CMAKE_SYSTEM_VERSION}/build")
 set(KBUILD_CMD                 ${CMAKE_MAKE_PROGRAM} -C ${KERNEL_DIR} M=${MODULE_BUILD_DIR} modules)
 set(KBUILD_INSTALL_CMD         ${CMAKE_MAKE_PROGRAM} -C ${KERNEL_DIR} M=${MODULE_BUILD_DIR} modules_install)
 
+file(COPY ${MOTOR_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/motor_driver/)
+file(COPY ${ACT_PLC_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/act_plc/)
+file(COPY ${PLC_LDISC_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/plc_ldisc/)
+file(COPY ${MERLIN_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/merlin_driver/)
+file(COPY ${PMT_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/pmt_driver/)
+file(COPY ${MOTOR_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/time_driver/)
+file(COPY "${MODULE_SOURCE_DIR}/Makefile" DESTINATION ${MODULE_BUILD_DIR})
+
 add_custom_command (OUTPUT  ${DRIVER_FILES}
-                    COMMAND cp -Rf ${MODULE_SOURCE_DIR} ${MODULE_BUILD_DIR}/
                     COMMAND ${KBUILD_CMD}
-                    DEPENDS ${MODULE_DEPENDS} VERBATIM)
+                    DEPENDS ${MODULE_DEPENDS} ${MODULE_SOURCE_DIR}/${MODULE_DEPENDS} VERBATIM)
 
 add_custom_target (${DRIVER_TARGET_NAME}
                    ALL
                    DEPENDS ${DRIVER_FILES})
+
+# add_custom_target (${MODULE_BUILD_DIR}/${MODULE_DEPENDS}
+#                    ALL
+#                    DEPENDS ${MODULE_SOURCE_DIR}/${MODULE_DEPENDS})
 
 install(FILES ${MODULE_HEADER_FILES} DESTINATION include)
 install(CODE "EXECUTE_PROCESS(COMMAND ${KBUILD_INSTALL_CMD})")

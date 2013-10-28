@@ -5,7 +5,7 @@
 /**
  * TODO:
  * - make provision for goto when already at target coordinates
- * - implement new treatment of soft altitude limits (in get_limits())
+ * - restructure
  */
 
 #include <linux/module.h>
@@ -35,8 +35,11 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
 static int device_open(struct inode *inode, struct file *file);
 static int device_release(struct inode *inode, struct file *file);
 static unsigned int device_poll(struct file *filp, poll_table *wait);
-static char user_start_goto(struct tel_goto_cmd *cmd);
 void handset_change(const unsigned char old_hs, const unsigned char new_hs);
+static int user_start_goto(struct tel_goto_cmd *cmd);
+static void user_cancel_goto(void);
+static void user_toggle_allstop(char allstop_on);
+static int user_toggle_track(char tracking_on);
 static void gotomon(struct work_struct *work);
 static void rampmon(struct work_struct *work);
 static void trackmon(struct work_struct *work);
@@ -96,14 +99,6 @@ static int __init device_init(void)
   }
   
   init_waitqueue_head(&G_readq);
-  G_status = 0;
-  if (get_limits() != 0)
-    G_status |= MOTOR_STAT_ERR_LIMS;
-  G_motordrv_workq = create_singlethread_workqueue("act_motors");
-  INIT_DELAYED_WORK(&G_trackmon_work, trackmon);
-  INIT_DELAYED_WORK(&G_gotomon_work, gotomon);
-  INIT_DELAYED_WORK(&G_rampmon_work, rampmon);
-  INIT_DELAYED_WORK(&G_handsetmove_work, handsetmove);
   
   register_handset_handler(&handset_change);
 
@@ -172,26 +167,13 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     {
       if (ioctl_param == 0)
       {
+        value = 0;
         if ((G_status & MOTOR_STAT_MOVING) == 0)
         {
           printk(KERN_DEBUG PRINTK_PREFIX "Received goto cancel command, but no goto is underway. Ignoring.\n");
-          value = 0;
           break;
         }
-        end_goto();
-        value = 0;
-        break;
-      }
-      if (G_status & (MOTOR_STAT_MOVING | MOTOR_STAT_ALLSTOP))
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Received goto command, but motors are currently busy. Ignoring.\n");
-        value = -EAGAIN;
-        break;
-      }
-      if ((G_status & (MOTOR_STAT_HA_INIT | MOTOR_STAT_DEC_INIT)) == 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Received goto command, but telescope has not been initialised.\n");
-        value = -EPERM;
+        user_cancel_goto();
         break;
       }
       user_data = kmalloc(sizeof(struct tel_goto_cmd), GFP_ATOMIC);
@@ -210,28 +192,7 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         value = -EIO;
         break;
       }
-      printk(KERN_INFO PRINTK_PREFIX "Goto requested.\n");
-      if (G_status & MOTOR_STAT_TRACKING)
-      {
-        G_status &= ~MOTOR_STAT_TRACKING;
-        G_status |= MOTOR_STAT_UPDATE;
-        cancel_delayed_work(&G_trackmon_work);
-        stop_move();
-      }
-      value = user_start_goto((struct tel_goto_cmd*)user_data);
-      kfree(user_data);
-      user_data = NULL;
-      if (value == 0)
-      {
-        value = -EPERM;
-        G_status |= MOTOR_STAT_ERR_LIMS | MOTOR_STAT_UPDATE;
-        break;
-      }
-      G_status |= MOTOR_STAT_MOVING | MOTOR_STAT_UPDATE;
-      gotomon(NULL);
-      if (get_is_ramp_reqd())
-        rampmon(NULL);
-      value = 0;
+      value = user_start_goto((struct tel_goto_cmd *) user_data);
       break;
     }
 
@@ -239,34 +200,8 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     // ??? Allow to disable tracking if if motors not initialised and allstop active
     case IOCTL_TEL_SET_TRACKING:
     {
-      if (G_status & MOTOR_STAT_ALLSTOP)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Received track command, but emergency stop is active. Ignoring.\n");
-        value = -EPERM;
-        break;
-      }
-      if ((G_status & (MOTOR_STAT_HA_INIT | MOTOR_STAT_DEC_INIT)) == 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Received track command, but telescope has not been initialised.\n");
-        value = -EPERM;
-        break;
-      }
       get_user(value, (unsigned long*)ioctl_param);
-      set_track_rate(value);
-      if (value == 0)
-      {
-        G_status &= ~MOTOR_STAT_TRACKING;
-        G_status |= MOTOR_STAT_UPDATE;
-        cancel_delayed_work(&G_trackmon_work);
-        stop_move();
-      }
-      else if ((G_status & MOTOR_STAT_MOVING) == 0)
-      {
-        G_status &= ~MOTOR_STAT_ERR_LIMS;
-        G_status |= MOTOR_STAT_TRACKING | MOTOR_STAT_UPDATE;
-        trackmon(NULL);
-      }
-      value = 0;
+      value = user_toggle_track(value);
       break;
     }
 
@@ -285,24 +220,7 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         printk(KERN_INFO PRINTK_PREFIX "Error: Could not copy emergency stop ioctl parameter from user space. Assuming emergency stop must be activated.\n");
         value = 1;
       }
-      if (value)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Emergency stop!\n");
-        set_track_rate(0);
-        stop_move();
-        cancel_delayed_work(&G_trackmon_work);
-        cancel_delayed_work(&G_gotomon_work);
-        cancel_delayed_work(&G_rampmon_work);
-        cancel_delayed_work(&G_handsetmove_work);
-        G_status &= ~(MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING);
-        G_status |= MOTOR_STAT_ALLSTOP | MOTOR_STAT_UPDATE;
-      }
-      else
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Cancelling emergency stop.\n");
-        G_status &= ~MOTOR_STAT_ALLSTOP;
-        G_status |= MOTOR_STAT_UPDATE;
-      }
+      user_toggle_allstop(value);
       value = 0;
       break;
     }
@@ -454,22 +372,70 @@ static unsigned int device_poll(struct file *filp, poll_table *wait)
   return mask;
 }
 
-static char user_start_goto(struct tel_goto_cmd *cmd)
-{
-  if (cmd == NULL)
-  {
-    printk(KERN_INFO PRINTK_PREFIX "Input parameters to user_start_goto not specified - not starting goto.\n");
-    return 0;
-  }
-  return start_goto(cmd->ha_steps, cmd->dec_steps, cmd->max_speed);
-}
-
 void handset_change(const unsigned char old_hs, const unsigned char new_hs)
 {
-  if (((old_hs & MOTOR_DIR_DEC_MASK) != MOTOR_DIR_DEC_MASK) && ((new_hs & MOTOR_DIR_DEC_MASK) == MOTOR_DIR_DEC_MASK))
+  if (((old_hs & HS_DIR_DEC_MASK) != HS_DIR_DEC_MASK) && ((new_hs & HS_DIR_DEC_MASK) == HS_DIR_DEC_MASK))
   {
-    printk(KERN_INFO PRINTK_PREFIX "Activating emergency stop (by handset).\n");
+    if (G_status & MOTOR_STAT_ALLSTOP)
+    {
+      printk(KERN_DEBUG PRINTK_PREFIX "Disabling emergency stop (by handset).\n");
+      user_toggle_allstop(FALSE);
+    }
+    else
+    {
+      printk(KERN_DEBUG PRINTK_PREFIX "Enabling emergency stop (by handset).\n");
+      user_toggle_allstop(TRUE);
+    }
+    return;
   }
+  if (((old_hs & HS_DIR_HA_MASK) != HS_DIR_HA_MASK) && ((new_hs & HS_DIR_HA_MASK) == HS_DIR_HA_MASK))
+  {
+    if (G_status & MOTOR_STAT_TRACKING)
+    {
+      printk(KERN_DEBUG PRINTK_PREFIX "Disabling tracking (by handset).\n");
+      user_toggle_track(FALSE);
+    }
+    else
+    {
+      printk(KERN_DEBUG PRINTK_PREFIX "Enabling tracking (by handset).\n");
+      user_toggle_track(TRUE);
+    }
+    return;
+  }
+  if ((old_hs & HS_SPEED_MASK) != (new_hs & HS_SPEED_MASK))
+  {
+    unsigned int new_speed = MOTOR_SET_RATE;
+    if (new_hs & HS_SLEW_MASK)
+      new_speed = MOTOR_SLEW_RATE;
+    if (new_hs & HS_GUIDE_MASK)
+      new_speed = MOTOR_GUIDE_RATE;
+    change_speed(new_speed);
+  }
+  if ((old_hs & HS_DIR_MASK) != (new_hs & HS_DIR_MASK))
+  {
+    if (G_status & MOTOR_STAT_MOVING)
+    {
+      stop_move();
+      G_status &= MOTOR_STAT_MOVING;
+      G_status |= MOTOR_STAT_UPDATE;
+    }
+    unsigned char new_dir = 0;
+    if (new_hs & HS_DIR_NORTH_MASK)
+      new_dir |= MOTOR_DIR_NORTH_MASK;
+    if (new_hs & HS_DIR_SOUTH_MASK)
+      new_dir |= MOTOR_DIR_SOUTH_MASK;
+    if (new_hs & HS_DIR_EAST_MASK)
+      new_dir |= MOTOR_DIR_EAST_MASK;
+    if (new_hs & HS_DIR_WEST_MASK)
+      new_dir |= MOTOR_DIR_WEST_MASK;
+    if (new_dir != 0)
+    {
+      if (!start_move(new_dir, unsigned long speed);
+    }
+  }
+  
+  
+  
   int targ_ha_steps, targ_dec_steps;
   unsigned int max_speed;
   if ((old_hs & MOTOR_DIR_MASK) && !(new_hs & MOTOR_DIR_MASK))
@@ -489,70 +455,96 @@ void handset_change(const unsigned char old_hs, const unsigned char new_hs)
 
   
   
-  if (ioctl_param == 0)
-  {
-    if ((G_status & MOTOR_STAT_MOVING) == 0)
-    {
-      printk(KERN_DEBUG PRINTK_PREFIX "Received goto cancel command, but no goto is underway. Ignoring.\n");
-      value = 0;
-      break;
-    }
-    end_goto();
-    value = 0;
-    break;
-  }
+  
+  
+}
+
+static int user_start_goto(struct tel_goto_cmd *cmd)
+{
   if (G_status & (MOTOR_STAT_MOVING | MOTOR_STAT_ALLSTOP))
   {
-    printk(KERN_INFO PRINTK_PREFIX "Received goto command, but motors are currently busy. Ignoring.\n");
-    value = -EAGAIN;
-    break;
+    printk(KERN_DEBUG PRINTK_PREFIX "Received goto command, but motors are currently busy. Ignoring.\n");
+    return -EAGAIN;
   }
   if ((G_status & (MOTOR_STAT_HA_INIT | MOTOR_STAT_DEC_INIT)) == 0)
   {
-    printk(KERN_INFO PRINTK_PREFIX "Received goto command, but telescope has not been initialised.\n");
-    value = -EPERM;
-    break;
+    printk(KERN_DEBUG PRINTK_PREFIX "Received goto command, but telescope has not been initialised.\n");
+    return -EPERM;
   }
-  user_data = kmalloc(sizeof(struct tel_goto_cmd), GFP_ATOMIC);
-  if (user_data == NULL)
-  {
-    printk(KERN_INFO PRINTK_PREFIX "Could not allocate memory for goto parameters. Ignoring goto command.\n");
-    value = -ENOMEM;
-    break;
-  }
-  value = copy_from_user(user_data, (void*)ioctl_param, sizeof(struct tel_goto_cmd));
-  if (value < 0)
-  {
-    printk(KERN_INFO PRINTK_PREFIX "Received goto command. Could not copy goto parameters from user.\n");
-    kfree(user_data);
-    user_data = NULL;
-    value = -EIO;
-    break;
-  }
-  printk(KERN_INFO PRINTK_PREFIX "Goto requested.\n");
+  printk(KERN_DEBUG PRINTK_PREFIX "Goto requested.\n");
   if (G_status & MOTOR_STAT_TRACKING)
   {
+    printk(KERN_DEBUG PRINTK_PREFIX "Tracking stop.\n");
     G_status &= ~MOTOR_STAT_TRACKING;
     G_status |= MOTOR_STAT_UPDATE;
     cancel_delayed_work(&G_trackmon_work);
     stop_move();
   }
-  value = user_start_goto((struct tel_goto_cmd*)user_data);
-  kfree(user_data);
-  user_data = NULL;
-  if (value == 0)
-  {
-    value = -EPERM;
-    G_status |= MOTOR_STAT_ERR_LIMS | MOTOR_STAT_UPDATE;
-    break;
-  }
+  if (!start_goto(cmd->ha_steps, cmd->dec_steps, cmd->use_encod, cmd->max_speed))
+    return -EINVAL;
   G_status |= MOTOR_STAT_MOVING | MOTOR_STAT_UPDATE;
   gotomon(NULL);
   if (get_is_ramp_reqd())
     rampmon(NULL);
   value = 0;
-  
-  
+}
+
+static void user_cancel_goto(void)
+{
+  cancel_goto();
+}
+
+static void user_toggle_allstop(char allstop_on)
+{
+  if (allstop_on)
+  {
+    printk(KERN_INFO PRINTK_PREFIX "Emergency stop!\n");
+    set_track_rate(0);
+    stop_move();
+    cancel_delayed_work(&G_trackmon_work);
+    cancel_delayed_work(&G_gotomon_work);
+    cancel_delayed_work(&G_rampmon_work);
+    cancel_delayed_work(&G_handsetmove_work);
+    G_status &= ~(MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING);
+    G_status |= MOTOR_STAT_ALLSTOP | MOTOR_STAT_UPDATE;
+  }
+  else
+  {
+    printk(KERN_INFO PRINTK_PREFIX "Cancelling emergency stop.\n");
+    G_status &= ~MOTOR_STAT_ALLSTOP;
+    G_status |= MOTOR_STAT_UPDATE;
+  }
+}
+
+static int user_toggle_track(unsigned int track_rate)
+{
+  if (G_status & MOTOR_STAT_ALLSTOP)
+  {
+    printk(KERN_INFO PRINTK_PREFIX "Received track command, but emergency stop is active. Ignoring.\n");
+    return -EPERM;
+  }
+  if ((G_status & (MOTOR_STAT_HA_INIT | MOTOR_STAT_DEC_INIT)) == 0)
+  {
+    printk(KERN_INFO PRINTK_PREFIX "Received track command, but telescope has not been initialised.\n");
+    return -EPERM;
+  }
+  if (track_rate == 0)
+  {
+    G_status &= ~MOTOR_STAT_TRACKING;
+    G_status |= MOTOR_STAT_UPDATE;
+    cancel_delayed_work(&G_trackmon_work);
+    if ((G_status & MOTOR_STAT_MOVING) == 0)
+      stop_move();
+  }
+  else if ((G_status & MOTOR_STAT_MOVING) == 0)
+  {
+    G_status &= ~MOTOR_STAT_ERR_LIMS;
+    G_status |= MOTOR_STAT_TRACKING | MOTOR_STAT_UPDATE;
+    if (!set_track_rate(track_rate))
+      return -EIO;
+    trackmon(NULL);
+  }
+  return 0;
 }
 
 static void gotomon(struct work_struct *work)
