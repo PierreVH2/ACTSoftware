@@ -3,14 +3,13 @@ set(MODULE_HEADER_FILES     merlin_driver/merlin_driver.h merlin_driver/ccd_defs
                             time_driver/time_driver.h time_driver/parapin.h
                             plc_ldisc/plc_ldisc.h
                             act_plc/act_plc.h act_plc/plc_definitions.h
-                            motor_driver/motor_intfce.h motor_driver/motor_defs.h motor_driver/motor_funcs.h motor_driver/motor_driver.h)
+                            motor_driver/motor_intfce.h motor_driver/motor_defs.h motor_driver/motor_driver.h)
 
 set(MODULE_SOURCE_FILES     merlin_driver/merlin_driver.c
                             pmt_driver/pmt_driver.c
                             time_driver/time_driver.c
                             plc_ldisc/plc_ldisc.c
                             act_plc/act_plc.c
-                            motor_driver/motor_funcs.c
                             motor_driver/motor_driver.c
                             motor_driver/motor_intfce.c)
 
@@ -28,8 +27,6 @@ set(MOTOR_DRIVER_OUTPUT_FILES  motor_driver.mod.o
                                .motor_driver.ko.cmd
                                .motor_driver.o.cmd
                                .motor_driver.mod.o.cmd
-                               motor_driver/motor_funcs.o
-                               motor_driver/.motor_funcs.o.cmd
                                motor_driver/.motor_intfce.o.cmd
                                motor_driver/motor_intfce.o
                                motor_driver/.motor_driver.o.cmd
@@ -107,7 +104,8 @@ set(PMT_DRIVER_OUTPUT_FILES    pmt_driver.o
 
 
 set(TIME_DRIVER_INPUT_FILES    time_driver/time_driver.c
-                               time_driver/time_driver.h)
+                               time_driver/time_driver.h
+                               time_driver/parapin.h)
 
 set(TIME_DRIVER_OUTPUT_FILES   time_driver.mod.c
                                .time_driver.o.cmd
@@ -149,9 +147,9 @@ set(KBUILD_INSTALL_CMD         ${CMAKE_MAKE_PROGRAM} -C ${KERNEL_DIR} M=${MODULE
 file(COPY ${MOTOR_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/motor_driver/)
 file(COPY ${ACT_PLC_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/act_plc/)
 file(COPY ${PLC_LDISC_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/plc_ldisc/)
+file(COPY ${TIME_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/time_driver)
 file(COPY ${MERLIN_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/merlin_driver/)
 file(COPY ${PMT_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/pmt_driver/)
-file(COPY ${MOTOR_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/time_driver/)
 file(COPY "${MODULE_SOURCE_DIR}/Makefile" DESTINATION ${MODULE_BUILD_DIR})
 
 add_custom_command (OUTPUT  ${DRIVER_FILES}

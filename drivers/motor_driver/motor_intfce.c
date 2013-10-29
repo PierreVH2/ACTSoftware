@@ -1,6 +1,7 @@
 #include <linux/kernel.h>
 #include <linux/io.h>
 #include <linux/workqueue.h>
+#include <asm/div64.h>
 #include <act_plc/act_plc.h>
 #include "motor_intfce.h"
 #include "motor_defs.h"
@@ -109,6 +110,7 @@ union move_params
 };
 
 static void update_status(void);
+static void update_motor_coords(int reset_motor_steps);
 static void check_motors(struct work_struct *work);
 unsigned char check_gotomove(void);
 unsigned char check_cardmove(void);
@@ -192,11 +194,13 @@ void motordrv_init(void (*stat_update)(void))
   if (G_hard_limits || G_alt_limits)
     G_status |= MOTOR_STAT_ERR_LIMS;
   G_status_update = stat_update;
+  set_handset_handler(&handset_handler);
   printk(KERN_CRIT PRINTK_PREFIX "Motor driver loaded. Please initialise the driver's coordinate system by moving the telescope to the Southern and Western electronic limits with the handset.\n");
 }
 
 void motordrv_finalise(void)
 {
+  set_handset_handler(NULL);
   cancel_delayed_work(&G_motor_work);
   G_status_update = NULL;
 }
@@ -211,7 +215,7 @@ unsigned char get_motor_limits(void)
   return G_hard_limits | G_alt_limits;
 }
 
-int start_goto(struct tel_goto_cmd *cmd)
+int start_goto(struct motor_goto_cmd *cmd)
 {
   unsigned char dir;
   unsigned int rate;
@@ -299,7 +303,7 @@ void end_goto(void)
   }
 }
 
-int start_card(struct tel_card_cmd *cmd)
+int start_card(struct motor_card_cmd *cmd)
 {
   unsigned int rate;
   struct cardmove_params *params = &G_move_params.cardmove;
@@ -363,6 +367,12 @@ void end_card(void)
   }
 }
 
+void end_all(void)
+{
+  stop_move();
+  G_status &= ~(MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING);
+}
+
 void toggle_all_stop(unsigned char stop_on)
 {
   if (stop_on)
@@ -408,13 +418,13 @@ void adjust_tracking(int adj_ha, int adj_dec)
   G_move_params.tracking.adj_dec_steps = adj_dec;
 }
 
-void get_coord_motor(struct tel_coord *coord)
+void get_coord_motor(struct motor_tel_coord *coord)
 {
   coord->tel_ha = G_motor_steps_ha;
   coord->tel_dec = G_motor_steps_dec;
 }
 
-void get_coord_encod(struct tel_coord *coord)
+void get_coord_encod(struct motor_tel_coord *coord)
 {
   coord->tel_ha = G_encod_pulses_ha;
   coord->tel_dec = G_encod_pulses_dec;
@@ -493,6 +503,7 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   else
     speed = MOTOR_SPEED_SET;
   printk(KERN_DEBUG PRINTK_PREFIX "Handset speed %hhu.\n", speed);
+  dir = 0;
   if (new_hs & HS_DIR_NORTH_MASK)
     dir |= DIR_NORTH_MASK;
   else if (new_hs & HS_DIR_SOUTH_MASK)
@@ -534,7 +545,9 @@ void set_sim_limits(unsigned char limits)
 
 unsigned long get_sim_steps(void)
 {
-  return G_last_motor_steps;
+//   return G_last_motor_steps;
+  /// TODO: Unbreak this
+  return 0;
 }
 
 unsigned char get_sim_dir(void)
@@ -554,10 +567,36 @@ static void update_status(void)
     (*G_status_update)();
 }
 
+static void update_motor_coords(int reset_motor_steps)
+{
+  static int last_motor_steps = 0;
+  int new_motor_steps = read_steps();
+  unsigned char dir = 0;
+  if (G_status & MOTOR_STAT_GOTO)
+    dir = G_move_params.gotomove.dir_cur;
+  else if (G_status & MOTOR_STAT_CARD)
+    dir = G_move_params.cardmove.dir_cur;
+  else if (G_status & MOTOR_STAT_TRACKING)
+    dir = G_move_params.tracking.dir_cur | DIR_WEST_MASK;
+  if (dir == 0)
+    return;
+  if (dir & DIR_WEST_MASK)
+    G_motor_steps_ha -= last_motor_steps - new_motor_steps;
+  else if (dir & DIR_EAST_MASK)
+    G_motor_steps_ha += last_motor_steps - new_motor_steps;
+  if (dir & DIR_NORTH_MASK)
+    G_motor_steps_dec += last_motor_steps - new_motor_steps;
+  else if (dir & DIR_SOUTH_MASK)
+    G_motor_steps_dec -= last_motor_steps - new_motor_steps;
+  if (reset_motor_steps >= 0)
+    last_motor_steps = reset_motor_steps;
+  else
+    last_motor_steps = new_motor_steps;
+}
+
 void check_motors(struct work_struct *work)
 {
   unsigned char new_limits, req_status_update = 0;
-  int new_motor_steps, ha_inc, dec_inc;
   
   if ((G_status & (MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING)) == 0)
   {
@@ -600,21 +639,8 @@ void check_motors(struct work_struct *work)
     req_status_update = TRUE;
   }
   
-  new_motor_steps = read_steps();
-  if (G_move_dir & DIR_WEST_MASK)
-    ha_inc = new_motor_steps - G_last_motor_steps;
-  else if (G_move_dir & DIR_EAST_MASK)
-    ha_inc = G_last_motor_steps - new_motor_steps;
-  else
-    ha_inc = 0;
-  if (G_move_dir & DIR_NORTH_MASK)
-    dec_inc = G_last_motor_steps - new_motor_steps;
-  else if (G_move_dir & DIR_SOUTH_MASK)
-    dec_inc = new_motor_steps - G_last_motor_steps;
-  else
-    dec_inc = 0;
-  G_last_motor_steps = new_motor_steps;
-    
+  update_motor_coords(-1);
+      
   if (G_status & MOTOR_STAT_GOTO)
     req_status_update = check_gotomove();
   else if (G_status & MOTOR_STAT_CARD)
@@ -924,6 +950,7 @@ static unsigned int calc_ramp_rate(unsigned int rate_cur, unsigned int rate_req)
 
 static void start_move(unsigned char dir, unsigned long rate_req)
 {
+  update_motor_coords(0xFFFFFF);
   send_steps(~((unsigned long)0));
   send_rate(rate_req > RATE_MIN ? rate_req : RATE_MIN);
   send_direction(dir);
@@ -931,16 +958,15 @@ static void start_move(unsigned char dir, unsigned long rate_req)
 
 static void stop_move(void)
 {
-  /// TODO: Test if we need to send 0 steps.
-  /// If not, then we can keep track of the motor steps in check_motors. If indeed, then we'll lose track of the counts when the check_motors function is called.
-//   send_steps(0);
+  update_motor_coords(0);
+  send_steps(0);
   send_direction(0);
 }
 
 static unsigned char check_soft_lims(void)
 {
   unsigned char idx=TEL_ALT_LIM_NUM_DIVS+1, lim_dir = 0;
-  int64_t grad_u, zerop, dec_l;
+  int64_t grad_u, zerop, dec_l, tmp_div;
   int tel_ha_lim_E = 0, tel_ha_lim_W = 0;
   
   if (G_motor_steps_dec < TEL_ALT_LIM_MIN_DEC_STEPS)
@@ -950,11 +976,19 @@ static unsigned char check_soft_lims(void)
     return DIR_NORTH_MASK | DIR_WEST_MASK | DIR_EAST_MASK;
   dec_l = TEL_ALT_LIM_MIN_DEC_STEPS + idx*TEL_ALT_LIM_DEC_INC_STEPS;
   grad_u = (G_tel_alt_lim_W_steps[idx+1] - G_tel_alt_lim_W_steps[idx]);
-  zerop = G_tel_alt_lim_W_steps[idx] - grad_u*dec_l/TEL_ALT_LIM_DEC_INC_STEPS;
-  tel_ha_lim_W = grad_u * G_motor_steps_dec / TEL_ALT_LIM_DEC_INC_STEPS + zerop;
+  tmp_div = grad_u * dec_l;
+  do_div(tmp_div,TEL_ALT_LIM_DEC_INC_STEPS);
+  zerop = G_tel_alt_lim_W_steps[idx] - tmp_div;
+  tmp_div = grad_u * G_motor_steps_dec;
+  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
+  tel_ha_lim_W = tmp_div + zerop;
   grad_u *= -1;
-  zerop = G_tel_alt_lim_E_steps[idx] - grad_u*dec_l/TEL_ALT_LIM_DEC_INC_STEPS;
-  tel_ha_lim_E = grad_u * G_motor_steps_dec / TEL_ALT_LIM_DEC_INC_STEPS + zerop;
+  tmp_div = grad_u*dec_l;
+  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
+  zerop = G_tel_alt_lim_E_steps[idx] - tmp_div;
+  tmp_div = grad_u * G_motor_steps_dec;
+  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
+  tel_ha_lim_E = tmp_div + zerop;
   if (G_motor_steps_ha < tel_ha_lim_W)
     lim_dir |= DIR_NORTH_MASK | DIR_WEST_MASK;
   if (G_motor_steps_ha > tel_ha_lim_E)
@@ -992,7 +1026,7 @@ static void send_steps(unsigned long steps)
   #else
    G_sim_motor_steps = steps & 0xFFFFFF;
   #endif
-  G_last_motor_steps = steps & 0xFFFFFF;
+//   G_last_motor_steps = steps & 0xFFFFFF;
 }
 
 static unsigned long read_steps(void)

@@ -29,44 +29,44 @@ enum
   MOTOR_SPEED_SLEW
 };
 
-struct tel_coord
+struct motor_tel_coord
 {
   int tel_ha, tel_dec;
 };
 
-struct tel_goto_cmd
+struct motor_goto_cmd
 {
   int targ_ha, targ_dec;
   unsigned char speed, tracking_on, use_encod;
 };
 
-struct tel_card_cmd
+struct motor_card_cmd
 {
   unsigned char dir;
   unsigned char speed;
 };
 
-struct tel_track_adj
+struct motor_track_adj
 {
   int adj_ha_steps, adj_dec_steps;
 };
 
-/// IOCTL to get the telescope's current position according to telescope motors - saves struct tel_coord to ioctl parameter.
+/// IOCTL to get the telescope's current position according to telescope motors - saves struct motor_tel_coord to ioctl parameter.
 #define IOCTL_MOTOR_GET_MOTOR_POS _IOR(MOTOR_IOCTL_NUM, 0, unsigned long*)
 
-/// IOCTL to get the telescope's current position according to telescope encoders - saves struct tel_coord to ioctl parameter.
+/// IOCTL to get the telescope's current position according to telescope encoders - saves struct motor_tel_coord to ioctl parameter.
 #define IOCTL_MOTOR_GET_ENCOD_POS _IOR(MOTOR_IOCTL_NUM, 1, unsigned long*)
 
-/// IOCTL to start or end a telescope goto - takes pointer to tel_goto struct as ioctl parameter, if NULL end goto.
+/// IOCTL to start or end a telescope goto - takes pointer to motor_goto struct as ioctl parameter, if NULL end goto.
 #define IOCTL_MOTOR_GOTO _IOW(MOTOR_IOCTL_NUM, 2, unsigned long*)
 
-/// IOCTL to start or end movement in cardinal direction (NSEW) - takes pointer to tel_card_cmd struct as ioctl parameter, if NULL end movement.
+/// IOCTL to start or end movement in cardinal direction (NSEW) - takes pointer to motor_card_cmd struct as ioctl parameter, if NULL end movement.
 #define IOCTL_MOTOR_CARD _IOW(MOTOR_IOCTL_NUM, 3, unsigned long*)
 
 /// IOCTL to set telescope tracking - 0 disables, everything else enables.
 #define IOCTL_MOTOR_SET_TRACKING _IOW(MOTOR_IOCTL_NUM, 4, unsigned long*)
 
-/// IOCTL to adjust telescope tracking - takes pointer to tel_track_adj struct as ioctl parameter, if NULL set adjustment to zero.
+/// IOCTL to adjust telescope tracking - takes pointer to motor_track_adj struct as ioctl parameter, if NULL set adjustment to zero.
 #define IOCTL_MOTOR_TRACKING_ADJ _IOW(MOTOR_IOCTL_NUM, 5, unsigned long*)
 
 /// IOCTL to read the status of the electronic limit switches
@@ -92,7 +92,7 @@ struct tel_track_adj
 #define IOCTL_MOTOR_GET_SIM_DIR _IOR(MOTOR_IOCTL_NUM, 11, unsigned long*)
 
 /// IOCTL to get the speed with which the "motors" should move
-#define IOCTL_MOTOR_GET_SIM_SPEED _IOR(MOTOR_IOCTL_NUM, 12, unsigned long*)
+#define IOCTL_MOTOR_GET_SIM_RATE _IOR(MOTOR_IOCTL_NUM, 12, unsigned long*)
 #endif
 /** \} */
 
