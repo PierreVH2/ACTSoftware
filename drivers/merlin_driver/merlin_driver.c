@@ -232,7 +232,7 @@ int init_module(void)
       return 1;
     }
   #endif
-  G_modes.prebin = CCD_MODE_PREBIN_1x1;
+  G_modes.prebin_x = G_modes.prebin_y = CCD_PREBIN_1;
   memset(G_modes.windows, 0, sizeof(G_modes.windows));
   G_modes.windows[0].width_px = WIDTH_PX;
   G_modes.windows[0].height_px = HEIGHT_PX;
@@ -557,7 +557,7 @@ static int start_exp(void *data)
     return 0;
   }
   G_img.img_params.exp_t_msec = ((G_cmd.exp_t_msec%EXPT_HI_DIV)/EXPT_LO_DIV)*EXPT_LO_DIV + (G_cmd.exp_t_msec/EXPT_HI_DIV)*EXPT_HI_DIV;
-  G_img.img_params.prebin = CCD_MODE_PREBIN_1x1;
+  G_img.img_params.prebin_x = G_img.img_params.prebin_y = CCD_PREBIN_1;
   G_img.img_params.window = 0;
   
   G_cmd.exp_t_msec = 0;
@@ -808,9 +808,9 @@ long device_ioctl(struct file *file, unsigned int ioctl_num, unsigned long ioctl
         printk(KERN_INFO PRINTK_PREFIX "Could not copy exposure parameters from user (%d)\n", ret_val);
         break;
       }
-      if ((G_cmd.prebin & G_modes.prebin) == 0)
+      if (((G_cmd.prebin_x & G_modes.prebin_x) == 0) || ((G_cmd.prebin_y & G_modes.prebin_y) == 0))
       {
-        printk(KERN_INFO PRINTK_PREFIX "Invalid prebinning mode selected: %hhu\n", G_cmd.prebin);
+        printk(KERN_INFO PRINTK_PREFIX "Invalid prebinning mode selected: %llu %llu\n", G_cmd.prebin_x, G_cmd.prebin_y);
         ret_val = -EINVAL;
         break;
       }

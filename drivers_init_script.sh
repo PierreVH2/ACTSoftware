@@ -30,13 +30,13 @@ drivers_start ()
 
 drivers_stop ()
 {
+  killall act_plc_hog
   if lsmod | grep -q ^pmt_driver ; then rmmod pmt_driver ; fi
   if lsmod | grep -q ^merlin_driver ; then rmmod merlin_driver ; fi
   if lsmod | grep -q ^motor_driver ; then rmmod motor_driver ; fi
   if lsmod | grep -q ^act_plc ; then rmmod act_plc ; fi
   if lsmod | grep -q ^plc_ldisc ; then rmmod plc_ldisc ; fi
   if lsmod | grep -q ^time_driver ; then rmmod time_driver ; fi
-  killall act_plc_hog
 }
 
 drivers_force_stop ()

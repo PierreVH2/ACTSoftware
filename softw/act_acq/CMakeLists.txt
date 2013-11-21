@@ -1,0 +1,8 @@
+FIND_PACKAGE(GTK2)
+INCLUDE_DIRECTORIES(${ACT_DRV_SRC}/merlin_driver)
+INCLUDE_DIRECTORIES(${ACT_LIB_SRC})
+INCLUDE_DIRECTORIES(${GTK2_INCLUDE_DIRS})
+ADD_DEFINITIONS(-DACT_FILES_PATH=${ACT_INSTALL_PREFIX}/local/act_files)
+INSTALL(FILES act_brightness_icon.png act_contrast_icon.png DESTINATION ${ACT_INSTALL_PREFIX}/local/act_files)
+SET(ACQ_SOURCE_FILES act_acq.c acq_ccdcntrl.c acq_ccdcntrl.h acq_imgdisp.c acq_imgdisp.h pattern_match.c pattern_match.h)
+ADD_EXECUTABLE(act_acq ${ACQ_SOURCE_FILES} ${ACT_LIB_SRC}/act_ipc.h ${ACT_LIB_SRC}/act_positastro.h ${ACT_LIB_SRC}/act_log.h ${GTK2_DEFINITIONS})

@@ -7,43 +7,48 @@
 #ifndef CCD_DEFS_H
 #define CCD_DEFS_H
 
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
+#include <inttypes.h>
+#endif
+
 // ??? Implement CCD frame transfer modes
-// ??? Change prebin to use individual x and y prebinning as integers
 
 /** \brief Prebinning modes supported by the CCD/driver
  * \{ */
-/// 1x1 Prebinning
-#define CCD_MODE_PREBIN_1x1   0x0001
-/// 1x2 Prebinning
-#define CCD_MODE_PREBIN_1x2   0x0002
-/// 1x4 Prebinning
-#define CCD_MODE_PREBIN_1x4   0x0004
-/// 1x8 Prebinning
-#define CCD_MODE_PREBIN_1x8   0x0008
-/// 2x1 Prebinning
-#define CCD_MODE_PREBIN_2x1   0x0010
-/// 2x2 Prebinning
-#define CCD_MODE_PREBIN_2x2   0x0020
-/// 2x4 Prebinning
-#define CCD_MODE_PREBIN_2x4   0x0040
-/// 2x8 Prebinning
-#define CCD_MODE_PREBIN_2x8   0x0080
-/// 4x1 Prebinning
-#define CCD_MODE_PREBIN_4x1   0x0100
-/// 4x2 Prebinning
-#define CCD_MODE_PREBIN_4x2   0x0200
-/// 4x4 Prebinning
-#define CCD_MODE_PREBIN_4x4   0x0400
-/// 4x8 Prebinning
-#define CCD_MODE_PREBIN_4x8   0x0800
-/// 8x1 Prebinning
-#define CCD_MODE_PREBIN_8x1   0x1000
-/// 8x2 Prebinning
-#define CCD_MODE_PREBIN_8x2   0x2000
-/// 8x4 Prebinning
-#define CCD_MODE_PREBIN_8x4   0x4000
-/// 8x8 Prebinning
-#define CCD_MODE_PREBIN_8x8   0x8000
+#define CCD_PREBIN_1   0x00000001
+#define CCD_PREBIN_2   0x00000002
+#define CCD_PREBIN_3   0x00000004
+#define CCD_PREBIN_4   0x00000008
+#define CCD_PREBIN_5   0x00000010
+#define CCD_PREBIN_6   0x00000020
+#define CCD_PREBIN_7   0x00000040
+#define CCD_PREBIN_8   0x00000080
+#define CCD_PREBIN_9   0x00000100
+#define CCD_PREBIN_10  0x00000200
+#define CCD_PREBIN_11  0x00000400
+#define CCD_PREBIN_12  0x00000800
+#define CCD_PREBIN_13  0x00001000
+#define CCD_PREBIN_14  0x00002000
+#define CCD_PREBIN_15  0x00004000
+#define CCD_PREBIN_16  0x00008000
+#define CCD_PREBIN_17  0x00010000
+#define CCD_PREBIN_18  0x00020000
+#define CCD_PREBIN_19  0x00040000
+#define CCD_PREBIN_20  0x00080000
+#define CCD_PREBIN_21  0x00100000
+#define CCD_PREBIN_22  0x00200000
+#define CCD_PREBIN_23  0x00400000
+#define CCD_PREBIN_24  0x00800000
+#define CCD_PREBIN_25  0x01000000
+#define CCD_PREBIN_26  0x02000000
+#define CCD_PREBIN_27  0x04000000
+#define CCD_PREBIN_28  0x08000000
+#define CCD_PREBIN_29  0x10000000
+#define CCD_PREBIN_30  0x20000000
+#define CCD_PREBIN_31  0x40000000
+#define CCD_PREBIN_32  0x80000000
 /** \} */
 
 /// Definition of maximum number of window modes can be supported
@@ -75,8 +80,8 @@ struct ccd_modes
 {
   /// String identifier of CCD
   char ccd_id[MAX_CCD_ID_LEN];
-  /// The frame transfer modes the CCD supports
-  unsigned int prebin;
+  /// Prebin modes the CCD supports
+  uint64_t prebin_x, prebin_y;
   /// Windowing modes supported by the CCD
   struct ccd_window_mode windows[CCD_MAX_NUM_WINDOW_MODES];
   /// Minimum exposure time supported by the CCD
@@ -104,7 +109,7 @@ struct ccd_cmd
   /// True if exposure should only be started at the next turn of a second, False if exposure should start immediately
   unsigned char start_at_sec;
   /// Prebinning mode required - must be one of the above listed bitmasks.
-  unsigned int prebin;
+  uint64_t prebin_x, prebin_y;
   /// The number of the window mode desired.
   unsigned char window;
   /// The desired exposure time.
@@ -124,7 +129,7 @@ struct ccd_img_params
   /// Total number of pixels retrieved - should be img_width*img_height, but this cannot be assumed.
   unsigned long img_len;
   /// Prebinning mode used - must be one of the above listed bitmasks.
-  unsigned int prebin;
+  unsigned int prebin_x, prebin_y;
   /// The number of the window mode used.
   unsigned char window;
   /// The length of the exposure

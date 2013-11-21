@@ -75,7 +75,7 @@ struct pmt_command
 {
   /// PMT Mode - must be one of the supported PMT Modes or 0 to cancel data collection.
   char mode;
-  /// Sampling period in nanoseconds - must be within limits given in pmt_information structure.
+  /// Sampling period as an integer multiple (multiplied by the minimum sample period - min_sample_period_ns - in pmt_information structure to get sample period)
   unsigned long sample_length;
   /// Prebinning - driver will bin this many samples.
   unsigned long prebin_num;
