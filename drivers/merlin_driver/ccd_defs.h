@@ -129,7 +129,7 @@ struct ccd_img_params
   /// Total number of pixels retrieved - should be img_width*img_height, but this cannot be assumed.
   unsigned long img_len;
   /// Prebinning mode used - must be one of the above listed bitmasks.
-  unsigned int prebin_x, prebin_y;
+  uint64_t prebin_x, prebin_y;
   /// The number of the window mode used.
   unsigned char window;
   /// The length of the exposure

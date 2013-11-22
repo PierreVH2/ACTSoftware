@@ -37,17 +37,10 @@ enum
 
 enum
 {
-  PREBINSTORE_MODENUM = 0,
+  PREBINSTORE_X = 0,
+  PREBINSTORE_Y,
   PREBINSTORE_NAME,
   PREBINSTORE_NUM_COLS
-};
-
-static const char *prebin_mode_names[] = 
-{
-  "1x1", "1x2", "1x4", "1x8",
-  "2x1", "2x2", "2x4", "2x8",
-  "4x1", "4x2", "4x4", "4x8",
-  "8x1", "8x2", "8x4", "8x8"
 };
 
 
@@ -169,7 +162,7 @@ struct ccdcntrl_objects *ccdcntrl_create_objs(MYSQL **conn, GtkWidget *container
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_label_new("Exp. time (s)"),FALSE,TRUE,3);
   if ((modes.min_exp_t_msec == 0) || (modes.max_exp_t_msec == 0))
   {
-    objs->spn_expt = gtk_spin_button_new_with_range(0.1,1000.0,0.1);
+    objs->spn_expt = gtk_spin_button_new_with_range(0.01,1000.0,0.01);
     act_log_normal(act_log_msg("WARNING: Invalid exposure times returned by CCD driver. Setting assumed defaults."));
   }
   else
@@ -186,7 +179,7 @@ struct ccdcntrl_objects *ccdcntrl_create_objs(MYSQL **conn, GtkWidget *container
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_hseparator_new(),FALSE,TRUE,3);
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_label_new("Window"),FALSE,TRUE,3);
   GtkListStore *window_store = gtk_list_store_new(WINDOWSTORE_NUM_COLS, G_TYPE_INT, G_TYPE_STRING);
-  unsigned char i;
+  int i;
   char tmpstr[256];
   GtkTreeIter iter;
   for (i=0; i<CCD_MAX_NUM_WINDOW_MODES; i++)
@@ -206,16 +199,21 @@ struct ccdcntrl_objects *ccdcntrl_create_objs(MYSQL **conn, GtkWidget *container
   
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_hseparator_new(),FALSE,TRUE,3);
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_label_new("Prebin"),FALSE,TRUE,3);
-/*  GtkListStore *prebin_store = gtk_list_store_new(PREBINSTORE_NUM_COLS, G_TYPE_INT, G_TYPE_STRING);
-  for (i=0; i<sizeof(i)*8; i++)
+  GtkListStore *prebin_store = gtk_list_store_new(PREBINSTORE_NUM_COLS, G_TYPE_INT, G_TYPE_INT, G_TYPE_STRING);
+  int j;
+  for (i=0; i<sizeof(modes.prebin_x)*8; i++)
   {
-    if ((modes.prebin_x & (0x0001 << i)) == 0)
+    char prebin_str[20];
+    if ((modes.prebin_x & (0x00000001 << i)) == 0)
       continue;
-    gtk_list_store_append(GTK_LIST_STORE(prebin_store), &iter);
-    if (i >= 16)
-      gtk_list_store_set(GTK_LIST_STORE(prebin_store), &iter, PREBINSTORE_MODENUM, 0x0001 << i, PREBINSTORE_NAME, "???", -1);
-    else
-      gtk_list_store_set(GTK_LIST_STORE(prebin_store), &iter, PREBINSTORE_MODENUM, 0x0001 << i, PREBINSTORE_NAME, prebin_mode_names[i], -1);
+    for (j=0; j<sizeof(modes.prebin_y)*8; j++)
+    {
+      if ((modes.prebin_y & (0x00000001 << j)) == 0)
+	continue;
+      sprintf(prebin_str, "%dx%d", i, j);
+      gtk_list_store_append(GTK_LIST_STORE(prebin_store), &iter);
+      gtk_list_store_set(GTK_LIST_STORE(prebin_store), &iter, PREBINSTORE_X, 0x00000001 << i, PREBINSTORE_Y, 0x00000001 << j, PREBINSTORE_NAME, prebin_str, -1);
+    }
   }
   objs->cmb_prebin = gtk_combo_box_new_with_model(GTK_TREE_MODEL(prebin_store));
   gtk_combo_box_set_active(GTK_COMBO_BOX(objs->cmb_prebin),0);
@@ -223,8 +221,6 @@ struct ccdcntrl_objects *ccdcntrl_create_objs(MYSQL **conn, GtkWidget *container
   GtkCellRenderer *cel_prebin = gtk_cell_renderer_text_new();
   gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(objs->cmb_prebin), cel_prebin, TRUE);
   gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(objs->cmb_prebin), cel_prebin, "text", PREBINSTORE_NAME, NULL);
-  */
-  gtk_box_pack_start(GTK_BOX(box_ccdcntrl), gtk_label_new("N/A"), FALSE, TRUE, 3);
 
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_hseparator_new(),FALSE,TRUE,3);
   objs->chk_phot_exp = gtk_check_button_new_with_label("Start at sec.");
@@ -540,7 +536,9 @@ void ccdcntrl_get_ccdcaps(struct act_msg_ccdcap *msg_ccdcap)
   msg_ccdcap->max_exp_t_msec = G_modes.max_exp_t_msec;
   snprintf(msg_ccdcap->ccd_id, MAX_CCD_ID_LEN-1, "%s", G_modes.ccd_id);
   memset(msg_ccdcap->filters, 0, sizeof(msg_ccdcap->filters));
-  msg_ccdcap->prebin = G_modes.prebin_x;
+  /// TODO: Implement proper translation from CCD prebin modes to IPC prebin modes
+  msg_ccdcap->prebin_x = G_modes.prebin_x;
+  msg_ccdcap->prebin_y = G_modes.prebin_y;
   memcpy(msg_ccdcap->windows, G_modes.windows, CCD_MAX_NUM_WINDOW_MODES*sizeof(struct ccd_window_mode));
 }
 
@@ -727,15 +725,16 @@ int ccdcntrl_start_phot_exp(struct ccdcntrl_objects *ccdcntrl_objs, struct act_m
     act_log_error(act_log_msg("Unavailalbe window mode requested. Selecting full-frame"));
     win_num = 0;
   }
-  unsigned long prebin_num = msg->prebin;
-  if (prebin_num != 0)
-  {
-    act_log_error(act_log_msg("Requested prebinning mode not yet implemented."));
-    prebin_num = 0;
-  }
+  /// TODO: Implement prebinning
+//   unsigned long prebin_num = msg->prebin;
+//   if (prebin_num != 0)
+//   {
+//     act_log_error(act_log_msg("Requested prebinning mode not yet implemented."));
+//     prebin_num = 0;
+//   }
   
   gtk_combo_box_set_active(GTK_COMBO_BOX(ccdcntrl_objs->cmb_window), win_num);
-  gtk_combo_box_set_active(GTK_COMBO_BOX(ccdcntrl_objs->cmb_prebin), prebin_num);
+//   gtk_combo_box_set_active(GTK_COMBO_BOX(ccdcntrl_objs->cmb_prebin), prebin_num);
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(ccdcntrl_objs->spn_expt), exp_t_msec);
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(ccdcntrl_objs->spn_repeat), msg->repetitions);
   gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ccdcntrl_objs->chk_phot_exp), TRUE);
@@ -881,13 +880,16 @@ char start_exposure(struct ccdcntrl_objects *ccdcntrl_objs)
   if (!gtk_combo_box_get_active_iter(GTK_COMBO_BOX(ccdcntrl_objs->cmb_prebin), &iter))
   {
     act_log_error(act_log_msg("Could not retrieve user-selected prebinning mode. Using first available mode."));
-    cmd.prebin = CCD_MODE_PREBIN_1x1;
+    cmd.prebin_x = CCD_PREBIN_1;
+    cmd.prebin_y = CCD_PREBIN_1;
   }
   else
   {
     int tmp_prebin;
-    gtk_tree_model_get (model, &iter, PREBINSTORE_MODENUM, &tmp_prebin, -1);
-    cmd.prebin = tmp_prebin;
+    gtk_tree_model_get (model, &iter, PREBINSTORE_X, &tmp_prebin, -1);
+    cmd.prebin_x = tmp_prebin;
+    gtk_tree_model_get (model, &iter, PREBINSTORE_Y, &tmp_prebin, -1);
+    cmd.prebin_y = tmp_prebin;
   }
   
   model = gtk_combo_box_get_model(GTK_COMBO_BOX(ccdcntrl_objs->cmb_window));

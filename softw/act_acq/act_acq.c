@@ -23,11 +23,6 @@
 #include "acq_imgdisp.h"
 #include "acq_ccdcntrl.h"
 
-#ifndef ACTFILES
- #pragma message("ACTFILES not defined, setting default (""/usr/local/act_files/"")")
- #define ACTFILES "/usr/local/act_files/"
-#endif
-
 #define TIMEOUT_PERIOD 3000
 
 struct formobjects
@@ -665,7 +660,7 @@ int main(int argc, char **argv)
 
   GtkWidget *evb_imgdisp = gtk_event_box_new();
   gtk_table_attach(GTK_TABLE(box_main),evb_imgdisp, 2,3,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  if (create_imgdisp_objs(ACTFILES, conn, evb_imgdisp) < 0)
+  if (create_imgdisp_objs(conn, evb_imgdisp) < 0)
   {
     act_log_error(act_log_msg("Failed to create CCD image display objects."));
     act_log_error(act_log_msg("Exiting"));

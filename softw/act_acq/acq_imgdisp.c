@@ -102,9 +102,9 @@ static unsigned char G_flip_img = 0;
 static struct rastruct G_img_ra;
 static struct decstruct G_img_dec;
 
-int create_imgdisp_objs(const char *actfiles_path, MYSQL *conn, GtkWidget *evb_imgdisp)
+int create_imgdisp_objs(MYSQL *conn, GtkWidget *evb_imgdisp)
 {
-  if ((actfiles_path == NULL) || (conn == NULL) || (evb_imgdisp == NULL))
+  if ((conn == NULL) || (evb_imgdisp == NULL))
   {
     act_log_normal(act_log_msg("Invalid input parameters"));
     return -1;
@@ -160,15 +160,10 @@ int create_imgdisp_objs(const char *actfiles_path, MYSQL *conn, GtkWidget *evb_i
   gtk_table_attach(GTK_TABLE(box_dispparams),cmb_imglut,0,2,1,2, GTK_FILL|GTK_EXPAND, GTK_SHRINK, 3, 3);
   g_signal_connect (G_OBJECT(cmb_imglut), "changed", G_CALLBACK(load_lut), dra_ccdimg);
   g_signal_connect (G_OBJECT(cmb_imglut), "destroy", G_CALLBACK(clear_lutlist), NULL);
-//   char tmppath[256], len=strlen(actfiles_path);
-//   if (actfiles_path[len-1] == '/')
-//     sprintf(tmppath, "%sbrightness_icon.png", actfiles_path);
-//   else
-//     sprintf(tmppath, "%s/brightness_icon.png", actfiles_path);
   GdkPixbuf *pxb_imgbrt = gdk_pixbuf_new_from_file(ACT_FILES_PATH "/brightness_icon.png", NULL);
   if (pxb_imgbrt == NULL)
   {
-    act_log_error(act_log_msg("Could not load brightness icon file %s.", tmppath));
+    act_log_error(act_log_msg("Could not load brightness icon file %s.", ACT_FILES_PATH "/brightness_icon.png"));
     gtk_table_attach(GTK_TABLE(box_dispparams),gtk_label_new("Brt"),0,1,2,3, GTK_FILL, GTK_SHRINK, 3, 3);
   }
   else
@@ -178,14 +173,10 @@ int create_imgdisp_objs(const char *actfiles_path, MYSQL *conn, GtkWidget *evb_i
   gtk_range_set_value(GTK_RANGE(scl_imgbrt),0);
   g_signal_connect (G_OBJECT(scl_imgbrt), "value-changed", G_CALLBACK(set_brightness), dra_ccdimg);
   gtk_table_attach(GTK_TABLE(box_dispparams),scl_imgbrt,0,1,3,4, GTK_FILL, GTK_FILL|GTK_EXPAND, 3, 3);
-//   if (actfiles_path[len-1] == '/')
-//     sprintf(tmppath, "%scontrast_icon.png", actfiles_path);
-//   else
-//     sprintf(tmppath, "%s/contrast_icon.png", actfiles_path);
   GdkPixbuf *pxb_imgcnt = gdk_pixbuf_new_from_file(ACT_FILES_PATH "/contrast_icon.png", NULL);
   if (pxb_imgcnt == NULL)
   {
-    act_log_error(act_log_msg("Could not load contrast icon file %s.", tmppath));
+    act_log_error(act_log_msg("Could not load contrast icon file %s.", ACT_FILES_PATH "/brightness_icon.png"));
     gtk_table_attach(GTK_TABLE(box_dispparams),gtk_label_new("Cnt"),1,2,2,3, GTK_FILL, GTK_SHRINK, 3, 3);
   }
   else

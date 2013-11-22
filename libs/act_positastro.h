@@ -7,8 +7,8 @@
 #ifndef ACT_POSITASTRO_H
 #define ACT_POSITASTRO_H
 
-#include <act_ipc.h>
-#include <act_timecoord.h>
+#include "act_ipc.h"
+#include "act_timecoord.h"
 
 #ifdef __cplusplus
 extern "C"{
