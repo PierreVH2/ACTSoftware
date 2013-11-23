@@ -40,7 +40,7 @@ struct ccdcntrl_objects
 struct ccdcntrl_objects *ccdcntrl_create_objs(MYSQL **conn, GtkWidget *container);
 void ccdcntrl_finalise_objs(struct ccdcntrl_objects *ccdcntrl_objs);
 void ccdcntrl_get_img_datetime(struct datestruct *unidate, struct timestruct *unitime);
-char ccdcntrl_save_phot_image(struct ccdcntrl_objects *ccdcntrl_objs);
+char ccdcntrl_save_image(struct ccdcntrl_objects *ccdcntrl_objs);
 char ccdcntrl_write_fits(const char *filename);
 unsigned short ccdcntrl_get_max_width();
 unsigned short ccdcntrl_get_max_height();

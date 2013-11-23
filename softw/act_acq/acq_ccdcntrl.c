@@ -63,8 +63,8 @@ char start_exposure(struct ccdcntrl_objects *ccdcntrl_objs);
 void expose_toggled(GtkWidget *btn_expose, gpointer user_data);
 void expose_clicked();
 char get_data_dir(struct ccdcntrl_objects *ccdcntrl_objs);
-long get_pat_exp_t_msec(MYSQL *conn, int targ_id, char sky);
-int load_pattern(MYSQL *conn, int targ_id, char sky, struct point **pattern_points);
+long get_pat_exp_t_msec(MYSQL *conn, int targ_id);
+int load_pattern(MYSQL *conn, int targ_id, char sky, int ccd_offset_x, int ccd_offset_y, struct point **pattern_points);
 char save_acq_image(MYSQL *conn, int num_acq_points, int num_points_matched);
 void save_fits_fallback();
 char *fallback_data_dir();
@@ -262,44 +262,52 @@ void ccdcntrl_get_img_datetime(struct datestruct *unidate, struct timestruct *un
   memcpy(unitime, &G_targ_info.unitime, sizeof(struct timestruct));
 }
 
-char ccdcntrl_save_phot_image(struct ccdcntrl_objects *ccdcntrl_objs)
+char ccdcntrl_save_image(struct ccdcntrl_objects *ccdcntrl_objs)
 {
   if (ccdcntrl_objs == NULL)
   {
     act_log_error(act_log_msg("Invalid input parameters."));
     return FALSE;
   }
-  char qrystr[MERLIN_MAX_IMG_LEN*2+200];
+  MYSQL **conn = ccdcntrl_objs->mysql_conn;
+  mysql_query(*conn, "START TRANSACTION");
+  
+  char qrystr[200];
   int qrylen;
   
-  qrylen = sprintf(qrystr, "INSERT INTO merlin_img (width, height, bpp, img_data) values (\'%hu\', \'%hu\', \'%d\', \'", G_targ_img.img_params.img_width, G_targ_img.img_params.img_height, sizeof(ccd_pixel_type)*8);
-  qrylen += mysql_real_escape_string(*(ccdcntrl_objs->mysql_conn), &qrystr[qrylen],(char *)G_targ_img.img_data,sizeof(G_targ_img.img_data));
-  qrylen += sprintf(&qrystr[qrylen], "\');");
-  if (mysql_real_query(*(ccdcntrl_objs->mysql_conn),qrystr,qrylen))
+  sprintf(qrystr, "INSERT INTO merlin_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, width, height, bits_per_pix VALUES (%d, %d, %d, %f, \"%hu-%hhu-%hhu\", %f, %u, %u, %hhu)", G_targ_info.targ_id, G_targ_info.user_id, G_targ_info.sky ? 2 : 1, G_targ_img.img_params.exp_t_msec/1000.0, G_targ_info.unidate.year, G_targ_info.unidate.month+1, G_targ_info.unidate.day+1, convert_HMSMS_H_time(&G_targ_info.unitime), G_targ_img.img_params.img_width, G_targ_img.img_params.img_height, sizeof(ccd_pixel_type)*8);
+  if (mysql_query(*conn, qrystr))
   {
-    act_log_error(act_log_msg("Failed to save CCD photometry image data to database - %s.", mysql_error(*(ccdcntrl_objs->mysql_conn))));
+    act_log_error(act_log_msg("Failed to save CCD image header to database - %s.", mysql_error(*conn)));
+    mysql_query(*conn, "ROLLBACK");
     return FALSE;
   }
   
-  unsigned long img_id = mysql_insert_id(*(ccdcntrl_objs->mysql_conn));
+  unsigned long img_id = mysql_insert_id(*conn);
   if (img_id == 0)
   {
     act_log_error(act_log_msg("Could not retrieve unique ID for saved CCD photometry image."));
+    mysql_query(*conn, "ROLLBACK");
     return FALSE;
   }
   
-  qrylen = sprintf(qrystr, "INSERT INTO ccdphot_img (target_id, star_sky, user_id, exp_t_msec, \
-           ra_h, dec_d, start_date, start_time_msec, img_id) VALUES (%d, %hhd, %d, %u, %20.15lf, \
-           %20.15lf, \"%hu-%hhu-%hhu\", %lu, %lu)",
-           G_targ_info.targ_id, G_targ_info.sky, G_targ_info.user_id, G_targ_img.img_params.exp_t_msec,
-           convert_HMSMS_H_ra(&G_targ_info.ra), convert_DMS_D_dec(&G_targ_info.dec),
-           G_targ_info.unidate.year, G_targ_info.unidate.month+1, G_targ_info.unidate.day+1,
-           convert_HMSMS_MS_time(&G_targ_info.unitime), img_id);
-  if (mysql_real_query(*(ccdcntrl_objs->mysql_conn),qrystr,qrylen))
+  /// TODO: Use prepared statements - much faster.
+  int i, j;
+  for (i=0; i < G_targ_img.img_params.img_width; i++)
   {
-    act_log_error(act_log_msg("Failed to save CCD photometry image header to database - %s.", mysql_error(*(ccdcntrl_objs->mysql_conn))));
-    return FALSE;
+    for (j=0; j < G_targ_img.img_params.img_width; j++)
+    {
+      sprintf(qrystr, "INSERT INTO merlin_img_data (merlin_img_id, x, y, value) VALUES (%lu, %d, %d, %d)", img_id, i, j, G_targ_img.img_data[i*G_targ_img.img_params.img_width + j]);
+    }
+    if (mysql_query(*conn, qrystr))
+    {
+      act_log_error(act_log_msg("Failed to save CCD pixel (%d %d) to database - %s.", i, j, mysql_error(*conn)));
+      mysql_query(*conn, "ROLLBACK");
+      return FALSE;
+    }
   }
+
+  mysql_query(*conn, "COMMIT");
   return TRUE;
 }
 
@@ -561,7 +569,7 @@ int ccdcntrl_start_targset_exp(struct ccdcntrl_objects *ccdcntrl_objs, struct ac
     return -OBSNSTAT_ERR_RETRY;
   }
   
-  long exp_t_msec = get_pat_exp_t_msec(*(ccdcntrl_objs->mysql_conn), msg->targ_id, msg->sky);
+  long exp_t_msec = get_pat_exp_t_msec(*(ccdcntrl_objs->mysql_conn), msg->targ_id);
   if (exp_t_msec < 0)
   {
     act_log_error(act_log_msg("Could not retrieve pattern exposure time from SQL database. Recommending the next target."));
@@ -599,7 +607,9 @@ int ccdcntrl_check_targset_exp(struct ccdcntrl_objects *ccdcntrl_objs, struct ra
   }
   
   struct point *pattern_points = NULL;
-  int num_pat_points = load_pattern(*(ccdcntrl_objs->mysql_conn), G_targ_info.targ_id, G_targ_info.sky, &pattern_points);
+  /// TODO: Implement proper treatment of prebin and window
+  int ccd_offset_x = XAPERTURE - G_modes.max_width_px/2, ccd_offset_y = YAPERTURE - G_modes.max_height_px/2;
+  int num_pat_points = load_pattern(*(ccdcntrl_objs->mysql_conn), G_targ_info.targ_id, G_targ_info.sky, ccd_offset_x, ccd_offset_y, &pattern_points);
   if (num_pat_points < 0)
   {
     act_log_error(act_log_msg("No pattern found."));
@@ -688,7 +698,7 @@ int ccdcntrl_check_targset_exp(struct ccdcntrl_objects *ccdcntrl_objs, struct ra
   {
     act_log_normal(act_log_msg("Target is centred."));
     *targ_cent = TRUE;
-    save_acq_image(*(ccdcntrl_objs->mysql_conn), num_acq_points, nMatch);
+    ccdcntrl_save_image(ccdcntrl_objs);
   }
   else
     *targ_cent = FALSE;
@@ -812,7 +822,7 @@ gboolean ccd_stat_update (GIOChannel *ccd_chan, GIOCondition condition, gpointer
 
   if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ccdcntrl_objs->chk_save)))
   {
-    if (!ccdcntrl_save_phot_image(ccdcntrl_objs))
+    if (!ccdcntrl_save_image(ccdcntrl_objs))
       save_fits_fallback();
   }
   if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(ccdcntrl_objs->btn_expose)))
@@ -1014,12 +1024,12 @@ char get_data_dir(struct ccdcntrl_objects *ccdcntrl_objs)
   return TRUE;
 }
 
-long get_pat_exp_t_msec(MYSQL *conn, int targ_id, char sky)
+long get_pat_exp_t_msec(MYSQL *conn, int targ_id)
 {
   MYSQL_RES *result;
   MYSQL_ROW row;
   char sqlqry[256];
-  snprintf(sqlqry, sizeof(sqlqry), "SELECT exp_t_msec FROM targset_patterns WHERE act_targ_id IS (SELECT act_targ_id FROM act_targ_names WHERE targ_id IS %d) AND star_sky IS %hhd;",targ_id, sky);
+  snprintf(sqlqry, sizeof(sqlqry), "SELECT exp_t_s FROM acq_patterns WHERE targ_id=%d",targ_id);
   mysql_query(conn, sqlqry);
   result = mysql_store_result(conn);
   if (result == NULL)
@@ -1045,56 +1055,91 @@ long get_pat_exp_t_msec(MYSQL *conn, int targ_id, char sky)
     act_log_error(act_log_msg("WARNING: More than one pattern matching target specified in SQL database. Choosing the first and hoping for the best."));
   
   row = mysql_fetch_row(result);
-  long exp_t_msec;
-  if (sscanf(row[0], "%ld", &exp_t_msec) != 1)
+  double exp_t_s;
+  if (sscanf(row[0], "%lf", &exp_t_s) != 1)
   {
-    act_log_error(act_log_msg("Could not extract exposure time from string retrieved from SQL database."));
+    act_log_error(act_log_msg("Could not extract exposure time from SQL database."));
     return -1;
   }
   mysql_free_result(result);
-  return exp_t_msec;
+  return (unsigned long) (exp_t_s*1000.0);
 }
 
-int load_pattern(MYSQL *conn, int targ_id, char sky, struct point **pattern_points)
+int load_pattern(MYSQL *conn, int targ_id, char sky, int ccd_offset_x, int ccd_offset_y, struct point **pattern_points)
 {
   MYSQL_RES *result;
   MYSQL_ROW row;
-  char sqlqry[256];
-  snprintf(sqlqry, sizeof(sqlqry), "SELECT pix_x,pix_y FROM targset_patterns WHERE act_targ_id IS (SELECT act_targ_id FROM act_targ_names WHERE targ_id IS %d) AND star_sky IS %hhd;",targ_id, sky);
-  mysql_query(conn,sqlqry);
+  char qrystr[256];
+  if (sky)
+    sprintf(qrystr, "SELECT sky_offset_x_pix, sky_offset_y_pix FROM acq_patterns WHERE targ_id=%d", targ_id);
+  else
+    sprintf(qrystr, "SELECT star_offset_x_pix, star_offset_y_pix FROM acq_patterns WHERE targ_id=%d", targ_id);
+  mysql_query(conn,qrystr);
   result = mysql_store_result(conn);
   if (result == NULL)
   {
-    act_log_error(act_log_msg("Error occurred while attempting to retrieve target set pattern from SQL database - %s.", mysql_error(conn)));
-    mysql_free_result(result);
+    act_log_error(act_log_msg("Error occurred while attempting to retrieve pixel offset for target %d from SQL database - %s.", targ_id, mysql_error(conn)));
     return -1;
   }
   if (mysql_num_fields(result) != 2)
   {
-    act_log_error(act_log_msg("Invalid data returned while attempting to retrieve target set pattern from SQL database (result has %d fields instead of 1)", mysql_num_fields(result)));
+    act_log_error(act_log_msg("Invalid data returned while attempting to retrieve pixel offset for target %d from SQL database (result has %d fields instead of 2)", targ_id, mysql_num_fields(result)));
     mysql_free_result(result);
     return -1;
   }
   int rowcount = mysql_num_rows(result);
+  if (rowcount != 1)
+  {
+    act_log_error(act_log_msg("Invalid number of rows retrieved from SQL database while attempting to retrieve pixel offset for target %d (%d lins)", targ_id, rowcount));
+    mysql_free_result(result);
+    return -1;
+  }
+  int x_offset, y_offset;
+  row = mysql_fetch_row(result);
+  if ((sscanf(row[0], "%d", &x_offset) != 1) || (sscanf(row[1], "%d", &y_offset) != 1))
+  {
+    act_log_error(act_log_msg("Failed to extract x or y pixel offset from SQL database (%s %s; %d %d).", row[0], row[1], x_offset, y_offset));
+    mysql_free_result(result);
+    return -1;
+  }
+  x_offset += ccd_offset_x;
+  y_offset += ccd_offset_y;
+  mysql_free_result(result);
+  
+  snprintf(qrystr, sizeof(qrystr), "SELECT x_pix,y_pix FROM acq_pattern_points WHERE targ_id=%d", targ_id);
+  mysql_query(conn,qrystr);
+  result = mysql_store_result(conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Error occurred while attempting to retrieve target set pattern for target %d from SQL database - %s.", targ_id, mysql_error(conn)));
+    return -1;
+  }
+  if (mysql_num_fields(result) != 2)
+  {
+    act_log_error(act_log_msg("Invalid data returned while attempting to retrieve target set pattern for target %d from SQL database (result has %d fields instead of 2)", targ_id, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return -1;
+  }
+  rowcount = mysql_num_rows(result);
   if (rowcount <= 0)
   {
-    act_log_error(act_log_msg("No data returned while attempting to retrieve target set pattern from SQL database."));
+    act_log_error(act_log_msg("No data returned while attempting to retrieve target set pattern for target %d from SQL database.", targ_id));
     mysql_free_result(result);
     return -1;
   }
   
   struct point *tmp_points = malloc(sizeof(struct point)*rowcount);
   int used_rows = 0;
-  int tmp_pix_x, tmp_pix_y;
+  int tmp_x_pix, tmp_y_pix;
   while ((row = mysql_fetch_row(result)) != NULL)
   {
-    if ((sscanf(row[0], "%d", &tmp_pix_x) != 1) || (sscanf(row[1], "%d", &tmp_pix_y) != 1))
+    if ((sscanf(row[0], "%d", &tmp_x_pix) != 1) || (sscanf(row[1], "%d", &tmp_y_pix) != 1))
     {
-      act_log_error(act_log_msg("Could not extract pattern point %d coordinates from string retrieved from SQL database.", used_rows));
+      act_log_error(act_log_msg("Could not extract pattern point %d X,Y coordinates from string retrieved from SQL database.", used_rows));
       continue;
     }
-    tmp_points[used_rows].x = tmp_pix_x;
-    tmp_points[used_rows].y = tmp_pix_y;
+    tmp_points[used_rows].x = tmp_x_pix + x_offset;
+    tmp_points[used_rows].y = tmp_y_pix + y_offset;
     used_rows++;
   }
   if (used_rows <= 0)
@@ -1108,44 +1153,6 @@ int load_pattern(MYSQL *conn, int targ_id, char sky, struct point **pattern_poin
   free(tmp_points);
   mysql_free_result(result);
   return used_rows;
-}
-
-char save_acq_image(MYSQL *conn, int num_acq_points, int num_points_matched)
-{
-  char qrystr[MERLIN_MAX_IMG_LEN*2+200];
-  int qrylen;
-  
-  qrylen = sprintf(qrystr, "INSERT INTO merlin_img (width, height, bpp, img_data) values (\'%hu\', \'%hu\', \'%d\', ", G_targ_img.img_params.img_width, G_targ_img.img_params.img_height, sizeof(ccd_pixel_type)*8);
-  qrylen += mysql_real_escape_string(conn, &qrystr[qrylen],(char *)G_targ_img.img_data,sizeof(G_targ_img.img_data));
-  qrylen += sprintf(&qrystr[qrylen], "'\');");
-  if (mysql_real_query(conn,qrystr,qrylen))
-  {
-    act_log_error(act_log_msg("Failed to save target acquisition image data to database - %s.", mysql_error(conn)));
-    return FALSE;
-  }
-  
-  unsigned long img_id = mysql_insert_id(conn);
-  if (img_id == 0)
-  {
-    act_log_error(act_log_msg("Could not retrieve unique ID for saved target acquisition image."));
-    return FALSE;
-  }
-  
-  qrylen = sprintf(qrystr, "INSERT INTO ccdacq_img (target_id, star_sky, user_id, exp_t_msec, \
-           ra_h, dec_d, start_date, start_time_msec, img_id, num_pat_points, num_acq_points, \
-           num_points_matched) VALUES (%d, %hhd, %d, %u, %20.15lf, %20.15lf, %hu-%hhu-%hhu, \
-           %lu, %lu, %d, %d)",
-           G_targ_info.targ_id, G_targ_info.sky, G_targ_info.user_id, G_targ_img.img_params.exp_t_msec,
-           convert_HMSMS_H_ra(&G_targ_info.ra), convert_DMS_D_dec(&G_targ_info.dec),
-           G_targ_info.unidate.year, G_targ_info.unidate.month+1, G_targ_info.unidate.day+1,
-           convert_HMSMS_MS_time(&G_targ_info.unitime), img_id, num_acq_points, num_points_matched);
-  
-  if (mysql_real_query(conn,qrystr,qrylen))
-  {
-    act_log_error(act_log_msg("Failed to save target acquisition image header to database - %s.", mysql_error(conn)));
-    return FALSE;
-  }
-  return TRUE;
 }
 
 void save_fits_fallback(const char *data_dir)

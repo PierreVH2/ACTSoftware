@@ -109,7 +109,7 @@ void save_fits_clicked(GtkWidget *btn_save_fits)
 
 void save_db_clicked(GtkWidget *btn_save_db, gpointer user_data)
 {
-  if (ccdcntrl_save_phot_image((struct ccdcntrl_objects *)user_data))
+  if (ccdcntrl_save_image((struct ccdcntrl_objects *)user_data))
     return;
   GtkWidget *save_fail_dialog = gtk_message_dialog_new (GTK_WINDOW (gtk_widget_get_ancestor (GTK_WIDGET (btn_save_db), GTK_TYPE_WINDOW)), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "An error occurred while image to database. Check the system logs for more information.");
   g_signal_connect(G_OBJECT(save_fail_dialog), "response", G_CALLBACK(gtk_widget_destroy), NULL);
