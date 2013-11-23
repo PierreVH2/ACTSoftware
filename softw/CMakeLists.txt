@@ -1,1 +1,2 @@
 ADD_SUBDIRECTORY(act_acq)
+ADD_SUBDIRECTORY(act_control)
