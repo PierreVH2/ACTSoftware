@@ -103,6 +103,25 @@ struct plc_status
   unsigned char watchdog_trip;
 };
 
+enum
+{
+  PLC_IOCTL_STATUS = 0,
+  PLC_IOCTL_WATCHDOG,
+  PLC_IOCTL_DOME_AUTO,
+  PLC_IOCTL_DOME_MAN,
+  PLC_IOCTL_DSHUTT,
+  PLC_IOCTL_DROPOUT,
+  PLC_IOCTL_FOCUS_AUTO,
+  PLC_IOCTL_FOCUS_MAN,
+  PLC_IOCTL_INSTRSHUTT,
+  PLC_IOCTL_ACQMIR,
+  PLC_IOCTL_APER,
+  PLC_IOCTL_FILT,
+  PLC_IOCTL_EHT,
+  PLC_IOCTL_SIM_STAT,
+  PLC_IOCTL_SIM_CMD
+};
+
 void reset_acq_merlin(void);
 char reset_acq_pending(void);
 void close_pmt_shutter(void);
@@ -112,40 +131,43 @@ unsigned long get_enc_dec_pulses(void);
 void set_handset_handler(void (*handler)(const unsigned char old_hs, const unsigned char new_hs));
 
 /// IOCTL to retrieve current status
-#define IOCTL_GET_STATUS _IOR(PLC_IOCTL_NUM, 0, unsigned long*)
+#define IOCTL_GET_STATUS _IOR(PLC_IOCTL_NUM, PLC_IOCTL_STATUS, unsigned long*)
+
+/// IOCTL to reset PLC watchdog
+#define IOCTL_RESET_WATCHDOG _IOW(PLC_IOCTL_NUM, PLC_IOCTL_WATCHDOG, unsigned long*)
 
 /// IOCTL to set guiding azimuth of dome - activates dome guiding
-#define IOCTL_SET_DOME_AZM _IOW(PLC_IOCTL_NUM, 1, unsigned long*)
+#define IOCTL_SET_DOME_AZM _IOW(PLC_IOCTL_NUM, PLC_IOCTL_DOME_AUTO, unsigned long*)
 
 /// IOCTL to move dome manually - disables dome guiding (>0 moves dome left, <0 moves dome right, 0=stop)
-#define IOCTL_DOME_MOVE _IOW(PLC_IOCTL_NUM, 2, long*)
+#define IOCTL_DOME_MOVE _IOW(PLC_IOCTL_NUM, PLC_IOCTL_DOME_MAN, long*)
 
 /// IOCTL to open/close/stop dome shutter (>0=open, <0=close, 0=stop)
-#define IOCTL_DOMESHUTT_OPEN _IOW(PLC_IOCTL_NUM, 3, long*)
+#define IOCTL_DOMESHUTT_OPEN _IOW(PLC_IOCTL_NUM, PLC_IOCTL_DSHUTT, long*)
 
 /// IOCTL to open/close/stop dome dropout (>0=open, <0=close, 0=stop)
-#define IOCTL_DROPOUT_OPEN _IOW(PLC_IOCTL_NUM, 4, long*)
+#define IOCTL_DROPOUT_OPEN _IOW(PLC_IOCTL_NUM, PLC_IOCTL_DROPOUT, long*)
 
 /// IOCTL to go to focus position (<0 is out region, >0 is in region, 0 is init)
-#define IOCTL_FOCUS_GOTO _IOW(PLC_IOCTL_NUM, 5, long*)
+#define IOCTL_FOCUS_GOTO _IOW(PLC_IOCTL_NUM, PLC_IOCTL_FOCUS_AUTO, long*)
 
 /// IOCTL to move focus (<0 move to out region, >0 move to in region, 0 is reset - stop at next slot)
-#define IOCTL_FOCUS_MOVE _IOW(PLC_IOCTL_NUM, 6, long*)
+#define IOCTL_FOCUS_MOVE _IOW(PLC_IOCTL_NUM, PLC_IOCTL_FOCUS_MAN, long*)
 
 /// IOCTL to open/close instrument shutter (1=Open, everything else=Close)
-#define IOCTL_INSTRSHUTT_OPEN _IOW(PLC_IOCTL_NUM, 7, unsigned long*)
+#define IOCTL_INSTRSHUTT_OPEN _IOW(PLC_IOCTL_NUM, PLC_IOCTL_INSTRSHUTT, unsigned long*)
 
 /// IOCTL to move the acquisition mirror (1=in beam, 2=out beam, everything else=reset - i.e. stop motor)
-#define IOCTL_SET_ACQMIR _IOW(PLC_IOCTL_NUM, 8, unsigned long*)
+#define IOCTL_SET_ACQMIR _IOW(PLC_IOCTL_NUM, PLC_IOCTL_ACQMIR, unsigned long*)
 
 /// IOCTL to move aperture wheel (0=initialise - slot 0, 1-9=slots 1-9, everything else=reset)
-#define IOCTL_MOVE_APER _IOW(PLC_IOCTL_NUM, 9, unsigned long*)
+#define IOCTL_MOVE_APER _IOW(PLC_IOCTL_NUM, PLC_IOCTL_APER, unsigned long*)
 
 /// IOCTL to move filter wheel (0=initialise - slot 0, 1-9=slots 1-9, everything else=reset)
-#define IOCTL_MOVE_FILT _IOW(PLC_IOCTL_NUM, 10, unsigned long*)
+#define IOCTL_MOVE_FILT _IOW(PLC_IOCTL_NUM, PLC_IOCTL_FILT, unsigned long*)
 
 /// IOCTL to set EHT mode (1=lo, 2=hi, everything else=off)
-#define IOCTL_SET_EHT _IOW(PLC_IOCTL_NUM, 11, unsigned long*)
+#define IOCTL_SET_EHT _IOW(PLC_IOCTL_NUM, PLC_IOCTL_EHT, unsigned long*)
 
 /// IOCTL for simulator programme to set the status
 ///  - Only available if PLC_SIM flag is active in plc_driver.c

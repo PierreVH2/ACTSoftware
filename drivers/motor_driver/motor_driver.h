@@ -29,6 +29,19 @@ enum
   MOTOR_SPEED_SLEW
 };
 
+enum
+{
+  MOTOR_DIR_NORTH = 1,
+  MOTOR_DIR_NORTHWEST,
+  MOTOR_DIR_WEST,
+  MOTOR_DIR_SOUTHWEST,
+  MOTOR_DIR_SOUTH,
+  MOTOR_DIR_SOUTHEAST,
+  MOTOR_DIR_EAST,
+  MOTOR_DIR_NORTHEAST,
+  MOTOR_DIR_INVAL
+};
+
 struct motor_tel_coord
 {
   int tel_ha, tel_dec;

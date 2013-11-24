@@ -1,0 +1,15 @@
+FIND_PACKAGE(GTK2 REQUIRED)
+FIND_PACKAGE(PkgConfig REQUIRED)
+
+PKG_CHECK_MODULES(ARGTABLE REQUIRED argtable2)
+LINK_DIRECTORIES(${ARGTABLE_LIBRARY_DIRS})
+INCLUDE_DIRECTORIES(${ARGTABLE_INCLUDE_DIRS})
+
+INCLUDE_DIRECTORIES(${ACT_DRV_SRC}/act_plc)
+INCLUDE_DIRECTORIES(${ACT_DRV_SRC}/motor_driver)
+INCLUDE_DIRECTORIES(${ACT_LIB_SRC})
+INCLUDE_DIRECTORIES(${GTK2_INCLUDE_DIRS})
+SET(DTI_SOURCE_FILES acqmir.c acqmir.h act_dti.c aperture.c aperture.h domemove.c domemove.h domeshutter.c domeshutter.h dropout.c dropout.h dti_config.c dti_config.h dti_marshallers.c dti_marshallers.h dtimisc.c dtimisc.h dti_motor.c dti_motor.h dti_net.c dti_net.h dti_plc.c dti_plc.h ehtdialog.c ehtdialog.h filter.c filter.h focusdialog.c focusdialog.h instrshutt.c instrshutt.h pointing_model.h telmove.c telmove_coorddialog.c telmove_coorddialog.h telmove.h tracking_model.h)
+ADD_EXECUTABLE(act_dti ${DTI_SOURCE_FILES} ${ACT_DRV_SRC}/act_plc/act_plc.h ${ACT_DRV_SRC}/act_plc/plc_definitions.h ${ACT_DRV_SRC}/motor_driver/motor_driver.h ${ACT_LIB_SRC}/act_ipc.h ${ACT_LIB_SRC}/act_timecoord.h ${ACT_LIB_SRC}/act_positastro.h ${ACT_LIB_SRC}/act_log.h)
+TARGET_LINK_LIBRARIES(act_dti ${GTK2_LIBRARIES} ${ARGTABLE_LIBRARIES} m mysqlclient act_timecoord act_log act_positastro)
+

@@ -619,64 +619,40 @@ static ssize_t actplc_write(struct file *filp, const char *buf, size_t len, loff
 
 static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned long ioctl_param)
 {
-  long value = -ENOTTY;
+  long value = -ENOTTY, ret = 0;
   char tmpstr[256], *ptr_right, *ptr_left;
   unsigned char i;
-  
-  /// Retrieve current status
-  if (ioctl_num == IOCTL_GET_STATUS)
-  {
-    value = copy_to_user((void*)ioctl_param, &G_cur_plc_stat, sizeof(struct plc_status));
-    if (value < 0)
-      return value;
-    G_status &= ~NEW_STAT_AVAIL;
-    return 0;
-  }
-  
-  #ifdef PLC_SIM
-  G_status |= PLC_COMM_OK;
-  /// Set simulated status
-  if (ioctl_num == IOCTL_SET_SIM_STATUS)
-  {
-    value = copy_from_user(tmpstr, (void*)ioctl_param, PLC_STAT_RESP_LEN);
-    if (value != 0)
-    {
-      printk(KERN_INFO PRINTK_PREFIX "Could not copy simulated status string from user (%ld)\n", value);
-      return value;
-    }
-    G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & (~CNTR_ACQRESET_MASK));
-    G_cur_plc_cmd_str[CNTR_SHUTTER_OFFS] = '0';
-    G_cur_plc_cmd_str[CNTR_DROPOUT_OFFS] = '0';
-    G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = '0';
-    G_cur_plc_cmd_str[CNTR_APER_STAT_OFFS] = '0';
-    G_cur_plc_cmd_str[CNTR_FILT_STAT_OFFS] = '0';
-    parse_plc_status(G_cur_plc_stat_str, tmpstr);
-    G_status |= NEW_STAT_AVAIL;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
-    wake_up_interruptible(&G_readq);
-    return 0;
-  }
-  /// Get simulated command
-  if (ioctl_num == IOCTL_GET_SIM_CMD)
-  {
-    value = copy_to_user((void*)ioctl_param, G_cur_plc_cmd_str, PLC_CMD_LEN);
-    if (value != 0)
-    {
-      printk(KERN_INFO PRINTK_PREFIX "Could not copy simulated command string to user (%ld)\n", value);
-      return value;
-    }
-    return 0;
-  }
-  #endif
-  
+
+  #ifndef PLC_SIM
   if ((G_status & PLC_COMM_OK) == 0)
   {
     printk(KERN_ERR PRINTK_PREFIX "User requested PLC command, but PLC communications currently unavailable.\n");
     return -EIO;
   }
+  #endif
   
   switch (ioctl_num)
   {
+    /// Retrieve current status
+    case IOCTL_GET_STATUS:
+    {
+      ret = copy_to_user((void*)ioctl_param, &G_cur_plc_stat, sizeof(struct plc_status));
+      if (ret < 0)
+        break;
+      G_status &= ~NEW_STAT_AVAIL;
+      ret = 0;
+      break;
+    }
+    
+    /// Reset PLC watchdog
+    case IOCTL_RESET_WATCHDOG:
+    {
+      i = hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & (~CNTR_WATCHDOG_MASK);
+      G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK | i);
+      ret = 1;
+      break;
+    }
+    
     /// Set guiding azimuth of dome - activates dome guiding
     case IOCTL_SET_DOME_AZM:
     {
@@ -689,6 +665,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         *(ptr_left) = *(ptr_right);
       }
       G_cur_plc_cmd_str[CNTR_DOME_STAT_OFFS] = int2hexchar(CNTR_DOME_GUIDE_MASK);
+      ret = 1;
       break;
     }
     
@@ -702,6 +679,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_DOME_STAT_OFFS] = int2hexchar(CNTR_DOME_MOVE_MASK);
       else
         G_cur_plc_cmd_str[CNTR_DOME_STAT_OFFS] = '0';
+      ret = 1;
       break;
     }
     
@@ -715,6 +693,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_SHUTTER_OFFS] = int2hexchar(CNTR_DSHUTT_CLOSE_MASK);
       else
         G_cur_plc_cmd_str[CNTR_SHUTTER_OFFS] = '0';
+      ret = 1;
       break;
     }
     
@@ -727,6 +706,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_DROPOUT_OFFS] = int2hexchar(CNTR_DSHUTT_CLOSE_MASK);
       else
         G_cur_plc_cmd_str[CNTR_DROPOUT_OFFS] = '0';
+      ret = 1;
       break;
     }
     
@@ -735,19 +715,21 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     {
       get_user(value, (long*)ioctl_param);
       if (value == 0)
-        G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = int2hexchar(CNTR_FOC_RESET_MASK);
-      else
       {
-        G_cur_plc_cmd_str[CNTR_FOCUS_REG_OFFS] = value < 0 ? CNTR_FOCUS_REG_OUT_VAL : CNTR_FOCUS_REG_IN_VAL;
-        snprintf(tmpstr, sizeof(tmpstr), CNTR_FOCUS_POS_FMT, (int)(value < 0 ? -value : value));
-        for (i=0, ptr_right=tmpstr, ptr_left=&G_cur_plc_cmd_str[CNTR_FOCUS_POS_OFFS]; i<CNTR_FOCUS_POS_LEN; i++, ptr_left++, ptr_right++)
-        {
-          if (*ptr_right == '\0')
-            break;
-          *(ptr_left) = *(ptr_right);
-        }
-        G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = int2hexchar(CNTR_FOC_GO_MASK);
+        G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = int2hexchar(CNTR_FOC_RESET_MASK);
+        ret = 1;
+        break;
       }
+      G_cur_plc_cmd_str[CNTR_FOCUS_REG_OFFS] = value < 0 ? CNTR_FOCUS_REG_OUT_VAL : CNTR_FOCUS_REG_IN_VAL;
+      snprintf(tmpstr, sizeof(tmpstr), CNTR_FOCUS_POS_FMT, (int)(value < 0 ? -value : value));
+      for (i=0, ptr_right=tmpstr, ptr_left=&G_cur_plc_cmd_str[CNTR_FOCUS_POS_OFFS]; i<CNTR_FOCUS_POS_LEN; i++, ptr_left++, ptr_right++)
+      {
+        if (*ptr_right == '\0')
+          break;
+        *(ptr_left) = *(ptr_right);
+      }
+      G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = int2hexchar(CNTR_FOC_GO_MASK);
+      ret = 1;
       break;
     }
     
@@ -764,6 +746,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = int2hexchar(CNTR_FOC_OUT_MASK);
       else
         G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = int2hexchar(CNTR_FOC_RESET_MASK);
+      ret = 1;
       break;
     }
     
@@ -775,6 +758,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_INSTR_SHUTT_MASK | CNTR_WATCHDOG_MASK);
       else
         G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK);
+      ret = 1;
       break;
     }
     
@@ -789,6 +773,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_ACQMIR_EHT_OFFS] = int2hexchar(CNTR_ACQMIR_INBEAM_MASK | i);
       else
         G_cur_plc_cmd_str[CNTR_ACQMIR_EHT_OFFS] = int2hexchar(CNTR_ACQMIR_RESET_MASK | i);
+      ret = 1;
       break;
     }
     
@@ -806,6 +791,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_APER_STAT_OFFS] = int2hexchar(CNTR_APER_INIT_MASK | i);
       else
         G_cur_plc_cmd_str[CNTR_APER_STAT_OFFS] = int2hexchar(CNTR_APER_RESET_MASK | i);
+      ret = 1;
       break;
     }
     
@@ -822,6 +808,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_FILT_STAT_OFFS] = int2hexchar(CNTR_APER_INIT_MASK);
       else
         G_cur_plc_cmd_str[CNTR_FILT_STAT_OFFS] = int2hexchar(CNTR_APER_RESET_MASK);
+      ret = 1;
       break;
     }
     
@@ -836,19 +823,59 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         G_cur_plc_cmd_str[CNTR_ACQMIR_EHT_OFFS] = int2hexchar(CNTR_EHT_HI_MASK | i);
       else
         G_cur_plc_cmd_str[CNTR_ACQMIR_EHT_OFFS] = int2hexchar(i);
+      ret = 1;
       break;
     }
     
+    /// Set simulated status
+    #ifdef PLC_SIM
+    case IOCTL_SET_SIM_STATUS:
+    {
+      ret = copy_from_user(tmpstr, (void*)ioctl_param, PLC_STAT_RESP_LEN);
+      if (ret != 0)
+      {
+        printk(KERN_INFO PRINTK_PREFIX "Could not copy simulated status string from user (%ld)\n", ret);
+        break;
+      }
+      G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & (~CNTR_ACQRESET_MASK));
+      G_cur_plc_cmd_str[CNTR_SHUTTER_OFFS] = '0';
+      G_cur_plc_cmd_str[CNTR_DROPOUT_OFFS] = '0';
+      G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = '0';
+      G_cur_plc_cmd_str[CNTR_APER_STAT_OFFS] = '0';
+      G_cur_plc_cmd_str[CNTR_FILT_STAT_OFFS] = '0';
+      parse_plc_status(G_cur_plc_stat_str, tmpstr);
+      G_status |= NEW_STAT_AVAIL;
+      kill_fasync(&G_async_queue, SIGIO, POLL_IN);
+      wake_up_interruptible(&G_readq);
+      ret = 0;
+      break;
+    }
+    #endif
+    
+    /// Get simulated command
+    #ifdef PLC_SIM
+    case IOCTL_GET_SIM_CMD:
+    {
+      ret = copy_to_user((void*)ioctl_param, G_cur_plc_cmd_str, PLC_CMD_LEN);
+      if (ret != 0)
+        printk(KERN_INFO PRINTK_PREFIX "Could not copy simulated command string to user (%ld)\n", ret);
+      break;
+    }
+    #endif
+    
     default:
-      return -ENOTTY;
+      ret = -ENOTTY;
   }
+  
+  if (ret <= 0)
+    return ret;
+  
   #ifndef PLC_SIM
   if (G_await_resp == 0)
     send_plc_cmd(NULL);
   else
     G_cmd_pending = 1;
   #endif
-  
   return 0;
 }
 

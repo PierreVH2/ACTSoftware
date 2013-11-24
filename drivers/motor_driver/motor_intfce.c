@@ -116,6 +116,7 @@ unsigned char check_gotomove(void);
 unsigned char check_cardmove(void);
 unsigned char check_tracking(void);
 static unsigned char calc_direction(int targ_ha, int targ_dec, unsigned char use_encod);
+static unsigned char get_dir_mask(unsigned char dir_mode);
 static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec, unsigned char use_encod);
 static unsigned int calc_rate(unsigned char dir, unsigned char speed, unsigned char tracking_on);
 static unsigned int calc_ramp_rate(unsigned int rate_cur, unsigned int rate_req);
@@ -333,17 +334,17 @@ int start_card(struct motor_card_cmd *cmd)
     return -EINVAL;
   }
   
-  params->dir_req = cmd->dir;
+  params->dir_req = get_dir_mask(cmd->dir);
   params->rate_req = rate;
   // If cardinal move is already being done, only change requested direction and rate and let check_cardmove do the rest
   if (G_status & MOTOR_STAT_CARD)
     return 0;
-  params->dir_cur = cmd->dir;
+  params->dir_cur = params->dir_req;
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
   params->timer_ms = 0;
   params->handset_move = FALSE;
   
-  start_move(cmd->dir, params->rate_cur);
+  start_move(params->dir_cur, params->rate_cur);
   G_status |= MOTOR_STAT_CARD;
   update_status();
   return 0;
@@ -869,6 +870,41 @@ static unsigned char calc_direction(int targ_ha, int targ_dec, unsigned char use
     }
   }
   return dir;
+}
+
+static unsigned char get_dir_mask(unsigned char dir_mode)
+{
+  unsigned char ret = 0;
+  switch(dir_mode)
+  {
+    case MOTOR_DIR_NORTH:
+      ret = DIR_NORTH_MASK;
+      break;
+    case MOTOR_DIR_NORTHWEST:
+      ret = DIR_NORTH_MASK | DIR_WEST_MASK;
+      break;
+    case MOTOR_DIR_WEST:
+      ret = DIR_WEST_MASK;
+      break;
+    case MOTOR_DIR_SOUTHWEST:
+      ret = DIR_SOUTH_MASK | DIR_WEST_MASK;
+      break;
+    case MOTOR_DIR_SOUTH:
+      ret = DIR_SOUTH_MASK;
+      break;
+    case MOTOR_DIR_SOUTHEAST:
+      ret = DIR_SOUTH_MASK | DIR_EAST_MASK;
+      break;
+    case MOTOR_DIR_EAST:
+      ret = DIR_EAST_MASK;
+      break;
+    case MOTOR_DIR_NORTHEAST:
+      ret = DIR_NORTH_MASK | DIR_EAST_MASK;
+      break;
+    default:
+      ret = 0;
+  }
+  return ret;
 }
 
 static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec, unsigned char use_encod)
