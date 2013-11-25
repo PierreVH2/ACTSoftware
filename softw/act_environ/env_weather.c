@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
-#include <curl/curl.h>
 #include <act_ipc.h>
 #include <act_site.h>
 #include <act_log.h>

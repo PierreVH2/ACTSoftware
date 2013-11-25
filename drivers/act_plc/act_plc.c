@@ -396,6 +396,7 @@ static int process_cmdresp(const char *buf, int len)
   if (!G_cmd_pending)
   {
     // Deactivate commands that only need to be issued once
+    G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & (~CNTR_WATCHDOG_MASK));
     G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & (~CNTR_ACQRESET_MASK));
     G_cur_plc_cmd_str[CNTR_FOCUS_OFFS] = int2hexchar(hexchar2int(G_cur_plc_cmd_str[CNTR_FOCUS_OFFS]) & ~(CNTR_FOC_RESET_MASK | CNTR_FOC_GO_MASK));
     G_cur_plc_cmd_str[CNTR_APER_STAT_OFFS] = '0';

@@ -640,7 +640,7 @@ unsigned char sched_next_block(struct formobjects *objs)
 {
   act_log_debug(act_log_msg("Scheduling next block."));
   MYSQL_RES *result;
-  mysql_query(objs->mysql_conn,"SELECT sched_blocks.id FROM sched_blocks INNER JOIN (SELECT block_id FROM sched_targset UNION SELECT block_id FROM sched_datapmt UNION SELECT block_id FROM sched_dataccd) AS obsn_list ON obsn_list.block_id=sched_blocks.id WHERE sched_blocks.status=0 ORDER BY sched_blocks.priority ASC LIMIT 1;");
+  mysql_query(objs->mysql_conn,"SELECT sched_blocks.id FROM sched_blocks INNER JOIN sched_block_seq ON sched_block_seq.block_id=sched_blocks.id INNER JOIN (SELECT block_seq_id FROM sched_targset UNION SELECT block_seq_id FROM sched_datapmt UNION SELECT block_seq_id FROM sched_dataccd) AS obsn_list ON obsn_list.block_seq_id=sched_block_seq.id WHERE sched_blocks.status=0 ORDER BY sched_blocks.priority ASC LIMIT 1;");
   result = mysql_store_result(objs->mysql_conn);
   if (result == NULL)
   {
@@ -676,7 +676,7 @@ unsigned char sched_next_obsn(struct formobjects *objs)
 {
   act_log_debug(act_log_msg("Selecting new observation."));  
   char qrystr[512];
-  sprintf(qrystr, "SELECT * FROM ((SELECT id,seqnum,1 AS obsn_type FROM sched_targset WHERE block_id=%lu AND status=0) UNION (SELECT id,seqnum,2 AS obsn_type FROM sched_dataccd WHERE block_id=%lu AND status=0) UNION (SELECT id,seqnum,3 AS obsn_type FROM sched_datapmt WHERE block_id=%lu AND status=0)) AS obsn_queue ORDER BY seqnum ASC LIMIT 1", objs->cur_blockid, objs->cur_blockid, objs->cur_blockid);
+  sprintf(qrystr, "SELECT * FROM (SELECT id,block_seq_id,status,1 FROM sched_targset UNION SELECT id,block_seq_id,status,2 FROM sched_dataccd UNION SELECT id,block_seq_id,status,3 FROM sched_datapmt) AS obsn_queue INNER JOIN sched_block_seq ON sched_block_seq.id=obsn_queue.block_seq_id WHERE sched_block_seq.block_id=1 AND obsn_queue.status=%ld;", objs->cur_blockid);
   MYSQL_RES *result;
   mysql_query(objs->mysql_conn,qrystr);
   result = mysql_store_result(objs->mysql_conn);
@@ -735,7 +735,7 @@ unsigned char sched_next_targset(struct formobjects *objs, int targset_id)
   act_log_debug(act_log_msg("Selecting next target set."));
   MYSQL_RES *result;
   char qrystr[512];
-  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, stars.ra_h, stars.dec_d, sky FROM sched_targset INNER JOIN sched_blocks ON sched_blocks.id=sched_targset.block_id INNER JOIN stars ON stars.id=sched_blocks.targ_id INNER JOIN star_names ON sched_blocks.targ_id=star_names.star_name WHERE sched_targset.id=%d", targset_id);
+  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, star_info.ra_h_fk5, star_info.dec_d_fk5, sky FROM sched_targset INNER JOIN sched_block_seq ON sched_block_seq.id=sched_targset.block_seq_id INNER JOIN sched_blocks ON sched_blocks.id=sched_block_seq.block_id INNER JOIN star_info ON star_info.id=sched_blocks.targ_id INNER JOIN star_names ON sched_blocks.targ_id=star_names.star_name WHERE sched_targset.id=%d", targset_id);
   mysql_query(objs->mysql_conn,qrystr);
   result = mysql_store_result(objs->mysql_conn);
   if (result == NULL)
@@ -814,7 +814,7 @@ unsigned char sched_next_datapmt(struct formobjects *objs, int datapmt_id)
   MYSQL_RES *result;
   char qrystr[1024];
   
-  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, stars.ra_h, stars.dec_d, sky, sample_period_s, prebin, repetitions, filt_id, pmt_filters.name, pmt_filters.slot, aper_id, pmt_apertures.name, pmt_apertures.slot, sched_blocks.user_id FROM sched_datapmt INNER JOIN sched_blocks ON sched_datapmt.block_id=sched_blocks.id INNER JOIN stars ON stars.id=sched_blocks.targ_id INNER JOIN star_names ON star_names.star_id=stars.id INNER JOIN pmt_filters ON pmt_filters.id=sched_datapmt.filt_id INNER JOIN pmt_apertures ON pmt_apertures.id=sched_datapmt.aper_id WHERE sched_datapmt.id=%d", datapmt_id);
+  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, star_info.ra_h_fk5, star_info.dec_d_fk5, sky, sample_period_s, prebin, repetitions, pmt_filt_id, filter_types.name, pmt_filters.slot, pmt_aper_id, pmt_apertures.name, pmt_apertures.slot, sched_blocks.user_id FROM sched_datapmt INNER JOIN sched_block_seq ON sched_datapmt.block_seq_id=sched_block_seq.id INNER JOIN sched_blocks ON sched_blocks.id=sched_block_seq.block_id INNER JOIN star_info ON star_info.id=sched_blocks.targ_id INNER JOIN star_names ON star_names.star_id=star_info.id INNER JOIN pmt_filters ON pmt_filters.id=sched_datapmt.pmt_filt_id INNER JOIN filter_types ON filter_types.id=pmt_filters.type INNER JOIN pmt_apertures ON pmt_apertures.id=sched_datapmt.pmt_aper_id WHERE sched_datapmt.id=%d;", datapmt_id);
   mysql_query(objs->mysql_conn,qrystr);
   result = mysql_store_result(objs->mysql_conn);
   if (result == NULL)
@@ -940,7 +940,7 @@ unsigned char sched_next_dataccd(struct formobjects *objs, int dataccd_id)
   MYSQL_RES *result;
   char qrystr[1024];
   
-  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, stars.ra_h, stars.dec_d, exp_t_s, repetitions, frame_transfer, prebin_x, prebin_y, filt_id, ccd_filters.name, ccd_filters.slot, sched_blocks.user_id FROM sched_dataccd INNER JOIN sched_blocks ON sched_blocks.id=sched_dataccd.block_id INNER JOIN stars ON sched_blocks.targ_id=stars.id INNER JOIN star_names ON star_names.star_id=sched_blocks.targ_id INNER JOIN ccd_filters ON ccd_filters.id=sched_dataccd.filt_id WHERE sched_dataccd.id=%d", dataccd_id);
+  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, star_info.ra_h_fk5, star_info.dec_d_fk5, exp_t_s, repetitions, frame_transfer, prebin_x, prebin_y, ccd_filt_id, filter_types.name, ccd_filters.slot, sched_blocks.user_id FROM sched_dataccd INNER JOIN sched_block_seq ON sched_block_seq.id=sched_dataccd.block_seq_id INNER JOIN sched_blocks ON sched_blocks.id=sched_block_seq.block_id INNER JOIN star_info ON sched_blocks.targ_id=star_info.id INNER JOIN star_names ON star_names.star_id=sched_blocks.targ_id INNER JOIN ccd_filters ON ccd_filters.id=sched_dataccd.ccd_filt_id INNER JOIN filter_types ON filter_types.id=ccd_filters.type WHERE sched_dataccd.id=%d", dataccd_id);
   mysql_query(objs->mysql_conn,qrystr);
   result = mysql_store_result(objs->mysql_conn);
   if (result == NULL)
