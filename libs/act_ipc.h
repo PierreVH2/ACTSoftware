@@ -100,11 +100,12 @@ enum
  * equal to TARGSET_NONE, it cycles it around to the first stage defined here.
  */
 /*! \{ */
-#define TARGSET_SEL         0x01  /**< Select target.*/
+#define TARGSET_SCHED_PRE   0x01  /**< Select target.*/
 #define TARGSET_ENVIRON     0x02  /**< Check environmental and situational parameters.*/
 #define TARGSET_MOVE_TEL    0x04  /**< Move telescope to target.*/
 #define TARGSET_ACQUIRE     0x08  /**< Check telescope position and acquire target (auto mode only).*/
-#define TARGSET_NONE        0x10  /**< Past last stage of target set cycle, go back to beginning.*/
+#define TARGSET_SCHED_POST  0x10  /**< Return message to scheduler*/
+#define TARGSET_NONE        0x20  /**< Invalid stage*/
 /*! \} */
 
 /*! \name Data collection with PMT stage definitions
@@ -124,11 +125,12 @@ enum
  * equal to DATAPMT_NONE, it cycles it around to the first stage defined here.
  */
 /*! \{ */
-#define DATAPMT_SEL         0x01  /**< Select observational parameters for PMT.*/
+#define DATAPMT_SCHED_PRE   0x01  /**< Select observational parameters for PMT.*/
 #define DATAPMT_ENVIRON     0x02  /**< Check environmental and situational parameters.*/
 #define DATAPMT_PREP_PHOTOM 0x04  /**< Prepare to collect data with PMT.*/
 #define DATAPMT_PHOTOM      0x08  /**< Collect data with PMT.*/
-#define DATAPMT_NONE        0x10  /**< Past last stage of target set cycle, go back to beginning.*/
+#define DATAPMT_SCHED_POST  0x10  /**< Return message to scheduler.*/
+#define DATAPMT_NONE        0x20  /**< Invalid stage.*/
 /*! \} */
 
 /*! \name Data collection with CCD stage definitions
@@ -148,11 +150,12 @@ enum
  * equal to DATACCD_NONE, it cycles it around to the first stage defined here.
  */
 /*! \{ */
-#define DATACCD_SEL         0x01  /**< Select observational parameters for CCD.*/
+#define DATACCD_SCHED_PRE   0x01  /**< Select observational parameters for CCD.*/
 #define DATACCD_ENVIRON     0x02  /**< Check environmental and situational parameters.*/
 #define DATACCD_PREP_PHOTOM 0x04  /**< Prepare to collect data with CCD.*/
 #define DATACCD_PHOTOM      0x08  /**< Collect data with CCD.*/
-#define DATACCD_NONE        0x10  /**< Past last stage of target set cycle, go back to beginning.*/
+#define DATACCD_SCHED_POST  0x10  /**< Return message to scheduler.*/
+#define DATACCD_NONE        0x20  /**< Past last stage of target set cycle, go back to beginning.*/
 /*! \} */
 
 /*! \name Observation status definitions.
@@ -165,6 +168,7 @@ enum
 {
   OBSNSTAT_GOOD = 1,  /**< Observation is proceeding normally. */
   OBSNSTAT_CANCEL,    /**< Observation was cancelled. */
+  OBSNSTAT_COMPLETE,  /**< Observation complete successfully. */
   OBSNSTAT_ERR_RETRY, /**< An error occurred, try again. */
   OBSNSTAT_ERR_WAIT,  /**< The observation cannot currently be done, try again later. */
   OBSNSTAT_ERR_NEXT,  /**< An error occurred, try next observation (target). */
@@ -491,7 +495,7 @@ struct act_msg_ccdcap
   struct ipc_ccd_window_mode windows[IPC_CCD_MAX_NUM_WINDOW_MODES];
 };
 
-// ??? Include supported frame transfer modes in CCD caps
+/// TODO: Include supported frame transfer modes in CCD caps
 
 //! IPC message structure for CCD data collection cycle.
 struct act_msg_dataccd
