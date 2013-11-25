@@ -1098,7 +1098,7 @@ int main(int argc, char** argv)
     finish_all(&formobjs);
     return 1;
   }
-  else if (mysql_real_connect(formobjs.mysql_conn, sqlconfig, "act_pmtphot", NULL, "act", 0, NULL, 0) == NULL)
+  else if (mysql_real_connect(formobjs.mysql_conn, sqlconfig, "act_pmtphot", NULL, "actnew", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error connecting to MySQL database - %s.", mysql_error(formobjs.mysql_conn)));
     finish_all(&formobjs);

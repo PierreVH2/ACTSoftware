@@ -634,7 +634,7 @@ int main(int argc, char **argv)
   conn = mysql_init(NULL);
   if (conn == NULL)
     act_log_error(act_log_msg("Error initialising MySQL connection handler - %s.", mysql_error(conn)));
-  else if (mysql_real_connect(conn, sqlconfig, "act_acq", NULL, "act", 0, NULL, 0) == NULL)
+  else if (mysql_real_connect(conn, sqlconfig, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error connecting to MySQL database - %s.", mysql_error(conn)));
     conn = NULL;
