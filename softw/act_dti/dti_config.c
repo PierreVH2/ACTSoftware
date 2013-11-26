@@ -75,7 +75,7 @@ char parse_pmtfilters(MYSQL *conn, struct act_msg_pmtcap *pmtcap_msg)
 {
   MYSQL_RES *result;
   MYSQL_ROW row;
-  mysql_query(conn,"SELECT id,slot,name FROM pmt_filters WHERE slot >= 0 ORDER BY slot;");
+  mysql_query(conn,"SELECT pmt_filters.id,slot,name FROM pmt_filters INNER JOIN filter_types ON filter_types.id=pmt_filters.type WHERE slot >= 0 ORDER BY slot;");
   result = mysql_store_result(conn);
   if (result == NULL)
   {
@@ -153,7 +153,7 @@ char parse_tel_limits(MYSQL *conn, struct act_msg_targcap *targcap_msg)
     num_parsed++;
   if (sscanf(row[1], "%lf", &tmp_lim_S) != 1)
     act_log_error(act_log_msg("Error parsing Southern limit (%s).", row[1]));
-  else if (tmp_lim_S < 180.0)
+  else if (tmp_lim_S < -180.0)
     act_log_error(act_log_msg("Invalid Southern limit: %lf", tmp_lim_S));
   else
     num_parsed++;
@@ -238,7 +238,7 @@ char parse_ccdfilters(MYSQL *conn, struct act_msg_ccdcap *ccdcap_msg)
 {
   MYSQL_RES *result;
   MYSQL_ROW row;
-  mysql_query(conn,"SELECT id,slot,name FROM ccd_filters WHERE slot >= 0 ORDER BY slot;");
+  mysql_query(conn,"SELECT ccd_filters.id,slot,name FROM ccd_filters INNER JOIN filter_types ON filter_types.id=ccd_filters.type WHERE slot >= 0 ORDER BY slot;");
   result = mysql_store_result(conn);
   if (result == NULL)
   {

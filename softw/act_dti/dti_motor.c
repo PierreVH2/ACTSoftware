@@ -453,7 +453,7 @@ static gint read_motor_stat(gint motor_fd, guchar *motor_stat)
 
 static gint read_motor_limits(gint motor_fd, guchar *limits_stat)
 {
-  guchar motor_limits;
+  gulong motor_limits;
   gint ret = ioctl(motor_fd, IOCTL_MOTOR_GET_LIMITS, &motor_limits);
   if (ret < 0)
   {

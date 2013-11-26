@@ -27,7 +27,7 @@ int control_config_programmes(const char *sqldb_host, struct act_prog **prog_arr
     return -1;
   MYSQL_RES *result;
   MYSQL_ROW row;
-  mysql_query(conn,"SELECT name,executable,host,active_time,guicoord_left,guicoord_right,guicoord_top,guicoord_bottom FROM softwconfig;");
+  mysql_query(conn,"SELECT name,executable,host,active_time,guicoord_left,guicoord_right,guicoord_top,guicoord_bottom FROM softw_config;");
   result = mysql_store_result(conn);
   if (result == NULL)
   {

@@ -51,14 +51,14 @@ typedef struct _GActTelcoordClass  GActTelcoordClass;
 
 struct _GActTelcoord
 {
-  GObject parent;
+  GtkObject parent;
   struct hastruct ha;
   struct decstruct dec;
 };
 
 struct _GActTelcoordClass
 {
-  GObjectClass parent_class;
+  GtkObjectClass parent_class;
 };
 
 typedef struct _GActTelgoto       GActTelgoto;
@@ -66,7 +66,7 @@ typedef struct _GActTelgotoClass  GActTelgotoClass;
 
 struct _GActTelgoto
 {
-  GObject parent;
+  GtkObject parent;
   struct hastruct ha;
   struct decstruct dec;
   gboolean is_sidereal;
@@ -75,7 +75,7 @@ struct _GActTelgoto
 
 struct _GActTelgotoClass
 {
-  GObjectClass parent_class;
+  GtkObjectClass parent_class;
 };
 
 typedef struct _Dtimotor       Dtimotor;
@@ -83,7 +83,7 @@ typedef struct _DtimotorClass  DtimotorClass;
 
 struct _Dtimotor
 {
-  GObject parent;
+  GtkObject parent;
   GIOChannel *motor_chan;
   guint coord_to_id, motor_watch_id;
   guchar cur_stat, cur_limits, cur_warn;
@@ -93,7 +93,7 @@ struct _Dtimotor
 
 struct _DtimotorClass
 {
-  GObjectClass parent_class;
+  GtkObjectClass parent_class;
 };
 
 GType gact_telcoord_get_type (void);

@@ -152,6 +152,7 @@ int main(int argc, char** argv)
       act_log_crit(act_log_msg("Could not establish network connection."));
     else
     {
+      g_object_ref_sink(G_OBJECT(form.dti_net));
       g_object_unref(G_OBJECT(form.dti_net));
       form.dti_net = NULL;
     }
@@ -159,6 +160,7 @@ int main(int argc, char** argv)
       act_log_crit(act_log_msg("Could not access motor driver."));
     else
     {
+      g_object_ref_sink(G_OBJECT(form.dti_motor));
       g_object_unref(G_OBJECT(form.dti_motor));
       form.dti_net = NULL;
     }
@@ -166,11 +168,15 @@ int main(int argc, char** argv)
       act_log_crit(act_log_msg("Could not access PLC driver."));
     else
     {
+      g_object_ref_sink(G_OBJECT(form.dti_plc));
       g_object_unref(G_OBJECT(form.dti_plc));
       form.dti_plc = NULL;
     }
     return 1;
   }
+  g_object_ref_sink(G_OBJECT(form.dti_net));
+  g_object_ref_sink(G_OBJECT(form.dti_motor));
+  g_object_ref_sink(G_OBJECT(form.dti_plc));
     
   form.box_main = gtk_table_new(0, 0, FALSE);
   g_object_ref (G_OBJECT(form.box_main));
