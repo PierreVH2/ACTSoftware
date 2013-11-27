@@ -275,7 +275,7 @@ char parse_ccdfilters(MYSQL *conn, struct act_msg_ccdcap *ccdcap_msg)
     }
     ccdcap_msg->filters[num_filts].db_id = tmp_id;
     ccdcap_msg->filters[num_filts].slot = tmp_slot;
-    if (strlen(row[2]) >= IPC_MAX_FILTAPER_NAME_LEN-1)
+    if (strlen(row[2]) >= IPC_MAX_FILTAPER_NAME_LEN)
       act_log_error(act_log_msg("CCD filter %d's identifier string (%s) is too long (%d characters). Trimming to %d characters.", tmp_slot, row[1], strlen(row[1]), IPC_MAX_FILTAPER_NAME_LEN));
     snprintf(ccdcap_msg->filters[num_filts].name, IPC_MAX_FILTAPER_NAME_LEN, "%s", row[2]);
     num_filts++;

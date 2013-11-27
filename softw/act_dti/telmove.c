@@ -592,7 +592,7 @@ static guchar park_telescope(Telmove *objs)
   struct decstruct park_dec;
   convert_H_HMSMS_ha(TELPARK_HA_H, &park_ha);
   convert_D_DMS_dec(TELPARK_DEC_D, &park_dec);
-  GActTelgoto *gotocmd = gact_telgoto_new (&park_ha, &park_dec, DTIMOTOR_SPEED_SLEW, FALSE);
+  GActTelgoto *gotocmd = gact_telgoto_new (&park_ha, &park_dec, DTI_MOTOR_SPEED_SLEW, FALSE);
   if (g_object_is_floating(G_OBJECT(gotocmd)))
     g_object_ref_sink(G_OBJECT(gotocmd));
   gint ret = dti_motor_goto (objs->dti_motor, gotocmd);
@@ -627,7 +627,7 @@ static gboolean start_moveN(GtkWidget *button, GdkEventButton *event, gpointer t
     return FALSE;
   Telmove *objs = TELMOVE(telmove);
   guchar speed = cardmove_get_speed(objs);
-  gint ret = dti_motor_move_card(objs->dti_motor, DTIMOTOR_DIR_NORTH, speed);
+  gint ret = dti_motor_move_card(objs->dti_motor, DTI_MOTOR_DIR_NORTH, speed);
   if (ret != 0)
     error_dialog(gtk_widget_get_toplevel(button), "Failed to start moving North", ret);
   return FALSE;
@@ -640,7 +640,7 @@ static gboolean start_moveS(GtkWidget *button, GdkEventButton *event, gpointer t
     return FALSE;
   Telmove *objs = TELMOVE(telmove);
   guchar speed = cardmove_get_speed(objs);
-  gint ret = dti_motor_move_card(objs->dti_motor, DTIMOTOR_DIR_SOUTH, speed);
+  gint ret = dti_motor_move_card(objs->dti_motor, DTI_MOTOR_DIR_SOUTH, speed);
   if (ret != 0)
     error_dialog(gtk_widget_get_toplevel(button), "Failed to start moving South", ret);
   return FALSE;
@@ -653,7 +653,7 @@ static gboolean start_moveE(GtkWidget *button, GdkEventButton *event, gpointer t
     return FALSE;
   Telmove *objs = TELMOVE(telmove);
   guchar speed = cardmove_get_speed(objs);
-  gint ret = dti_motor_move_card(objs->dti_motor, DTIMOTOR_DIR_EAST, speed);
+  gint ret = dti_motor_move_card(objs->dti_motor, DTI_MOTOR_DIR_EAST, speed);
   if (ret != 0)
     error_dialog(gtk_widget_get_toplevel(button), "Failed to start moving East", ret);
   return FALSE;
@@ -666,7 +666,7 @@ static gboolean start_moveW(GtkWidget *button, GdkEventButton *event, gpointer t
     return FALSE;
   Telmove *objs = TELMOVE(telmove);
   guchar speed = cardmove_get_speed(objs);
-  gint ret = dti_motor_move_card(objs->dti_motor, DTIMOTOR_DIR_WEST, speed);
+  gint ret = dti_motor_move_card(objs->dti_motor, DTI_MOTOR_DIR_WEST, speed);
   if (ret != 0)
     error_dialog(gtk_widget_get_toplevel(button), "Failed to start moving West", ret);
   return FALSE;
@@ -684,10 +684,10 @@ static gboolean end_moveNSEW(GtkWidget *button, GdkEventButton *event, gpointer 
 static guchar cardmove_get_speed(Telmove *objs)
 {
   if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_speed_slew)))
-    return DTIMOTOR_SPEED_SLEW;
+    return DTI_MOTOR_SPEED_SLEW;
   if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_speed_set)))
-    return DTIMOTOR_SPEED_SET;
-  return DTIMOTOR_SPEED_GUIDE;
+    return DTI_MOTOR_SPEED_SET;
+  return DTI_MOTOR_SPEED_GUIDE;
 }
 
 static guchar start_goto_sid(Telmove *objs, struct rastruct *ra, struct decstruct *dec)
@@ -705,7 +705,7 @@ static guchar start_goto_sid(Telmove *objs, struct rastruct *ra, struct decstruc
 
 static guchar start_goto(Telmove *objs, struct hastruct *ha, struct decstruct *dec, gboolean is_sidereal)
 {
-  GActTelgoto *gotocmd = gact_telgoto_new (ha, dec, DTIMOTOR_SPEED_SLEW, is_sidereal);
+  GActTelgoto *gotocmd = gact_telgoto_new (ha, dec, DTI_MOTOR_SPEED_SLEW, is_sidereal);
   if (g_object_is_floating(G_OBJECT(gotocmd)))
     g_object_ref_sink(G_OBJECT(gotocmd));
   gint ret = dti_motor_goto (objs->dti_motor, gotocmd);
@@ -788,7 +788,7 @@ static void tel_goto_response(GtkWidget *coorddialog, int response_id, gpointer 
   if (g_object_is_floating(G_OBJECT(tmp_coord)))
     g_object_ref_sink(G_OBJECT(tmp_coord));
 
-  GActTelgoto *tmp_cmd = gact_telgoto_new (&tmp_coord->ha, &tmp_coord->dec, DTIMOTOR_SPEED_SLEW, objs->sidt_h >= 0.0);
+  GActTelgoto *tmp_cmd = gact_telgoto_new (&tmp_coord->ha, &tmp_coord->dec, DTI_MOTOR_SPEED_SLEW, objs->sidt_h >= 0.0);
   g_object_unref(tmp_coord);
   if (g_object_is_floating(tmp_cmd))
     g_object_ref_sink(tmp_cmd);

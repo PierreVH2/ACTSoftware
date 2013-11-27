@@ -142,6 +142,8 @@ char close_prog(struct act_prog *prog)
   prog_set_status(prog, PROGSTAT_STOPPING);
   struct act_msg buf;
   buf.mtype = MT_QUIT;
+  /// TODO: Implement auto quit
+  buf.content.msg_quit.mode_auto = FALSE;
   if (!act_send(prog, &buf))
   {
     act_log_error(act_log_msg("Could not send quit signal to %s - setting state to \"RUNNING\".", prog->name));

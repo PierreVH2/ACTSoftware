@@ -19,31 +19,31 @@ G_BEGIN_DECLS
 #define IS_GACT_TELGOTO(objs)             (G_TYPE_CHECK_INSTANCE_TYPE ((objs), GACT_TELGOTO_TYPE))
 #define IS_GACT_TELGOTO_CLASS(klass)      (G_TYPE_CHECK_CLASS_TYPE ((klass), GACT_TELGOTO_TYPE))
 
-#define DTIMOTOR_TYPE              (dti_motor_get_type())
-#define DTIMOTOR(objs)             (G_TYPE_CHECK_INSTANCE_CAST ((objs), DTIMOTOR_TYPE, Dtimotor))
-#define DTIMOTOR_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), DTIMOTOR_TYPE, DtimotorClass))
-#define IS_DTIMOTOR(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), DTIMOTOR_TYPE))
-#define IS_DTIMOTOR_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), DTIMOTOR_TYPE))
+#define DTI_MOTOR_TYPE              (dti_motor_get_type())
+#define DTI_MOTOR(objs)             (G_TYPE_CHECK_INSTANCE_CAST ((objs), DTI_MOTOR_TYPE, Dtimotor))
+#define DTI_MOTOR_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), DTI_MOTOR_TYPE, DtimotorClass))
+#define IS_DTI_MOTOR(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), DTI_MOTOR_TYPE))
+#define IS_DTI_MOTOR_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), DTI_MOTOR_TYPE))
 
 enum
 {
-  DTIMOTOR_SPEED_GUIDE = 1,
-  DTIMOTOR_SPEED_SET,
-  DTIMOTOR_SPEED_SLEW,
-  DTIMOTOR_SPEED_INVAL
+  DTI_MOTOR_SPEED_GUIDE = 1,
+  DTI_MOTOR_SPEED_SET,
+  DTI_MOTOR_SPEED_SLEW,
+  DTI_MOTOR_SPEED_INVAL
 };
 
 enum
 {
-  DTIMOTOR_DIR_NORTH = 1,
-  DTIMOTOR_DIR_NORTHWEST,
-  DTIMOTOR_DIR_WEST,
-  DTIMOTOR_DIR_SOUTHWEST,
-  DTIMOTOR_DIR_SOUTH,
-  DTIMOTOR_DIR_SOUTHEAST,
-  DTIMOTOR_DIR_EAST,
-  DTIMOTOR_DIR_NORTHEAST,
-  DTIMOTOR_DIR_INVAL
+  DTI_MOTOR_DIR_NORTH = 1,
+  DTI_MOTOR_DIR_NORTHWEST,
+  DTI_MOTOR_DIR_WEST,
+  DTI_MOTOR_DIR_SOUTHWEST,
+  DTI_MOTOR_DIR_SOUTH,
+  DTI_MOTOR_DIR_SOUTHEAST,
+  DTI_MOTOR_DIR_EAST,
+  DTI_MOTOR_DIR_NORTHEAST,
+  DTI_MOTOR_DIR_INVAL
 };
 
 typedef struct _GActTelcoord       GActTelcoord;
@@ -51,14 +51,14 @@ typedef struct _GActTelcoordClass  GActTelcoordClass;
 
 struct _GActTelcoord
 {
-  GtkObject parent;
+  GObject parent;
   struct hastruct ha;
   struct decstruct dec;
 };
 
 struct _GActTelcoordClass
 {
-  GtkObjectClass parent_class;
+  GObjectClass parent_class;
 };
 
 typedef struct _GActTelgoto       GActTelgoto;
@@ -66,7 +66,7 @@ typedef struct _GActTelgotoClass  GActTelgotoClass;
 
 struct _GActTelgoto
 {
-  GtkObject parent;
+  GObject parent;
   struct hastruct ha;
   struct decstruct dec;
   gboolean is_sidereal;
@@ -75,7 +75,7 @@ struct _GActTelgoto
 
 struct _GActTelgotoClass
 {
-  GtkObjectClass parent_class;
+  GObjectClass parent_class;
 };
 
 typedef struct _Dtimotor       Dtimotor;
@@ -83,7 +83,7 @@ typedef struct _DtimotorClass  DtimotorClass;
 
 struct _Dtimotor
 {
-  GtkObject parent;
+  GObject parent;
   GIOChannel *motor_chan;
   guint coord_to_id, motor_watch_id;
   guchar cur_stat, cur_limits, cur_warn;
@@ -93,7 +93,7 @@ struct _Dtimotor
 
 struct _DtimotorClass
 {
-  GtkObjectClass parent_class;
+  GObjectClass parent_class;
 };
 
 GType gact_telcoord_get_type (void);

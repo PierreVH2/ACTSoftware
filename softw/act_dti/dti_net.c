@@ -8,7 +8,7 @@ static void dti_msg_instance_init(GObject *dti_msg);
 
 static void dti_net_class_init(DtiNetClass *klass);
 static void dti_net_instance_init(GObject *dti_net);
-static void dti_net_instance_destroy(gpointer dti_net);
+static void dti_net_instance_dispose(GObject *dti_net);
 static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer dti_net);
 
 enum
@@ -44,7 +44,7 @@ GType dti_msg_get_type (void)
       NULL
     };
     
-    dti_msg_type = g_type_register_static (GTK_TYPE_OBJECT, "DtiMsg", &dti_msg_info, 0);
+    dti_msg_type = g_type_register_static (G_TYPE_OBJECT, "DtiMsg", &dti_msg_info, 0);
   }
   
   return dti_msg_type;
@@ -356,7 +356,7 @@ GType dti_net_get_type (void)
       NULL
     };
     
-    dti_net_type = g_type_register_static (GTK_TYPE_OBJECT, "DtiNet", &dti_net_info, 0);
+    dti_net_type = g_type_register_static (G_TYPE_OBJECT, "DtiNet", &dti_net_info, 0);
   }
   
   return dti_net_type;
@@ -404,7 +404,6 @@ DtiNet *dti_net_new (const gchar *host, const gchar *port)
   DtiNet *objs = DTI_NET(g_object_new (dti_net_get_type(), NULL));
   objs->net_watch_id = g_io_add_watch (channel, G_IO_IN|G_IO_PRI, net_read_ready, objs);
   objs->net_chan = channel;
-  g_signal_connect_swapped(G_OBJECT(objs), "destroy", G_CALLBACK(dti_net_instance_destroy), objs);
   return objs;
 }
 
@@ -443,6 +442,7 @@ static void dti_msg_instance_init(GObject *dti_msg)
 static void dti_net_class_init(DtiNetClass *klass)
 {
   dti_net_signals[MSG_RECV_SIGNAL] = g_signal_new("message-received", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__POINTER, G_TYPE_NONE, 1, G_TYPE_POINTER);
+  G_OBJECT_CLASS(klass)->dispose = dti_net_instance_dispose;
 }
 
 static void dti_net_instance_init(GObject *dti_net)
@@ -452,7 +452,7 @@ static void dti_net_instance_init(GObject *dti_net)
   objs->net_watch_id = 0;
 }
 
-static void dti_net_instance_destroy(gpointer dti_net)
+static void dti_net_instance_dispose(GObject *dti_net)
 {
   DtiNet *objs = DTI_NET(dti_net);
   if (objs->net_watch_id != 0)
@@ -465,6 +465,7 @@ static void dti_net_instance_destroy(gpointer dti_net)
     g_io_channel_unref(objs->net_chan);
     objs->net_chan = NULL;
   }
+  G_OBJECT_CLASS(dti_net)->dispose(dti_net);
 }
 
 static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer dti_net)

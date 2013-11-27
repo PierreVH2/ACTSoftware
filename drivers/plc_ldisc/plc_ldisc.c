@@ -64,6 +64,7 @@ static int plc_open(struct tty_struct *tty)
 {
   if (tty->ops->write == NULL)
     return -EOPNOTSUPP;
+  printk(KERN_DEBUG PRINTK_PREFIX "PLC link opened.\n");
   G_plc_tty = tty;
   return 0;
 }
@@ -74,6 +75,7 @@ static int plc_open(struct tty_struct *tty)
  */
 static void plc_close(struct tty_struct *tty)
 {
+  printk(KERN_DEBUG PRINTK_PREFIX "PLC link closed.\n");
   G_plc_tty = NULL;
   return;
 }

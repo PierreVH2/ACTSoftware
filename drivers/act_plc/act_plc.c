@@ -16,7 +16,7 @@
 
 #define AWAIT_STAT_RESP     1
 #define AWAIT_CMD_RESP      2
-#define AWAIT_INIT_STATRESP 3
+// #define AWAIT_INIT_STATRESP 3
 
 #define DOME_MIN_FLOP   5
 #define DOME_MAX_FLOP  10
@@ -33,8 +33,8 @@ static struct class *G_class_plc;
 static struct device *G_dev_plc;
 static unsigned char G_status = 0;
 static unsigned char G_num_open = 0;
-static char G_cur_plc_stat_str[PLC_STAT_RESP_LEN+1];
-static char G_cur_plc_cmd_str[PLC_CMD_LEN+1];
+static char G_cur_plc_stat_str[PLC_STAT_RESP_LEN+1] = "\0";
+static char G_cur_plc_cmd_str[PLC_CMD_LEN+1] = "\0";
 static struct plc_status G_cur_plc_stat;
 static struct fasync_struct *G_async_queue;
 static wait_queue_head_t G_readq;
@@ -43,7 +43,7 @@ static void (*G_handset_handler) (const unsigned char old_hs, const unsigned cha
 #ifndef PLC_SIM
 static struct workqueue_struct *G_plcdrv_workq;
 static struct delayed_work G_plcstat_work;
-static struct delayed_work G_plccmd_work;
+// static struct delayed_work G_plccmd_work;
 static struct delayed_work G_plcresp_work;
 static unsigned char G_await_resp = 0;
 static unsigned char G_cmd_pending = 0;
@@ -263,9 +263,9 @@ static void init_cmd_str(void)
   snprintf(&G_cur_plc_cmd_str[CNTR_DOME_MAX_FLOP_OFFS], CNTR_DOME_FLOP_LEN+1, CNTR_DOME_FLOP_FMT, DOME_MAX_FLOP);
   snprintf(&G_cur_plc_cmd_str[CNTR_DOME_MIN_FLOP_OFFS], CNTR_DOME_FLOP_LEN+1, CNTR_DOME_FLOP_FMT, DOME_MIN_FLOP);
   if (hexchar2int(G_cur_plc_stat_str[STAT_INSTR_SHUTT_OFFS]) & STAT_INSTR_SHUTT_OPEN_MASK)
-    G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_INSTR_SHUTT_MASK | CNTR_WATCHDOG_MASK);
+    G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_INSTR_SHUTT_MASK);
   else
-    G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK);
+    G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = '0';
   G_cur_plc_cmd_str[CNTR_DROPOUT_OFFS] = '0';
   G_cur_plc_cmd_str[CNTR_SHUTTER_OFFS] = '0';
   G_cur_plc_cmd_str[CNTR_DOME_STAT_OFFS] = int2hexchar(CNTR_DOME_SET_OFFS_MASK);
@@ -316,44 +316,82 @@ static int check_endcode(const char *str, int length)
   return (tmp == 0);
 }
 
+static void sched_delayed_statreq(void)
+{
+  queue_delayed_work(G_plcdrv_workq, &G_plcstat_work, HZ);
+}
+
 static void plc_resp_timeout(struct work_struct *work)
 {
-  printk(KERN_ERR PRINTK_PREFIX "Timed out while awaiting %s response from PLC.\n", G_await_resp == AWAIT_INIT_STATRESP ? "initial status" : G_await_resp == AWAIT_STAT_RESP ? "status" : G_await_resp == AWAIT_CMD_RESP? "command" : G_await_resp > 0 ? "unknown " : "");
+  printk(KERN_ERR PRINTK_PREFIX "Timed out while awaiting %s response from PLC.\n", G_await_resp == AWAIT_STAT_RESP ? "status" : G_await_resp == AWAIT_CMD_RESP? "command" : "unknown");
   G_await_resp = 0;
   G_status &= ~PLC_COMM_OK;
-  kill_fasync(&G_async_queue, SIGIO, POLL_IN);
   wake_up_interruptible(&G_readq);
+  sched_delayed_statreq();
 }
 
 static void send_plc_statreq(struct work_struct *work)
 {
+  int ret;
   if (G_await_resp > 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Attempted to send status request, but driver is currently awaiting a response from the PLC.\n");
-    queue_delayed_work(G_plcdrv_workq, &G_plcstat_work, HZ * (jiffies%900+100) / 1000);
+    sched_delayed_statreq();
     return;
   }
-  write_to_plc(PLC_STAT_REQ, PLC_STAT_REQ_LEN);
+  ret = write_to_plc(PLC_STAT_REQ, PLC_STAT_REQ_LEN);
+  if (ret < 0)
+  {
+    if (G_status & PLC_COMM_OK)
+    {
+      printk(KERN_DEBUG PRINTK_PREFIX "PLC communications currently unavailable (%d)\n", ret);
+      G_status &= ~PLC_COMM_OK;
+    }
+    sched_delayed_statreq();
+    return;
+  }
+  if ((G_status & PLC_COMM_OK) == 0)
+  {
+    printk(KERN_DEBUG PRINTK_PREFIX "PLC communications re-established (%d)\n", ret);
+    G_status |= PLC_COMM_OK;
+  }
   G_await_resp = AWAIT_STAT_RESP;
   queue_delayed_work(G_plcdrv_workq, &G_plcresp_work, 5*HZ);
 }
 
 static void send_plc_cmd(struct work_struct *work)
 {
+  int ret;
   if (G_await_resp > 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Attempted to send command, but driver is currently awaiting a response from the PLC.\n");
     G_cmd_pending = 1;
     return;
   }
-  printk(KERN_INFO PRINTK_PREFIX "Sending PLC command.\n");
+  printk(KERN_DEBUG PRINTK_PREFIX "Sending PLC command.\n");
   sprintf(&G_cur_plc_cmd_str[CNTR_FCS_TERM_OFFS], CNTR_FCS_TERM_FMT, calc_fcs(G_cur_plc_cmd_str, CNTR_FCS_TERM_OFFS));
-  write_to_plc(G_cur_plc_cmd_str, PLC_CMD_LEN);
+  ret = write_to_plc(G_cur_plc_cmd_str, PLC_CMD_LEN);
+  if (ret < 0)
+  {
+    if (G_status & PLC_COMM_OK)
+    {
+      printk(KERN_DEBUG PRINTK_PREFIX "PLC communications currently unavailable (%d)\n", ret);
+      G_status &= ~PLC_COMM_OK;
+    }
+    G_cmd_pending = 1;
+    return;
+  }
+  printk(KERN_DEBUG PRINTK_PREFIX "Sent PLC command (%hhd)\n", hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & CNTR_WATCHDOG_MASK);
+  if ((G_status & PLC_COMM_OK) == 0)
+  {
+    printk(KERN_DEBUG PRINTK_PREFIX "PLC communications re-established (%d)\n", ret);
+    G_status |= PLC_COMM_OK;
+  }
   G_await_resp = AWAIT_CMD_RESP;
   queue_delayed_work(G_plcdrv_workq, &G_plcresp_work, 5*HZ);
 }
 
-static int process_init_statresp(const char *buf, int len)
+/*static int process_init_statresp(const char *buf, int len)
 {
   if (len+1 < PLC_STAT_RESP_LEN)
   {
@@ -376,10 +414,10 @@ static int process_init_statresp(const char *buf, int len)
   init_cmd_str();
   send_plc_cmd(NULL);
   G_cur_plc_cmd_str[CNTR_DOME_STAT_OFFS] = '0';
-  queue_delayed_work(G_plcdrv_workq, &G_plccmd_work, 60*HZ);
+//   queue_delayed_work(G_plcdrv_workq, &G_plccmd_work, 60*HZ);
   queue_delayed_work(G_plcdrv_workq, &G_plcstat_work, HZ/5);
   return 1;
-}
+}*/
 
 static int process_cmdresp(const char *buf, int len)
 {
@@ -402,14 +440,14 @@ static int process_cmdresp(const char *buf, int len)
     G_cur_plc_cmd_str[CNTR_APER_STAT_OFFS] = '0';
     G_cur_plc_cmd_str[CNTR_FILT_STAT_OFFS] = '0';
   }
-  cancel_delayed_work(&G_plccmd_work);
-  queue_delayed_work(G_plcdrv_workq, &G_plccmd_work, 20*HZ);
+//   cancel_delayed_work(&G_plccmd_work);
+//   queue_delayed_work(G_plcdrv_workq, &G_plccmd_work, 20*HZ);
   return 0;
 }
 
 static int process_statresp(const char *buf, int len)
 {
-  queue_delayed_work(G_plcdrv_workq, &G_plcstat_work, HZ/5);
+//   queue_delayed_work(G_plcdrv_workq, &G_plcstat_work, HZ/5);
   if (len+1 < PLC_STAT_RESP_LEN)
   {
     printk(KERN_ERR PRINTK_PREFIX "Received invalid response to status request (invalid length - %d should be %d.\n", len, PLC_STAT_RESP_LEN);
@@ -440,45 +478,51 @@ static void process_response(const char *buf, int count)
   }
   switch (G_await_resp)
   {
-    case AWAIT_INIT_STATRESP:
-      ret = process_init_statresp(buf, count);
-      // ??? Used to return here, but removed it so error handling is performed (without goto), should work, but check
-      break;
     case AWAIT_CMD_RESP:
       ret = process_cmdresp(buf, count);
       break;
     case AWAIT_STAT_RESP:
       ret = process_statresp(buf, count);
+      if (G_cur_plc_cmd_str[0] == '\0')
+	init_cmd_str();
       break;
     default:
       printk(KERN_INFO PRINTK_PREFIX "Unexpected message received: %s\n", buf);
       break;
   }
-  if (ret < 0)
+  G_await_resp = 0;
+  cancel_delayed_work(&G_plcresp_work);
+  if (ret < 0) 
   {
-    G_status &= ~PLC_COMM_OK;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
-    wake_up_interruptible(&G_readq);
+    if (G_status & PLC_COMM_OK)
+    {
+      printk(KERN_ERR PRINTK_PREFIX "PLC communications failure (%d).\n", ret);
+      G_status &= ~PLC_COMM_OK;
+      wake_up_interruptible(&G_readq);
+    }
+    sched_delayed_statreq();
+    return;
   }
-  else if ((ret == 0) && ((G_status & PLC_COMM_OK) == 0))
+  if ((ret >= 0) && ((G_status & PLC_COMM_OK) == 0))
   {
+    printk(KERN_ERR PRINTK_PREFIX "PLC communications re-established.\n");
     G_status |= PLC_COMM_OK;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
+    if (ret > 0)
+      G_status |= NEW_STAT_AVAIL;
     wake_up_interruptible(&G_readq);
   }
   else if (ret > 0)
   {
     G_status |= NEW_STAT_AVAIL;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
     wake_up_interruptible(&G_readq);
   }
-  G_await_resp = 0;
-  cancel_delayed_work(&G_plcresp_work);
   if (G_cmd_pending)
   {
     send_plc_cmd(NULL);
     G_cmd_pending = 0;
   }
+  else
+    send_plc_statreq(NULL);
 }
 #endif
 
@@ -548,12 +592,14 @@ EXPORT_SYMBOL(set_handset_handler);
 static int actplc_open(struct inode *inode, struct file *filp)
 {
   G_num_open++;
+  printk(KERN_DEBUG PRINTK_PREFIX "Device opened: %d\n", G_num_open);
   if (G_num_open > 1)
     return 0;
-  #ifndef PLC_SIM
+/*  #ifndef PLC_SIM
+  G_status = 0;
   INIT_DELAYED_WORK(&G_plcresp_work, plc_resp_timeout);
   INIT_DELAYED_WORK(&G_plcstat_work, send_plc_statreq);
-  INIT_DELAYED_WORK(&G_plccmd_work, send_plc_cmd);
+//   INIT_DELAYED_WORK(&G_plccmd_work, send_plc_cmd);
   register_plc_handler(&process_response);
   send_plc_statreq(NULL);
   G_await_resp = AWAIT_INIT_STATRESP;
@@ -567,13 +613,14 @@ static int actplc_open(struct inode *inode, struct file *filp)
   snprintf(&G_cur_plc_stat_str[STAT_FOCUS_REG_OFFS], STAT_FOCUS_POS_LEN+1, "0350");
   snprintf(&G_cur_plc_stat_str[STAT_DOME_OFFS_OFFS], STAT_DOME_POS_LEN+1, STAT_DOME_POS_FMT, 0);
   init_cmd_str();
-  #endif
+  #endif*/
   
   return 0;
 }
 
 static int actplc_release(struct inode *inode, struct file *filp)
 {
+  printk(KERN_DEBUG PRINTK_PREFIX "Device released: %d\n", G_num_open);
   if (G_num_open == 0)
   {
     printk(KERN_ERR PRINTK_PREFIX "Strange: Device node is being closed, but no open connections.\n");
@@ -585,30 +632,33 @@ static int actplc_release(struct inode *inode, struct file *filp)
     printk(KERN_DEBUG PRINTK_PREFIX "Device released\n");
     return 0;
   }
-  printk(KERN_DEBUG PRINTK_PREFIX "Character device closed by all programmes. Closing PLC connection.\n");
+/*  printk(KERN_DEBUG PRINTK_PREFIX "Character device closed by all programmes. Closing PLC connection.\n");
   #ifndef PLC_SIM
   unregister_plc_handler();
   cancel_delayed_work(&G_plcstat_work);
-  cancel_delayed_work(&G_plccmd_work);
+//   cancel_delayed_work(&G_plccmd_work);
   cancel_delayed_work(&G_plcresp_work);
   G_await_resp = 0;
   #endif
-  G_status = 0;
+  G_status = 0;*/
   return 0;
 }
 
 static ssize_t actplc_read(struct file *filp, char *buf, size_t len, loff_t *offs)
 {
   int ret;
-  while ((G_status & NEW_STAT_AVAIL) == 0)
+  if (filp->f_flags & O_NONBLOCK)
+    ret = copy_to_user(buf, &G_status, 1);
+  else
   {
-    if (filp->f_flags & O_NONBLOCK)
-      return -EAGAIN;
-    if (wait_event_interruptible(G_readq, (G_status & NEW_STAT_AVAIL) == 0))
-      return -ERESTARTSYS;
+    while ((G_status & NEW_STAT_AVAIL) == 0)
+    {
+      if (wait_event_interruptible(G_readq, (G_status & NEW_STAT_AVAIL) == 0))
+	return -ERESTARTSYS;
+    }
+    ret = copy_to_user(buf, &G_status, 1);
   }
-  ret = put_user((char)G_status, buf) == 0 ? 1 : -EFAULT;
-  if (ret > 0)
+  if (ret >= 0)
     G_status &= ~NEW_STAT_AVAIL;
   return ret;
 }
@@ -624,13 +674,14 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
   char tmpstr[256], *ptr_right, *ptr_left;
   unsigned char i;
 
-  #ifndef PLC_SIM
+/*  #ifndef PLC_SIM
+  printk(KERN_DEBUG PRINTK_PREFIX "PLC COMM OK: %hhu", G_status & PLC_COMM_OK);
   if ((G_status & PLC_COMM_OK) == 0)
   {
-    printk(KERN_ERR PRINTK_PREFIX "User requested PLC command, but PLC communications currently unavailable.\n");
+    printk(KERN_ERR PRINTK_PREFIX "User requested PLC command/status, but PLC communications currently unavailable.\n");
     return -EIO;
   }
-  #endif
+  #endif*/
   
   switch (ioctl_num)
   {
@@ -648,7 +699,8 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     /// Reset PLC watchdog
     case IOCTL_RESET_WATCHDOG:
     {
-      i = hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & (~CNTR_WATCHDOG_MASK);
+      printk(KERN_DEBUG PRINTK_PREFIX "Watchdog reset IOCTL.\n");
+      i = hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]);
       G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK | i);
       ret = 1;
       break;
@@ -755,10 +807,10 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     case IOCTL_INSTRSHUTT_OPEN:
     {
       get_user(value, (unsigned long*)ioctl_param);
+      i = hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & (~CNTR_INSTR_SHUTT_MASK);
       if (value == 1)
-        G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_INSTR_SHUTT_MASK | CNTR_WATCHDOG_MASK);
-      else
-        G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK);
+	i |= CNTR_INSTR_SHUTT_MASK;
+      G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(i);
       ret = 1;
       break;
     }
@@ -846,7 +898,7 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
       G_cur_plc_cmd_str[CNTR_FILT_STAT_OFFS] = '0';
       parse_plc_status(G_cur_plc_stat_str, tmpstr);
       G_status |= NEW_STAT_AVAIL;
-      kill_fasync(&G_async_queue, SIGIO, POLL_IN);
+//       kill_fasync(&G_async_queue, SIGIO, POLL_IN);
       wake_up_interruptible(&G_readq);
       ret = 0;
       break;
@@ -944,7 +996,11 @@ static int __init act_plc_init(void)
   #ifndef PLC_SIM
   INIT_DELAYED_WORK(&G_plcresp_work, plc_resp_timeout);
   INIT_DELAYED_WORK(&G_plcstat_work, send_plc_statreq);
-  INIT_DELAYED_WORK(&G_plccmd_work, send_plc_cmd);
+//   INIT_DELAYED_WORK(&G_plccmd_work, send_plc_cmd);
+  register_plc_handler(&process_response);
+  send_plc_statreq(NULL);
+//   if (G_status & PLC_COMM_OK)
+//     G_await_resp = AWAIT_INIT_STATRESP;
   #else
   G_status |= PLC_COMM_OK;
   #endif
@@ -956,8 +1012,9 @@ static void __exit act_plc_exit(void)
   #ifndef PLC_SIM
   cancel_delayed_work(&G_plcresp_work);
   cancel_delayed_work(&G_plcstat_work);
-  cancel_delayed_work(&G_plccmd_work);
+//   cancel_delayed_work(&G_plccmd_work);
   destroy_workqueue(G_plcdrv_workq);
+  unregister_plc_handler();
   #endif
   device_destroy(G_class_plc, MKDEV(G_major, 0));
   class_destroy(G_class_plc);

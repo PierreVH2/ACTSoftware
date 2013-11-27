@@ -5,13 +5,12 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <act_log.h>
-// #include <act_ipc.h>
 #include <act_plc.h>
 #include "dti_plc.h"
 
-static void instance_init(DtiPlc *objs);
 static void class_init(DtiPlcClass *klass);
-static void instance_destroy(gpointer dti_plc);
+static void instance_init(GObject *dti_plc);
+static void instance_dispose(GObject *dti_plc);
 static gboolean plc_watch(GIOChannel *plc_chan, GIOCondition cond, gpointer dti_plc);
 static void plc_send(GIOChannel *plc_chan, glong ioctl_num, glong param);
 
@@ -62,7 +61,7 @@ GType dti_plc_get_type (void)
       NULL
     };
     
-    dti_plc_type = g_type_register_static (GTK_TYPE_OBJECT, "DtiPlc", &dti_plc_info, 0);
+    dti_plc_type = g_type_register_static (G_TYPE_OBJECT, "DtiPlc", &dti_plc_info, 0);
   }
   
   return dti_plc_type;
@@ -98,8 +97,8 @@ DtiPlc *dti_plc_new (void)
   objs->plc_chan = g_io_channel_unix_new(plc_fd);
   g_io_channel_set_close_on_unref(objs->plc_chan, TRUE);
   objs->plc_watch_id = g_io_add_watch (objs->plc_chan, G_IO_IN|G_IO_PRI, plc_watch, objs);
-  g_signal_connect_swapped(G_OBJECT(dti_plc), "destroy", G_CALLBACK(instance_destroy), dti_plc);
   objs->plc_comm_ok = TRUE;
+  memcpy(&objs->plc_stat, &tmp_plc_stat, sizeof(struct plc_status));
   
   return objs;
 }
@@ -284,14 +283,6 @@ void dti_plc_send_watchdog_reset(gpointer dti_plc)
   plc_send(DTI_PLC(dti_plc)->plc_chan, IOCTL_RESET_WATCHDOG, 0);
 }
 
-static void instance_init(DtiPlc *objs)
-{
-  memset(&objs->plc_stat, 0, sizeof(struct plc_status));
-  objs->plc_chan = NULL;
-  objs->plc_watch_id = 0;
-  objs->plc_comm_ok = FALSE;
-}
-
 static void class_init (DtiPlcClass *klass)
 {
   dti_plc_signals[PLC_COMM_STAT_UPDATE] = g_signal_new("plc-comm-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__BOOLEAN, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
@@ -312,16 +303,32 @@ static void class_init (DtiPlcClass *klass)
   dti_plc_signals[EHT_STAT_UPDATE] = g_signal_new("eht-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__BOOLEAN, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
   dti_plc_signals[INSTRSHUTT_OPEN_UPDATE] = g_signal_new("instrshutt-open-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__BOOLEAN, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
   dti_plc_signals[HANDSET_STAT_UPDATE] = g_signal_new("handset-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
+  G_OBJECT_CLASS(klass)->dispose = instance_dispose;
 }
 
-static void instance_destroy(gpointer dti_plc)
+static void instance_init(GObject *dti_plc)
 {
   DtiPlc *objs = DTI_PLC(dti_plc);
-  if (objs->plc_watch_id)
-    g_source_remove(objs->plc_watch_id);
-  objs->plc_watch_id = 0;
-  g_io_channel_unref(objs->plc_chan);
+  memset(&objs->plc_stat, 0, sizeof(struct plc_status));
   objs->plc_chan = NULL;
+  objs->plc_watch_id = 0;
+  objs->plc_comm_ok = FALSE;
+}
+
+static void instance_dispose(GObject *dti_plc)
+{
+  DtiPlc *objs = DTI_PLC(dti_plc);
+  if (objs->plc_watch_id > 0)
+  {
+    g_source_remove(objs->plc_watch_id);
+    objs->plc_watch_id = 0;
+  }
+  if (objs->plc_chan != NULL)
+  {
+    g_io_channel_unref(objs->plc_chan);
+    objs->plc_chan = NULL;
+  }
+  G_OBJECT_CLASS(dti_plc)->dispose(dti_plc);
 }
 
 static gboolean plc_watch(GIOChannel *plc_chan, GIOCondition cond, gpointer dti_plc)
@@ -350,7 +357,7 @@ static gboolean plc_watch(GIOChannel *plc_chan, GIOCondition cond, gpointer dti_
       return TRUE;
     }
   }
-  if ((tmp_stat & NEW_STAT_AVAIL) != 0)
+  if ((tmp_stat & NEW_STAT_AVAIL) == 0)
   {
     act_log_debug(act_log_msg("Reader called, but nothing to update."));
     return TRUE;

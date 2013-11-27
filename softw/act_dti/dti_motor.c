@@ -11,14 +11,14 @@
 #include "pointing_model.h"
 #include "tracking_model.h"
 
-#define DTIMOTOR_WARN_N        0x10
-#define DTIMOTOR_WARN_S        0x20
-#define DTIMOTOR_WARN_E        0x40
-#define DTIMOTOR_WARN_W        0x80
+#define DTI_MOTOR_WARN_N        0x10
+#define DTI_MOTOR_WARN_S        0x20
+#define DTI_MOTOR_WARN_E        0x40
+#define DTI_MOTOR_WARN_W        0x80
 
 static void dti_motor_class_init (DtimotorClass *klass);
-static void dti_motor_instance_init(Dtimotor *objs);
-static void dti_motor_destroy(gpointer dti_motor);
+static void dti_motor_instance_init(GObject *dti_motor);
+static void dti_motor_instance_dispose(GObject *dti_motor);
 static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpointer dti_motor);
 static void check_coord_poll(Dtimotor *objs);
 static gboolean coord_poll(gpointer dti_motor);
@@ -48,9 +48,9 @@ enum
   LAST_SIGNAL
 };
 
-/// Table for translating between DTIMOTOR speed modes and motor driver speed modes
+/// Table for translating between DTI_MOTOR speed modes and motor driver speed modes
 const guchar motor_speed_tbl[] = { 0, MOTOR_SPEED_GUIDE, MOTOR_SPEED_SET, MOTOR_SPEED_SLEW };
-/// Table for translating between DTIMOTOR direction modes and motor driver direction modes
+/// Table for translating between DTI_MOTOR direction modes and motor driver direction modes
 const guchar motor_dir_tbl[] = 
 {
   0,
@@ -86,7 +86,7 @@ GType dti_motor_get_type (void)
       NULL
     };
     
-    dti_motor_type = g_type_register_static (GTK_TYPE_OBJECT, "Dtimotor", &dti_motor_info, 0);
+    dti_motor_type = g_type_register_static (G_TYPE_OBJECT, "Dtimotor", &dti_motor_info, 0);
   }
   
   return dti_motor_type;
@@ -118,7 +118,7 @@ Dtimotor *dti_motor_new (void)
   struct decstruct tmp_dec;
   read_motor_coord(motor_fd, &tmp_ha, &tmp_dec);
   
-  Dtimotor *objs = DTIMOTOR(g_object_new (dti_motor_get_type (), NULL));
+  Dtimotor *objs = DTI_MOTOR(g_object_new (dti_motor_get_type (), NULL));
   objs->motor_chan = g_io_channel_unix_new(motor_fd);
   objs->motor_watch_id = g_io_add_watch (objs->motor_chan, G_IO_IN|G_IO_PRI, motor_read_ready, objs);
   check_coord_poll(objs);
@@ -134,7 +134,6 @@ Dtimotor *dti_motor_new (void)
   gchar pointing_model_str[256];
   PRINT_MODEL(pointing_model_str);
   act_log_debug(act_log_msg("Using pointing model: %s", pointing_model_str));
-  g_signal_connect_swapped(G_OBJECT(objs), "destroy", G_CALLBACK(dti_motor_destroy), objs);
   return objs;
 }
 
@@ -199,22 +198,22 @@ gboolean dti_motor_lim_W (Dtimotor *objs)
 
 gboolean dti_motor_warn_N (Dtimotor *objs)
 {
-  return (objs->cur_warn & DTIMOTOR_WARN_N) > 0;
+  return (objs->cur_warn & DTI_MOTOR_WARN_N) > 0;
 }
 
 gboolean dti_motor_warn_S (Dtimotor *objs)
 {
-  return (objs->cur_warn & DTIMOTOR_WARN_S) > 0;
+  return (objs->cur_warn & DTI_MOTOR_WARN_S) > 0;
 }
 
 gboolean dti_motor_warn_E (Dtimotor *objs)
 {
-  return (objs->cur_warn & DTIMOTOR_WARN_E) > 0;
+  return (objs->cur_warn & DTI_MOTOR_WARN_E) > 0;
 }
 
 gboolean dti_motor_warn_W (Dtimotor *objs)
 {
-  return (objs->cur_warn & DTIMOTOR_WARN_W) > 0;
+  return (objs->cur_warn & DTI_MOTOR_WARN_W) > 0;
 }
 
 GActTelcoord *dti_motor_get_coord(Dtimotor *objs)
@@ -280,10 +279,12 @@ static void dti_motor_class_init (DtimotorClass *klass)
   dti_motor_signals[LIMITS_UPDATE] = g_signal_new("limits-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
   dti_motor_signals[COORD_UPDATE] = g_signal_new("coord-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__OBJECT, G_TYPE_NONE, 1, G_TYPE_OBJECT);
   dti_motor_signals[GOTO_FINISH] = g_signal_new("goto-finish", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__BOOLEAN, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
+  G_OBJECT_CLASS(klass)->dispose = dti_motor_instance_dispose;
 }
 
-static void dti_motor_instance_init(Dtimotor *objs)
+static void dti_motor_instance_init(GObject *dti_motor)
 {
+  Dtimotor *objs = DTI_MOTOR(dti_motor);
   objs->motor_chan = NULL;
   objs->coord_to_id = objs->motor_watch_id = 0;
   objs->lim_W_h = objs->lim_E_h = objs->lim_N_d = objs->lim_S_d = objs->lim_alt_d = 0.0;
@@ -293,19 +294,36 @@ static void dti_motor_instance_init(Dtimotor *objs)
     g_object_ref_sink(objs->cur_coord);
 }
 
-static void dti_motor_destroy(gpointer dti_motor)
+static void dti_motor_instance_dispose(GObject *dti_motor)
 {
-  Dtimotor *objs = DTIMOTOR(dti_motor);
-  g_io_channel_unref(objs->motor_chan);
-  g_source_remove(objs->motor_watch_id);
-  g_source_remove(objs->coord_to_id);
-  g_object_unref(objs->cur_coord);
+  Dtimotor *objs = DTI_MOTOR(dti_motor);
+  if (objs->motor_watch_id > 0)
+  {
+    g_source_remove(objs->motor_watch_id);
+    objs->motor_watch_id = 0;
+  }
+  if (objs->coord_to_id > 0)
+  {
+    g_source_remove(objs->coord_to_id);
+    objs->coord_to_id = 0;
+  }
+  if (objs->motor_chan != NULL)
+  {
+    g_io_channel_unref(objs->motor_chan);
+    objs->motor_chan = NULL;
+  }
+  if (objs->cur_coord != NULL)
+  {
+    g_object_unref(objs->cur_coord);
+    objs->cur_coord = NULL;
+  }
+  G_OBJECT_CLASS(dti_motor)->dispose(dti_motor);
 }
 
 static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpointer dti_motor)
 {
   (void) cond;
-  Dtimotor *objs = DTIMOTOR(dti_motor);
+  Dtimotor *objs = DTI_MOTOR(dti_motor);
   guchar tmp_stat;
   gint motor_fd = g_io_channel_unix_get_fd(motor_chan);
   gint ret = read_motor_stat(motor_fd, &tmp_stat);
@@ -351,7 +369,7 @@ static void check_coord_poll(Dtimotor *objs)
 
 static gboolean coord_poll(gpointer dti_motor)
 {
-  Dtimotor *objs = DTIMOTOR(dti_motor);
+  Dtimotor *objs = DTI_MOTOR(dti_motor);
   struct hastruct tmp_ha;
   struct decstruct tmp_dec;
   gint motor_fd = g_io_channel_unix_get_fd(objs->motor_chan);
@@ -365,7 +383,7 @@ static gboolean coord_poll(gpointer dti_motor)
     objs->cur_warn = tmp_warn;
   }
   
-  if ((objs->cur_stat & MOTOR_STAT_TRACKING) && (MOTOR_LIM_W(objs->cur_limits) || (tmp_warn & DTIMOTOR_WARN_W)))
+  if ((objs->cur_stat & MOTOR_STAT_TRACKING) && (MOTOR_LIM_W(objs->cur_limits) || (tmp_warn & DTI_MOTOR_WARN_W)))
     send_motor_stop(g_io_channel_unix_get_fd(objs->motor_chan));
   else if (objs->cur_stat & MOTOR_STAT_TRACKING)
   {
@@ -393,13 +411,13 @@ static guchar check_warn(Dtimotor *objs)
 {
   guchar tmp_warn = 0;
   if (convert_HMSMS_H_ha(&objs->cur_coord->ha) > objs->lim_W_h)
-    tmp_warn |= DTIMOTOR_WARN_W;
+    tmp_warn |= DTI_MOTOR_WARN_W;
   if (convert_HMSMS_H_ha(&objs->cur_coord->ha) < objs->lim_E_h)
-    tmp_warn |= DTIMOTOR_WARN_E;
+    tmp_warn |= DTI_MOTOR_WARN_E;
   if (convert_DMS_D_dec(&objs->cur_coord->dec) > objs->lim_N_d)
-    tmp_warn |= DTIMOTOR_WARN_N;
+    tmp_warn |= DTI_MOTOR_WARN_N;
   if (convert_DMS_D_dec(&objs->cur_coord->dec) > objs->lim_S_d)
-    tmp_warn |= DTIMOTOR_WARN_S;
+    tmp_warn |= DTI_MOTOR_WARN_S;
   
   struct altstruct tmpalt;
   struct azmstruct tmpazm;
@@ -408,13 +426,13 @@ static guchar check_warn(Dtimotor *objs)
   {
     double tmpazm_d = convert_DMS_D_azm(&tmpazm);
     if ((tmpazm_d > -90.0) && (tmpazm_d < 90.0))
-      tmp_warn |= DTIMOTOR_WARN_N;
+      tmp_warn |= DTI_MOTOR_WARN_N;
     if ((tmpazm_d > 0.0) && (tmpazm_d < 180.0))
-      tmp_warn |= DTIMOTOR_WARN_W;
+      tmp_warn |= DTI_MOTOR_WARN_W;
     if ((tmpazm_d > 90.0) && (tmpazm_d < 270.0))
-    tmp_warn |= DTIMOTOR_WARN_S;
+    tmp_warn |= DTI_MOTOR_WARN_S;
     if ((tmpazm_d > 180.0) && (tmpazm_d < 360.0))
-      tmp_warn |= DTIMOTOR_WARN_E;
+      tmp_warn |= DTI_MOTOR_WARN_E;
   }
   
   return tmp_warn;
@@ -453,8 +471,8 @@ static gint read_motor_stat(gint motor_fd, guchar *motor_stat)
 
 static gint read_motor_limits(gint motor_fd, guchar *limits_stat)
 {
-  gulong motor_limits;
-  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GET_LIMITS, &motor_limits);
+  unsigned char motor_limits;
+  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GET_LIMITS, motor_limits);
   if (ret < 0)
   {
     act_log_error(act_log_msg("Failed to read limit switch status from motor driver character device - %s.", strerror(errno)));
@@ -570,7 +588,7 @@ GType gact_telcoord_get_type (void)
       NULL
     };
     
-    gacttelcoord_type = g_type_register_static (GTK_TYPE_OBJECT, "GActTelcoord", &gact_telcoord_info, 0);
+    gacttelcoord_type = g_type_register_static (G_TYPE_OBJECT, "GActTelcoord", &gact_telcoord_info, 0);
   }
   
   return gacttelcoord_type;
@@ -619,7 +637,7 @@ GType gact_telgoto_get_type (void)
       NULL
     };
     
-    gacttelgoto_type = g_type_register_static (GTK_TYPE_OBJECT, "GActTelgoto", &gacttelgoto_info, 0);
+    gacttelgoto_type = g_type_register_static (G_TYPE_OBJECT, "GActTelgoto", &gacttelgoto_info, 0);
   }
   
   return gacttelgoto_type;

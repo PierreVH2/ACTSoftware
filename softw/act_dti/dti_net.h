@@ -42,7 +42,7 @@ typedef struct _DtiMsgClass  DtiMsgClass;
 
 struct _DtiMsg
 {
-  GtkObject parent;
+  GObject parent;
   
   struct act_msg msg;
   guchar dti_stage;
@@ -51,7 +51,7 @@ struct _DtiMsg
 
 struct _DtiMsgClass
 {
-  GtkObjectClass parent_class;
+  GObjectClass parent_class;
 };
 
 
@@ -60,14 +60,14 @@ typedef struct _DtiNetClass  DtiNetClass;
 
 struct _DtiNet
 {
-  GtkObject parent;
+  GObject parent;
   GIOChannel *net_chan;
   gint net_watch_id;
 };
 
 struct _DtiNetClass
 {
-  GtkObjectClass parent_class;
+  GObjectClass parent_class;
 };
 
 

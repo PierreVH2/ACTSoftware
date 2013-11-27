@@ -24,13 +24,13 @@ drivers_start ()
     modprobe merlin_driver
     modprobe pmt_driver
     echo "Testing for PLC"
-    nohup act_plc_hog $(find /dev \( -name ttyS* -o -name ttyUSB* \) ) &
+    nohup plc_hog $(find /dev \( -name ttyS* -o -name ttyUSB* \) ) &
     echo "Done"
 }
 
 drivers_stop ()
 {
-  killall act_plc_hog
+  killall -s SIGINT plc_hog
   if lsmod | grep -q ^pmt_driver ; then rmmod pmt_driver ; fi
   if lsmod | grep -q ^merlin_driver ; then rmmod merlin_driver ; fi
   if lsmod | grep -q ^motor_driver ; then rmmod motor_driver ; fi
@@ -41,6 +41,7 @@ drivers_stop ()
 
 drivers_force_stop ()
 {
+  killall plc_hog
   rmmod -f pmt_driver
   rmmod -f merlin_driver
   rmmod -f motor_driver

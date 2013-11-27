@@ -84,8 +84,8 @@ struct form_main
   struct act_msg_pmtcap pmtcap_msg;
 };
 
-gboolean watchdog_reset(gpointer user_data);
-void request_guisock(gpointer form);
+gboolean watchdog_reset(gpointer dti_net);
+void request_guisock(gpointer dti_net);
 void main_receive_message(gpointer form, gpointer msg);
 void main_process_message_resp(gpointer user_data, guchar ret, gpointer msg);
 void interlock_domeshutter_open(gpointer form, gboolean is_open);
@@ -95,8 +95,11 @@ void main_set_caps(gpointer form);
 void process_quit(gpointer form, gpointer msg, guchar ret);
 void process_cap(gpointer form, gpointer msg);
 void process_guisock(gpointer form, gpointer msg);
+void process_targcap_req(gpointer form, gpointer msg);
 void process_targset(gpointer form, gpointer msg, guchar ret);
+void process_pmtcap_req(gpointer form, gpointer msg);
 void process_datapmt(gpointer form, gpointer msg, guchar ret);
+void process_ccdcap_req(gpointer form, gpointer msg);
 void process_dataccd(gpointer form, gpointer msg, guchar ret);
 void process_message_all(gpointer form, gpointer msg);
 void process_stat_resp(gpointer form, gpointer msg, guchar ret);
@@ -182,27 +185,24 @@ int main(int argc, char** argv)
   g_object_ref (G_OBJECT(form.box_main));
   
   form.domeshutter = domeshutter_new(dti_plc_get_domeshutt_stat(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.domeshutter));
   gtk_table_attach(GTK_TABLE(form.box_main), form.domeshutter, 0, 1, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.domeshutter), "is-open", G_CALLBACK(interlock_domeshutter_open), &form);
   g_signal_connect_swapped(G_OBJECT(form.domeshutter), "start-open", G_CALLBACK(dti_plc_send_domeshutter_open), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.domeshutter), "start-close", G_CALLBACK(dti_plc_send_domeshutter_close), form.dti_plc);
-  g_signal_connect_swapped(G_OBJECT(form.domeshutter), "stop", G_CALLBACK(dti_plc_send_domeshutter_stop), form.dti_plc);
+  g_signal_connect_swapped(G_OBJECT(form.domeshutter), "stop-move", G_CALLBACK(dti_plc_send_domeshutter_stop), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.domeshutter), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "domeshutt-stat-update", G_CALLBACK(domeshutter_update), form.domeshutter);
     
   form.dropout = dropout_new(dti_plc_get_dropout_stat(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.dropout));
   gtk_table_attach(GTK_TABLE(form.box_main), form.dropout, 0, 1, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.dropout), "is-closed", G_CALLBACK(interlock_dropout_closed), &form);
   g_signal_connect_swapped(G_OBJECT(form.dropout), "start-open", G_CALLBACK(dti_plc_send_dropout_open), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.dropout), "start-close", G_CALLBACK(dti_plc_send_dropout_close), form.dti_plc);
-  g_signal_connect_swapped(G_OBJECT(form.dropout), "stop", G_CALLBACK(dti_plc_send_dropout_stop), form.dti_plc);
+  g_signal_connect_swapped(G_OBJECT(form.dropout), "stop-move", G_CALLBACK(dti_plc_send_dropout_stop), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.dropout), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "dropout-stat-update", G_CALLBACK(dropout_update), form.dropout);
   
   form.domemove = domemove_new(dti_plc_get_dome_moving(DTI_PLC(form.dti_plc)), dti_plc_get_dome_azm(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.domemove));
   gtk_table_attach(GTK_TABLE(form.box_main), form.domemove, 0, 1, 2, 3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.domemove), "start-move-left", G_CALLBACK(dti_plc_send_domemove_start_left), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.domemove), "start-move-right", G_CALLBACK(dti_plc_send_domemove_start_right), form.dti_plc);
@@ -213,7 +213,6 @@ int main(int argc, char** argv)
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "dome-moving-update", G_CALLBACK(domemove_update_moving), form.domemove);
 
   form.dtimisc = dtimisc_new(TRUE, dti_plc_get_watchdog_tripped(DTI_PLC(form.dti_plc)), dti_plc_get_power_failed(DTI_PLC(form.dti_plc)), dti_plc_get_trapdoor_open(DTI_PLC(form.dti_plc)), dti_plc_get_eht_stat(DTI_PLC(form.dti_plc)), dti_plc_get_focus_stat(DTI_PLC(form.dti_plc)), dti_plc_get_focus_pos(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.dtimisc));
   gtk_table_attach(GTK_TABLE(form.box_main), form.dtimisc, 0, 2, 3, 4, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.dtimisc), "send-focus-pos", G_CALLBACK(dti_plc_send_focus_pos), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.dtimisc), "send-eht-high", G_CALLBACK(dti_plc_send_eht_high), form.dti_plc);
@@ -227,13 +226,11 @@ int main(int argc, char** argv)
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "eht-stat-update", G_CALLBACK(dtimisc_update_eht), form.dtimisc);
 
   form.telmove = telmove_new();
-//   g_object_ref(G_OBJECT(form.telmove));
   gtk_table_attach(GTK_TABLE(form.box_main), form.telmove, 1, 2, 0, 3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.telmove), "send-coord", G_CALLBACK(main_send_coord), &form);
   g_signal_connect_swapped(G_OBJECT(form.telmove), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
 
   form.acqmir = acqmir_new(dti_plc_get_acqmir_stat(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.acqmir));
   gtk_table_attach(GTK_TABLE(form.box_main), form.acqmir, 2, 3, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.acqmir), "send-acqmir-view", G_CALLBACK(dti_plc_send_acqmir_view), form.dti_plc);g_signal_connect_swapped(G_OBJECT(form.acqmir), "send-acqmir-meas", G_CALLBACK(dti_plc_send_acqmir_meas), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.acqmir), "send-acqmir-stop", G_CALLBACK(dti_plc_send_acqmir_stop), form.dti_plc);
@@ -241,7 +238,6 @@ int main(int argc, char** argv)
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "acqmir-stat-update", G_CALLBACK(acqmir_update), form.acqmir);
   
   form.filter = filter_new(dti_plc_get_filt_stat(DTI_PLC(form.dti_plc)), dti_plc_get_filt_slot(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.filter));
   gtk_table_attach(GTK_TABLE(form.box_main), form.filter, 2, 3, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.filter), "send-filter", G_CALLBACK(dti_plc_send_change_filter), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.filter), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
@@ -249,7 +245,6 @@ int main(int argc, char** argv)
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "filt-stat-update", G_CALLBACK(filter_update_stat), form.filter);
   
   form.aperture = aperture_new(dti_plc_get_aper_stat(DTI_PLC(form.dti_plc)), dti_plc_get_aper_slot(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.aperture));
   gtk_table_attach(GTK_TABLE(form.box_main), form.aperture, 2, 3, 2, 3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.aperture), "send-aperture", G_CALLBACK(dti_plc_send_change_aperture), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.aperture), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
@@ -257,7 +252,6 @@ int main(int argc, char** argv)
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "aper-stat-update", G_CALLBACK(aperture_update_stat), form.aperture);
   
   form.instrshutt = instrshutt_new(dti_plc_get_instrshutt_open(DTI_PLC(form.dti_plc)));
-//   g_object_ref(G_OBJECT(form.instrshutt));
   gtk_table_attach(GTK_TABLE(form.box_main), form.instrshutt, 2, 3, 3, 4, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.instrshutt), "send-instrshutt-open", G_CALLBACK(dti_plc_send_instrshutt_toggle), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.instrshutt), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
@@ -265,8 +259,9 @@ int main(int argc, char** argv)
   
   g_signal_connect_swapped(G_OBJECT(form.dti_net), "message-received", G_CALLBACK(main_receive_message), &form);
   
-  main_set_caps((void *)&form);
+//   main_set_caps((void *)&form);
   request_guisock(form.dti_net);
+  watchdog_reset((void *)form.dti_plc);
   form.watchdog_reset_to_id = g_timeout_add_seconds(WATCHDOG_TIMEOUT_S, watchdog_reset, form.dti_plc);
   
   act_log_normal(act_log_msg("Entering main loop."));
@@ -280,33 +275,31 @@ int main(int argc, char** argv)
   return 0;
 }
 
-gboolean watchdog_reset(gpointer form)
+gboolean watchdog_reset(gpointer dti_plc)
 {
-  struct form_main *objs = (struct form_main *) form;
-  dti_plc_send_watchdog_reset(DTI_PLC(objs->dti_plc));
+  dti_plc_send_watchdog_reset(dti_plc);
   return TRUE;
 }
 
-void request_guisock(gpointer form)
+void request_guisock(gpointer dti_net)
 {
-  struct form_main *objs = (struct form_main *) form;
   DtiMsg * msg = dti_msg_new(NULL, 0);
   if (g_object_is_floating(G_OBJECT(msg)))
     g_object_ref_sink(G_OBJECT(msg));
   dti_msg_set_mtype (msg, MT_GUISOCK);
   memset(dti_msg_get_guisock(msg), 0, sizeof(struct act_msg_guisock));
-  if (dti_net_send(DTI_NET(objs->dti_net), msg) < 0)
+  if (dti_net_send(DTI_NET(dti_net), msg) < 0)
     act_log_crit(act_log_msg("Failed to request GUI socket."));
   g_object_unref(msg);
 }
 
 void main_receive_message(gpointer form, gpointer msg)
 {
-//   struct form_main *objs = (struct form_main *)form;
   if (g_object_is_floating(G_OBJECT(msg)))
     g_object_ref_sink(G_OBJECT(msg));
   dti_msg_set_dtistage(msg, 0);
   gint mtype = dti_msg_get_mtype(msg);
+  act_log_debug(act_log_msg("Message received, type %d.", mtype));
   switch(mtype)
   {
     case MT_QUIT:
@@ -319,7 +312,12 @@ void main_receive_message(gpointer form, gpointer msg)
       process_cap(form, msg);
       break;
     case MT_STAT:
-      process_message_all(form, msg);
+      /// TODO: Implement
+//       process_message_all(form, msg);
+      dti_msg_get_stat(msg)->status = PROGSTAT_RUNNING;
+      if (dti_net_send(((struct form_main *)form)->dti_net, msg) < 0)
+	act_log_error(act_log_msg("Failed to send status response message."));
+//       g_object_unref(msg);
       break;
     case MT_GUISOCK:
       process_guisock(form, msg);
@@ -335,19 +333,34 @@ void main_receive_message(gpointer form, gpointer msg)
       process_message_all(form, msg);
       break;
     case MT_TARG_CAP:
-      process_message_all(form, msg);
+      if (dti_msg_get_targcap(msg)->targset_stage == TARGSET_MOVE_TEL)
+      {
+        process_message_all(form, msg);
+        break;
+      }
+      process_targcap_req(form, msg);
       break;
     case MT_TARG_SET:
       process_targset(form, msg, OBSNSTAT_GOOD);
       break;
     case MT_PMT_CAP:
-      process_message_all(form, msg);
+      if (dti_msg_get_pmtcap(msg)->datapmt_stage == DATAPMT_PREP_PHOTOM)
+      {
+        process_message_all(form, msg);
+        break;
+      }
+      process_pmtcap_req(form, msg);
       break;
     case MT_DATA_PMT:
       process_datapmt(form, msg, OBSNSTAT_GOOD);
       break;
     case MT_CCD_CAP:
-      process_message_all(form, msg);
+      if (dti_msg_get_ccdcap(msg)->dataccd_stage == DATACCD_PREP_PHOTOM)
+      {
+        process_message_all(form, msg);
+        break;
+      }
+      process_ccdcap_req(form, msg);
       break;
     case MT_DATA_CCD:
       process_dataccd(form, msg, OBSNSTAT_GOOD);
@@ -361,6 +374,7 @@ void main_receive_message(gpointer form, gpointer msg)
 void main_process_message_resp(gpointer form, guchar ret, gpointer msg)
 {
   gint mtype = dti_msg_get_mtype(msg);
+  act_log_debug(act_log_msg("Message response received (type %d).", mtype));
   switch(mtype)
   {
     case MT_QUIT:
@@ -433,44 +447,77 @@ void main_send_coord(gpointer form, gpointer coord_msg)
 
 void main_set_caps(gpointer form)
 {
-  DtiMsg *tmp_msg = dti_msg_new(NULL, 0);
   struct form_main *objs = (struct form_main *)form;
+  
+  DtiMsg *msg = dti_msg_new(NULL, 0);
+  if (g_object_is_floating(msg))
+    g_object_ref_sink(msg);
+  dti_msg_set_mtype (msg, MT_TARG_CAP);
+  memcpy(dti_msg_get_targcap(msg), &objs->targcap_msg, sizeof(struct act_msg_targcap));
+  process_message_all(form, msg);
+  
+  msg = dti_msg_new(NULL, 0);
+  if (g_object_is_floating(msg))
+    g_object_ref_sink(msg);
+  dti_msg_set_mtype (msg, MT_PMT_CAP);
+  memcpy(dti_msg_get_pmtcap(msg), &objs->pmtcap_msg, sizeof(struct act_msg_pmtcap));
+  process_message_all(form, msg);
 
-  dti_msg_set_mtype (tmp_msg, MT_TARG_CAP);
-  memcpy(dti_msg_get_targcap(tmp_msg), &objs->targcap_msg, sizeof(struct act_msg_targcap));
-  domeshutter_process_msg(objs->domeshutter, tmp_msg);
-  dropout_process_msg(objs->dropout, tmp_msg);
-  domemove_process_msg(objs->domemove, tmp_msg);
-  telmove_process_msg(objs->telmove, tmp_msg);
-  dtimisc_process_msg(objs->dtimisc, tmp_msg);
-  acqmir_process_msg(objs->acqmir, tmp_msg);
-  filter_process_msg(objs->filter, tmp_msg);
-  aperture_process_msg(objs->aperture, tmp_msg);
-  instrshutt_process_msg(objs->instrshutt, tmp_msg);
+  msg = dti_msg_new(NULL, 0);
+  if (g_object_is_floating(msg))
+    g_object_ref_sink(msg);
+  dti_msg_set_mtype (msg, MT_CCD_CAP);
+  memcpy(dti_msg_get_ccdcap(msg), &objs->ccdcap_msg, sizeof(struct act_msg_ccdcap));
+  process_message_all(form, msg);
+
+
+/*  DtiMsg *msg = dti_msg_new(NULL, 0);
+  if (g_object_is_floating(msg))
+    g_object_ref_sink(msg);
+  dti_msg_set_num_pending(msg, NUM_WIDGETS);
+  dti_msg_set_mtype (msg, MT_TARG_CAP);
+  memcpy(dti_msg_get_targcap(msg), &objs->targcap_msg, sizeof(struct act_msg_targcap));
+  domeshutter_process_msg(objs->domeshutter, msg);
+  dropout_process_msg(objs->dropout, msg);
+  domemove_process_msg(objs->domemove, msg);
+  telmove_process_msg(objs->telmove, msg);
+  dtimisc_process_msg(objs->dtimisc, msg);
+  acqmir_process_msg(objs->acqmir, msg);
+  filter_process_msg(objs->filter, msg);
+  aperture_process_msg(objs->aperture, msg);
+  instrshutt_process_msg(objs->instrshutt, msg);
   
-  dti_msg_set_mtype (tmp_msg, MT_PMT_CAP);
-  memcpy(dti_msg_get_pmtcap(tmp_msg), &objs->pmtcap_msg, sizeof(struct act_msg_pmtcap));
-  domeshutter_process_msg(objs->domeshutter, tmp_msg);
-  dropout_process_msg(objs->dropout, tmp_msg);
-  domemove_process_msg(objs->domemove, tmp_msg);
-  telmove_process_msg(objs->telmove, tmp_msg);
-  dtimisc_process_msg(objs->dtimisc, tmp_msg);
-  acqmir_process_msg(objs->acqmir, tmp_msg);
-  filter_process_msg(objs->filter, tmp_msg);
-  aperture_process_msg(objs->aperture, tmp_msg);
-  instrshutt_process_msg(objs->instrshutt, tmp_msg);
+  msg = dti_msg_new(NULL, 0);
+  if (g_object_is_floating(msg))
+    g_object_ref_sink(msg);
+  dti_msg_set_num_pending(msg, NUM_WIDGETS);
+  dti_msg_set_mtype (msg, MT_PMT_CAP);
+  memcpy(dti_msg_get_pmtcap(msg), &objs->pmtcap_msg, sizeof(struct act_msg_pmtcap));
+  domeshutter_process_msg(objs->domeshutter, msg);
+  dropout_process_msg(objs->dropout, msg);
+  domemove_process_msg(objs->domemove, msg);
+  telmove_process_msg(objs->telmove, msg);
+  dtimisc_process_msg(objs->dtimisc, msg);
+  acqmir_process_msg(objs->acqmir, msg);
+  filter_process_msg(objs->filter, msg);
+  aperture_process_msg(objs->aperture, msg);
+  instrshutt_process_msg(objs->instrshutt, msg);
   
-  dti_msg_set_mtype (tmp_msg, MT_CCD_CAP);
-  memcpy(dti_msg_get_ccdcap(tmp_msg), &objs->ccdcap_msg, sizeof(struct act_msg_ccdcap));
-  domeshutter_process_msg(objs->domeshutter, tmp_msg);
-  dropout_process_msg(objs->dropout, tmp_msg);
-  domemove_process_msg(objs->domemove, tmp_msg);
-  telmove_process_msg(objs->telmove, tmp_msg);
-  dtimisc_process_msg(objs->dtimisc, tmp_msg);
-  acqmir_process_msg(objs->acqmir, tmp_msg);
-  filter_process_msg(objs->filter, tmp_msg);
-  aperture_process_msg(objs->aperture, tmp_msg);
-  instrshutt_process_msg(objs->instrshutt, tmp_msg);
+  msg = dti_msg_new(NULL, 0);
+  if (g_object_is_floating(msg))
+    g_object_ref_sink(msg);
+  dti_msg_set_num_pending(msg, NUM_WIDGETS);
+  dti_msg_set_mtype (msg, MT_CCD_CAP);
+  memcpy(dti_msg_get_ccdcap(msg), &objs->ccdcap_msg, sizeof(struct act_msg_ccdcap));
+  domeshutter_process_msg(objs->domeshutter, msg);
+  dropout_process_msg(objs->dropout, msg);
+  domemove_process_msg(objs->domemove, msg);
+  telmove_process_msg(objs->telmove, msg);
+  dtimisc_process_msg(objs->dtimisc, msg);
+  acqmir_process_msg(objs->acqmir, msg);
+  filter_process_msg(objs->filter, msg);
+  aperture_process_msg(objs->aperture, msg);
+  instrshutt_process_msg(objs->instrshutt, msg);*/
 }
 
 void process_quit(gpointer form, gpointer msg, guchar ret)
@@ -540,6 +587,7 @@ void process_cap(gpointer form, gpointer msg)
 
 void process_guisock(gpointer form, gpointer msg)
 {
+  act_log_debug(act_log_msg("Received GUI socket message."));
   struct act_msg_guisock *msg_guisock = dti_msg_get_guisock(msg);
   if (msg_guisock->gui_socket <= 0)
   {
@@ -559,6 +607,15 @@ void process_guisock(gpointer form, gpointer msg)
   g_signal_connect(G_OBJECT(plg_new),"destroy",G_CALLBACK(destroy_gui_plug),objs->box_main);
   gtk_widget_show_all(plg_new);
   g_object_unref(G_OBJECT(msg));
+}
+
+void process_targcap_req(gpointer form, gpointer msg)
+{
+  struct form_main *objs = (struct form_main *)form;
+  dti_msg_get_targcap(msg)->targset_stage = TARGSET_MOVE_TEL;
+  memcpy(dti_msg_get_targcap(msg), &objs->targcap_msg, sizeof(struct act_msg_targcap));
+  if (dti_net_send(objs->dti_net, msg) < 0)
+    act_log_error(act_log_msg("Failed to send target set capabilities response message."));
 }
 
 void process_targset(gpointer form, gpointer msg, guchar ret)
@@ -618,6 +675,15 @@ void process_targset(gpointer form, gpointer msg, guchar ret)
   }
 }
 
+void process_pmtcap_req(gpointer form, gpointer msg)
+{
+  struct form_main *objs = (struct form_main *)form;
+  dti_msg_get_pmtcap(msg)->datapmt_stage = DATAPMT_PREP_PHOTOM;
+  memcpy(dti_msg_get_pmtcap(msg), &objs->pmtcap_msg, sizeof(struct act_msg_pmtcap));
+  if (dti_net_send(objs->dti_net, msg) < 0)
+    act_log_error(act_log_msg("Failed to send data PMT capabilities response message."));
+}
+
 void process_datapmt(gpointer form, gpointer msg, guchar ret)
 {
   struct form_main *objs = (struct form_main *)form;
@@ -673,6 +739,15 @@ void process_datapmt(gpointer form, gpointer msg, guchar ret)
         g_object_unref(G_OBJECT(msg));
       }
   }
+}
+
+void process_ccdcap_req(gpointer form, gpointer msg)
+{
+  struct form_main *objs = (struct form_main *)form;
+  dti_msg_get_ccdcap(msg)->dataccd_stage = DATACCD_PREP_PHOTOM;
+  memcpy(dti_msg_get_ccdcap(msg), &objs->ccdcap_msg, sizeof(struct act_msg_ccdcap));
+  if (dti_net_send(objs->dti_net, msg) < 0)
+    act_log_error(act_log_msg("Failed to send data CCD capabilities response message."));
 }
 
 void process_dataccd(gpointer form, gpointer msg, guchar ret)
@@ -752,7 +827,8 @@ void process_response_all(gpointer msg)
       act_log_error(act_log_msg("Message response received, but pending counter already at 0."));
     g_object_unref(msg);
   }
-  dti_msg_dec_num_pending(msg);
+  else
+    dti_msg_dec_num_pending(msg);
 }
 
 void destroy_gui_plug(GtkWidget *plug, gpointer box_main)

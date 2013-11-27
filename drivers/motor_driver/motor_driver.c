@@ -204,8 +204,6 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     case IOCTL_MOTOR_GET_LIMITS:
       user_data.limits_stat = get_motor_limits();
       value = copy_to_user(&user_data.limits_stat, (void *)ioctl_param, sizeof(unsigned char));
-      if (value != 0)
-        value = -EFAULT;
       break;
     
     case IOCTL_MOTOR_EMERGENCY_STOP:
@@ -273,7 +271,7 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     case IOCTL_GET_SIM_RATE:
     {
       unsigned long sim_speed = get_sim_speed();
-      value = copy_to_user((void*)ioctl_param, &sim_speed, sizeof(unsigned long));
+      value = copy_to_user((void*)ioctl_param, &sim_speed, sizeof(unsigned char));
       if (value < 0)
       {
         printk(KERN_INFO PRINTK_PREFIX "Failed to write simulated speed to user-space.\n");
@@ -289,195 +287,6 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
   }
   return value;
 }
-
-// This function is called whenever a process tries to do an ioctl on our device file. 
-/*static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned long ioctl_param)
-{
-  long value;
-  void *user_data = NULL;
-
-  switch (ioctl_num)
-  {
-    /// Get the telescope's current position - saves struct tel_coord to ioctl parameter
-    case IOCTL_MOTOR_GET_TEL_POS:
-    {
-      int ha_steps, dec_steps;
-      get_coords(&ha_steps, &dec_steps);
-      struct tel_coord user_coord;
-      user_coord.ha_steps = ha_steps;
-      user_coord.dec_steps = dec_steps;
-      value = copy_to_user((void*)ioctl_param, &user_coord, sizeof(struct tel_coord));
-      break;
-    }
-
-    /// Start a telescope goto - receives struct tel_goto as ioctl parameter, cancels command if ioctl parameter is NULL.
-    case IOCTL_TEL_GOTO:
-    {
-      if (ioctl_param == 0)
-      {
-        value = 0;
-        if ((G_status & MOTOR_STAT_MOVING) == 0)
-        {
-          printk(KERN_DEBUG PRINTK_PREFIX "Received goto cancel command, but no goto is underway. Ignoring.\n");
-          break;
-        }
-        user_cancel_goto();
-        break;
-      }
-      user_data = kmalloc(sizeof(struct tel_goto_cmd), GFP_ATOMIC);
-      if (user_data == NULL)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Could not allocate memory for goto parameters. Ignoring goto command.\n");
-        value = -ENOMEM;
-        break;
-      }
-      value = copy_from_user(user_data, (void*)ioctl_param, sizeof(struct tel_goto_cmd));
-      if (value < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Received goto command. Could not copy goto parameters from user.\n");
-        kfree(user_data);
-        user_data = NULL;
-        value = -EIO;
-        break;
-      }
-      value = user_start_goto((struct tel_goto_cmd *) user_data);
-      break;
-    }
-
-    /// Set telescope tracking - 0 means disable tracking, everything else means track at the specified speed (usually you want SID_RATE)
-    // ??? Allow to disable tracking if if motors not initialised and allstop active
-    case IOCTL_TEL_SET_TRACKING:
-    {
-      get_user(value, (unsigned long*)ioctl_param);
-      value = user_toggle_track(value);
-      break;
-    }
-
-    case IOCTL_GET_LIMITS:
-    {
-      value = get_limits();
-      put_user(value, (unsigned long*)ioctl_param);
-      value = 0;
-      break;
-    }
-/// TODO: check that MOTOR_STAT_ERR_LIMS is being toggled correctly, preferably remove toggles in ioctl handler
-    case IOCTL_TEL_EMERGENCY_STOP:
-    {
-      if (get_user(value, (long*)ioctl_param) < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Error: Could not copy emergency stop ioctl parameter from user space. Assuming emergency stop must be activated.\n");
-        value = 1;
-      }
-      user_toggle_allstop(value);
-      value = 0;
-      break;
-    }
-
-    #if defined(ENCODER_DIAG)
-    /// Get the current position according to the motors - saves struct tel_coord to ioctl parameter.
-    case IOCTL_GET_MOTOR_POS:
-    {
-      int ha_steps, dec_steps;
-      get_motor_coords(&ha_steps, &dec_steps);
-      struct tel_coord user_coord;
-      user_coord.ha_steps = ha_steps;
-      user_coord.dec_steps = dec_steps;
-      value = copy_to_user((void*)ioctl_param, &user_coord, sizeof(struct tel_coord));
-      break;
-    }
-
-    /// Get the current position according to the encoders - saves struct tel_coord to ioctl parameter
-    case IOCTL_GET_ENCODER_POS:
-    {
-      int ha_steps, dec_steps;
-      get_encod_coords(&ha_steps, &dec_steps);
-      struct tel_coord user_coord;
-      user_coord.ha_steps = ha_steps;
-      user_coord.dec_steps = dec_steps;
-      value = copy_to_user((void*)ioctl_param, &user_coord, sizeof(struct tel_coord));
-      break;
-    }
-    #endif
-    
-    #ifdef MOTOR_SIM
-    case IOCTL_SET_SIM_STEPS:
-    {
-      unsigned long sim_steps;
-      value = sizeof(unsigned long);
-      while (value > 0)
-        value = copy_from_user((void*)ioctl_param+value, &sim_steps, sizeof(unsigned long)-value);
-      if (value < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Failed to read simulated steps from user-space.\n");
-        value = -EIO;
-        break;
-      }
-      set_sim_steps(sim_steps);
-      break;
-    }
-
-    case IOCTL_SET_SIM_LIMITS:
-    {
-      unsigned long sim_limits;
-      value = copy_from_user((void*)ioctl_param, &sim_limits, sizeof(unsigned long));
-      if (value < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Failed to read simulated limits from user-space.\n");
-        value = -EIO;
-        break;
-      }
-      set_sim_limits(sim_limits);
-      break;
-    }
-
-    case IOCTL_GET_SIM_STEPS:
-    {
-      unsigned long sim_steps = get_sim_steps();
-      value = copy_to_user((void*)ioctl_param, &sim_steps, sizeof(unsigned long));
-      if (value < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Failed to write simulated limits to user-space.\n");
-        value = -EIO;
-        break;
-      }
-      break;
-    }
-
-    case IOCTL_GET_SIM_DIR:
-    {
-      unsigned char sim_dir = get_sim_dir();
-      value = copy_to_user((void*)ioctl_param, &sim_dir, sizeof(unsigned char));
-      if (value < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Failed to write simulated direction to user-space.\n");
-        value = -EIO;
-        break;
-      }
-      break;
-    }
-
-    case IOCTL_GET_SIM_SPEED:
-    {
-      unsigned long sim_speed = get_sim_speed();
-      value = copy_to_user((void*)ioctl_param, &sim_speed, sizeof(unsigned long));
-      if (value < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Failed to write simulated speed to user-space.\n");
-        value = -EIO;
-        break;
-      }
-      break;
-    }
-    #endif
-
-    default:
-      value = -ENOTTY;
-  }
-
-  if (G_status & MOTOR_STAT_UPDATE)
-    wake_up_interruptible(&G_readq);
-  return value;
-}*/
 
 // This is called whenever a process attempts to open the device file
 static int device_open(struct inode *inode, struct file *file)

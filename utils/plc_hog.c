@@ -162,7 +162,6 @@ int main(int argc, char **argv)
   }
   msg[pos] = '\0';
   printf("[%s %s] Response received (%d bytes) - %s\n", __progname, ttydevname, pos, msg);
-//   printf("%s\n", msg);
   if (pos > PLC_STAT_RESP_LEN)
   {
     printf("Response string too long. Trimming to %d bytes.\n", PLC_STAT_RESP_LEN);

@@ -243,16 +243,18 @@ static void set_azm_auto(Domemove *objs, gboolean azm_auto)
   else
   {
     if (objs->fail_to_id > 0)
+    {
       g_source_remove(objs->fail_to_id);
-    objs->fail_to_id = 0;
+      objs->fail_to_id = 0;
+    }
     process_complete(objs, OBSNSTAT_CANCEL);
   }
   objs->azm_auto = azm_auto;
-  if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_auto)))
+  if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_auto)) != azm_auto)
   {
     glong handler = g_signal_handler_find(G_OBJECT(objs->btn_auto), G_SIGNAL_MATCH_FUNC, 0, 0, NULL, G_CALLBACK(toggle_auto), NULL);
     g_signal_handler_block(G_OBJECT(objs->btn_auto), handler);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_auto), TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_auto), azm_auto);
     g_signal_handler_unblock(G_OBJECT(objs->btn_auto), handler);
   }
 }

@@ -564,7 +564,7 @@ enum
 {
   MT_QUIT = 1,       /**< User quit - sent globally so all clients close down and quit.*/
   MT_CAP,            /**< Client capabilities request/response.*/
-  MT_STAT,           /**< Size of IPC message structs.*/
+  MT_STAT,           /**< Current programme status.*/
   MT_GUISOCK,        /**< X11 socket handshake.*/
   MT_COORD,          /**< Telescope coordinates.*/
   MT_TIME,           /**< Current time.*/

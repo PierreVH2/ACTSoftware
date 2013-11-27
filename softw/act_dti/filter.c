@@ -278,7 +278,6 @@ static guchar process_msg_pmtcaps(Filter *objs, struct act_msg_pmtcap *msg_pmtca
   
   if (filtchange_handler > 0)
     g_signal_handler_unblock(G_OBJECT(objs->cmb_filtsel), filtchange_handler);
-  g_signal_emit(G_OBJECT(objs), filter_signals[PROC_COMPLETE_SIGNAL], 0, OBSNSTAT_GOOD);
 
   return OBSNSTAT_GOOD;
 }
@@ -317,6 +316,7 @@ static void process_complete(Filter *objs, guchar status)
 
 static void send_filt(Filter *objs, guchar filt_slot)
 {
+  act_log_debug(act_log_msg("Sending filter %hhu\n", filt_slot));
   g_signal_emit(G_OBJECT(objs), filter_signals[SEND_FILT_SIGNAL], 0, filt_slot);
   objs->filt_goal = filt_slot;
   if (objs->fail_to_id)
@@ -326,6 +326,7 @@ static void send_filt(Filter *objs, guchar filt_slot)
 
 void add_filt_to_cmb(struct filtaper *filt_info, gpointer filtstore)
 {
+  act_log_debug(act_log_msg("Adding filter %s", filt_info->name));
   GtkTreeIter iter;
   gtk_list_store_append(GTK_LIST_STORE(filtstore), &iter);
   gtk_list_store_set(GTK_LIST_STORE(filtstore), &iter, FILTSTORE_COL_ID, filt_info->db_id, FILTSTORE_COL_SLOT, filt_info->slot, FILTSTORE_COL_NAME, filt_info->name, -1);

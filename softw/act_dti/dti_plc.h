@@ -52,7 +52,7 @@ typedef struct _DtiPlcClass  DtiPlcClass;
 
 struct _DtiPlc
 {
-  GtkObject parent;
+  GObject parent;
   GIOChannel *plc_chan;
   gint plc_watch_id;
   gboolean plc_comm_ok;
@@ -61,7 +61,7 @@ struct _DtiPlc
 
 struct _DtiPlcClass
 {
-  GtkObjectClass parent_class;
+  GObjectClass parent_class;
 };
 
 
