@@ -903,7 +903,7 @@ float scrape_ext_dew_temp(const char *swasp_dat, int len)
 
 /** \brief Extract cloud coverage
  * \param filename Name of file (preferably incl. global filesystem path) to file containing SuperWASP website code.
- * \return Cloud coverage as a fractional percentage.
+ * \return Cloud measure
  *
  * This function uses find_colnum and find_colval to extract the cloud coverage.
  * Algorithm:

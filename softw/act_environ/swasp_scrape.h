@@ -51,7 +51,7 @@ struct swasp_weath_data
   float ext_temp;
   /// External temperature - Dew point temperature (fractional degrees Celcius)
   float ext_dew_temp;
-  /// Cloud coverage (fractional percentage)
+  /// Cloud
   float cloud;
 };
 

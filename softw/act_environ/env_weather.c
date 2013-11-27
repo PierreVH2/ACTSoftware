@@ -261,7 +261,7 @@ void update_environ(struct environ_objects *objs, unsigned int update_period_ms)
     if (time_since_env_ms > WEATHER_TIMEOUT_S*1000)
       act_log_error(act_log_msg("More than %d ms since time data was last successfully retrieved (%d ms). Setting weather bad flag to be safe.", WEATHER_TIMEOUT_S*1000, objs->time_since_time_ms));
     if (objs->time_since_time_ms > WEATHER_TIMEOUT_S*1000)
-      act_log_error(act_log_msg("More than %d ms since weather data was last successfully retrieved (%d ms). Setting weather bad flag to be safe.", WEATHER_TIMEOUT_S*1000, time_since_env_ms));
+      act_log_error(act_log_msg("More than %d ms since time data was last successfully retrieved (%d ms). Setting weather bad flag to be safe.", WEATHER_TIMEOUT_S*1000, time_since_env_ms));
     objs->new_weath_ok = FALSE;
     show_weath_change_dialog(objs);
   }
@@ -421,13 +421,13 @@ void update_env_indicators(struct environ_objects *objs)
   snprintf(tmpstr, sizeof(tmpstr), "%2d%%", objs->all_env.humidity);
   gtk_label_set_text(GTK_LABEL(objs->lbl_humidity), tmpstr);
   
-  if (objs->all_env.clouds >= CLOUD_COVER_LIMIT_PERC)
+  if (objs->all_env.clouds <= CLOUD_COVER_LIMIT)
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colred);
-  else if (objs->all_env.clouds >= CLOUD_COVER_WARN_PERC)
+  else if (objs->all_env.clouds <= CLOUD_COVER_WARN)
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colyellow);
   else
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colgreen);
-  snprintf(tmpstr, sizeof(tmpstr), "%2d%%", objs->all_env.clouds);
+  snprintf(tmpstr, sizeof(tmpstr), "%3d", objs->all_env.clouds);
   gtk_label_set_text(GTK_LABEL(objs->lbl_cloud), tmpstr);
   
   if (objs->all_env.rain)
@@ -593,7 +593,7 @@ void merge_weath(struct environ_objects *objs)
     float tmp_wind_dir = (convert_DMS_D_azm(&objs->swasp_env.wind_azm) + convert_DMS_D_azm(&objs->salt_env.wind_azm)) / 2.0;
     convert_D_DMS_azm(tmp_wind_dir / 2.0, &objs->all_env.wind_azm);
     objs->all_env.humidity = objs->swasp_env.humidity > objs->salt_env.humidity ? objs->swasp_env.humidity : objs->salt_env.humidity;
-    objs->all_env.clouds = objs->swasp_env.clouds > objs->salt_env.clouds ? objs->swasp_env.clouds : objs->salt_env.clouds;
+    objs->all_env.clouds = objs->swasp_env.clouds < objs->salt_env.clouds ? objs->swasp_env.clouds : objs->salt_env.clouds;
     objs->all_env.rain = (objs->swasp_env.rain || objs->salt_env.rain);
     objs->new_weath_ok = (objs->swasp_env.weath_ok != 0) && (objs->salt_env.weath_ok != 0);
   }

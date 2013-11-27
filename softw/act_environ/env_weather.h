@@ -15,8 +15,8 @@
 /// Maximum permissible altitude of the Sun (degrees)
 #define SUN_ALT_WARN_DEG       -10
 #define SUN_ALT_LIMIT_DEG      -5
-#define CLOUD_COVER_WARN_PERC  50
-#define CLOUD_COVER_LIMIT_PERC 70
+#define CLOUD_COVER_WARN       40
+#define CLOUD_COVER_LIMIT      30
 #define MOON_PROX_WARN_DEG     5
 
 #define ENV_SRC_SWASP 0x1
