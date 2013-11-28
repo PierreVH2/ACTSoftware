@@ -11,7 +11,7 @@ INCLUDE_DIRECTORIES(${LIBSOUP_INCLUDE_DIRS})
 
 INCLUDE_DIRECTORIES(${ACT_LIB_SRC})
 INCLUDE_DIRECTORIES(${GTK2_INCLUDE_DIRS})
-SET(ENV_SOURCE_FILES act_environ.c env_weather.h env_weather.c salt_extract.h salt_extract.c swasp_scrape.h swasp_scrape.c)
+SET(ENV_SOURCE_FILES act_environ.c env_weather.h env_weather.c salt_weath.h salt_weath.c swasp_weath.h swasp_weath.c)
 ADD_EXECUTABLE(act_environ ${ENV_SOURCE_FILES} ${ACT_LIB_SRC}/act_ipc.h ${ACT_LIB_SRC}/act_positastro.h ${ACT_LIB_SRC}/act_log.h)
 TARGET_LINK_LIBRARIES(act_environ ${GTK2_LIBRARIES} ${GTKGL_LIBRARIES} ${ARGTABLE_LIBRARIES} ${LIBSOUP_LIBRARIES} m mysqlclient act_log act_timecoord act_positastro)
 INSTALL(TARGETS act_environ RUNTIME DESTINATION bin)

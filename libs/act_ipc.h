@@ -357,23 +357,23 @@ struct act_msg_environ
   //! Weather conditions - ==0 if unsafe to observe, >0 otherwise
   unsigned char weath_ok;
   //! Relative humidity in percent.
-  unsigned char humidity;
-  //! Cloud coverage in percent.
-  unsigned char clouds;
+  float humidity;
+  //! Cloud level in percent.
+  float clouds;
   //! Rain warning - TRUE if warning asserted.
   unsigned char rain;
-  //! Altitude of Sun in fractional degrees.
-  struct altstruct sun_alt;
-  //! Right ascension of Moon.
-  struct rastruct moon_ra;
-  //! Declination of Moon.
-  struct decstruct moon_dec;
   //! Wind velocity in fractional km/h.
   float wind_vel;
   //! Wind direction (azimuth)
   struct azmstruct wind_azm;
   //! Size of PSF in arcseconds.
   unsigned short psf_asec;
+  //! Altitude of Sun in fractional degrees.
+  struct altstruct sun_alt;
+  //! Right ascension of Moon.
+  struct rastruct moon_ra;
+  //! Declination of Moon.
+  struct decstruct moon_dec;
 };
 
 //! IPC message structure for target set capabilities.
