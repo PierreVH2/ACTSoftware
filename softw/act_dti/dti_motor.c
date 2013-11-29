@@ -472,7 +472,7 @@ static gint read_motor_stat(gint motor_fd, guchar *motor_stat)
 static gint read_motor_limits(gint motor_fd, guchar *limits_stat)
 {
   unsigned char motor_limits;
-  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GET_LIMITS, motor_limits);
+  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GET_LIMITS, &motor_limits);
   if (ret < 0)
   {
     act_log_error(act_log_msg("Failed to read limit switch status from motor driver character device - %s.", strerror(errno)));

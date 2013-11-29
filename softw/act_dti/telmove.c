@@ -186,6 +186,7 @@ static void telmove_init(GtkWidget *telmove)
   objs->fail_to_id = 0;
   objs->dti_motor = NULL;
   objs->sidt_h = -1;
+  objs->sidt_timer = g_timer_new();
   
   objs->box = gtk_table_new(6,7,FALSE);
   gtk_container_add(GTK_CONTAINER(telmove), objs->box);

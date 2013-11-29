@@ -3,6 +3,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <gtk/gtkframe.h>
 #include <libsoup/soup.h>
 #include <act_ipc.h>
 #include "swasp_weath.h"
@@ -21,13 +22,14 @@ typedef struct _EnvWeatherClass  EnvWeatherClass;
 
 struct _EnvWeather
 {
-  GtkTable parent;
+  GtkFrame parent;
   gint update_to_id, weath_change_to_id, active_change_to_id;
   struct act_msg_environ all_env;
   gboolean salt_ok, swasp_ok;
   SaltWeath *salt_weath;
   SwaspWeath *swasp_weath;
 
+  GtkWidget *box_main;
   GtkWidget *evb_swasp_stat, *evb_salt_stat;
   GtkWidget *evb_humidity, *lbl_humidity;
   GtkWidget *evb_cloud, *lbl_cloud;
@@ -40,12 +42,12 @@ struct _EnvWeather
 
 struct _EnvWeatherClass
 {
-  GtkTableClass parent_class;
+  GtkFrameClass parent_class;
 };
 
 GType env_weather_get_type (void);
 GtkWidget *env_weather_new (void);
-void process_msg (GtkWidget *env_weather, struct act_msg *msg);
+void env_weather_process_msg (GtkWidget *env_weather, struct act_msg *msg);
 
 G_END_DECLS
 

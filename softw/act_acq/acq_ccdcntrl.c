@@ -179,7 +179,7 @@ struct ccdcntrl_objects *ccdcntrl_create_objs(MYSQL **conn, GtkWidget *container
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_hseparator_new(),FALSE,TRUE,3);
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_label_new("Window"),FALSE,TRUE,3);
   GtkListStore *window_store = gtk_list_store_new(WINDOWSTORE_NUM_COLS, G_TYPE_INT, G_TYPE_STRING);
-  int i;
+  unsigned int i;
   char tmpstr[256];
   GtkTreeIter iter;
   for (i=0; i<CCD_MAX_NUM_WINDOW_MODES; i++)
@@ -200,7 +200,7 @@ struct ccdcntrl_objects *ccdcntrl_create_objs(MYSQL **conn, GtkWidget *container
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_hseparator_new(),FALSE,TRUE,3);
   gtk_box_pack_start(GTK_BOX(box_ccdcntrl),gtk_label_new("Prebin"),FALSE,TRUE,3);
   GtkListStore *prebin_store = gtk_list_store_new(PREBINSTORE_NUM_COLS, G_TYPE_INT, G_TYPE_INT, G_TYPE_STRING);
-  int j;
+  unsigned int j;
   for (i=0; i<sizeof(modes.prebin_x)*8; i++)
   {
     char prebin_str[20];
@@ -273,7 +273,6 @@ char ccdcntrl_save_image(struct ccdcntrl_objects *ccdcntrl_objs)
   mysql_query(*conn, "START TRANSACTION");
   
   char qrystr[200];
-  int qrylen;
   
   sprintf(qrystr, "INSERT INTO merlin_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, width, height, bits_per_pix VALUES (%d, %d, %d, %f, \"%hu-%hhu-%hhu\", %f, %u, %u, %hhu)", G_targ_info.targ_id, G_targ_info.user_id, G_targ_info.sky ? 2 : 1, G_targ_img.img_params.exp_t_msec/1000.0, G_targ_info.unidate.year, G_targ_info.unidate.month+1, G_targ_info.unidate.day+1, convert_HMSMS_H_time(&G_targ_info.unitime), G_targ_img.img_params.img_width, G_targ_img.img_params.img_height, sizeof(ccd_pixel_type)*8);
   if (mysql_query(*conn, qrystr))

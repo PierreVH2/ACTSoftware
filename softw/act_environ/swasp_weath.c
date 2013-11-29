@@ -1,8 +1,10 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <act_log.h>
 #include <act_ipc.h>
+#include <act_positastro.h>
 #include "swasp_weath.h"
 
 #define FETCH_TIMEOUT_S     60
@@ -18,19 +20,19 @@ static void instance_init(GObject *swasp_weath);
 static void instance_dispose(GObject *swasp_weath);
 static gboolean time_timeout(gpointer swasp_weath);
 static gboolean fetch_swasp(gpointer swasp_weath);
-void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer swasp_weath);
-void string_to_upper(char *str);
-char find_colnum(const char *swasp_dat, const char *valname);
-char *find_colval(const char *swasp_dat, unsigned char colnum);
-double cardinal_to_deg(char *dir);
-char scrape_unidt(const char *swasp_dat, int len, struct datestruct *unid, struct timestruct *unit);
-char scrape_rel_hum(const char *swasp_dat, int len);
-char scrape_is_dry(const char *swasp_dat, int len);
-short scrape_wind_speed(const char *swasp_dat, int len);
-float scrape_wind_dir(const char *swasp_dat, int len);
-float scrape_ext_temp(const char *swasp_dat, int len);
-float scrape_ext_dew_temp(const char *swasp_dat, int len);
-float scrape_cloud(const char *swasp_dat, int len);
+static void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer swasp_weath);
+static void string_to_upper(char *str);
+static char find_rowcol(const char *swasp_dat, unsigned int len, const char *valname, unsigned int *rownum, unsigned int *colnum);
+static char *find_rowcolval(const char *swasp_dat, int len, unsigned int rownum, unsigned int colnum);
+static double cardinal_to_deg(char *dir);
+static char scrape_unidt(const char *swasp_dat, int len, struct datestruct *unid, struct timestruct *unit);
+static char scrape_rel_hum(const char *swasp_dat, int len);
+static char scrape_is_dry(const char *swasp_dat, int len);
+static short scrape_wind_speed(const char *swasp_dat, int len);
+static float scrape_wind_dir(const char *swasp_dat, int len);
+static float scrape_ext_temp(const char *swasp_dat, int len);
+static float scrape_ext_dew_temp(const char *swasp_dat, int len);
+static float scrape_cloud(const char *swasp_dat, int len);
 
 enum
 {
@@ -42,6 +44,7 @@ static guint swasp_weath_signals[LAST_SIGNAL] = { 0 };
 
 GType swasp_weath_get_type (void)
 {
+  act_log_debug(act_log_msg("SWASP weather type."));
   static GType swasp_wath_type = 0;
   
   if (!swasp_wath_type)
@@ -68,6 +71,7 @@ GType swasp_weath_get_type (void)
 
 SwaspWeath *swasp_weath_new (void)
 {
+  act_log_debug(act_log_msg("Creating SWASP weather object."));
   SwaspWeath *objs = SWASP_WEATH(g_object_new (swasp_weath_get_type(), NULL));
   objs->fetch_session = soup_session_async_new();
   fetch_swasp((void *)objs);
@@ -78,6 +82,7 @@ SwaspWeath *swasp_weath_new (void)
 
 void swasp_weath_set_time(SwaspWeath * objs, double jd)
 {
+  act_log_debug(act_log_msg("Setting time."));
   objs->cur_jd = jd;
   if (objs->time_to_id != 0)
   {
@@ -89,6 +94,7 @@ void swasp_weath_set_time(SwaspWeath * objs, double jd)
 
 gboolean swasp_weath_get_env_data (SwaspWeath * objs, struct act_msg_environ *env_data)
 {
+  act_log_debug(act_log_msg("Requested weather data (%f %f %f).", objs->weath_jd, objs->cur_jd, fabs(objs->weath_jd - objs->cur_jd)));
   if (fabs(objs->weath_jd - objs->cur_jd) > INVAL_TIMEOUT_D)
   {
     act_log_normal(act_log_msg("No recent weather data available."));
@@ -118,23 +124,6 @@ static void instance_init(GObject *swasp_weath)
   objs->fetch_to_id = 0;
   objs->fetch_session = NULL;
   objs->fetch_msg = NULL;
-  
-  /// Julian date (fractional days)
-  double weath_jd;
-  /// Relative humidity (integer percentage)
-  char rel_hum;
-  /// Rain (yes/no)
-  char rain;
-  /// Wind speed (integer km/h)
-  short wind_speed;
-  /// Wind direction (fractional degrees in azimuth)
-  float wind_dir;
-  /// External temperature (fractional degrees Celcius)
-  float ext_temp;
-  /// External temperature - Dew point temperature (fractional degrees Celcius)
-  float ext_dew_temp;
-  /// Cloud
-  float cloud;
   
   objs->weath_jd = 0.0;
   objs->rel_hum = 0.0;
@@ -183,7 +172,7 @@ static gboolean fetch_swasp(gpointer swasp_weath)
   return TRUE;
 }
 
-void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer swasp_weath)
+static void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer swasp_weath)
 {
   (void)soup_session;
   SwaspWeath *objs = SWASP_WEATH(swasp_weath);
@@ -197,10 +186,6 @@ void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer swasp_we
   }
   
   int len = msg->response_body->length;
-  char found_valid = 0;
-  int curchar = 0;
-  char tmp_date[20] = "", tmp_time[20] = "", tmp_rain = -1;
-  double tmp_floatvals[14] = {-1e6}, last_floatvals[14], last_jd;
   struct datestruct unid;
   struct timestruct unit;
   char msg_copy[len+1];
@@ -209,36 +194,60 @@ void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer swasp_we
   gboolean valid = TRUE;
 
   if (!scrape_unidt(msg_copy, len, &unid, &unit))
+  {
+    act_log_debug(act_log_msg("UNIDT"));
     valid = FALSE;
+  }
   double tmp_jd = calc_GJD(&unid, &unit);
   
   char tmp_rel_hum = scrape_rel_hum(msg_copy, len);
   if (tmp_rel_hum < 0)
+  {
+    act_log_debug(act_log_msg("REL_HUM"));
     valid = FALSE;
+  }
   
   char tmp_is_dry = scrape_is_dry(msg_copy, len);
   if (tmp_is_dry < 0)
+  {
+    act_log_debug(act_log_msg("RAIN"));
     valid = FALSE;
+  }
   
   short tmp_wind_speed = scrape_wind_speed(msg_copy, len); 
   if (tmp_wind_speed < 0)
+  {
+    act_log_debug(act_log_msg("WIND SPEED"));
     valid = FALSE;
+  }
   
   float tmp_wind_dir = scrape_wind_dir(msg_copy, len);
   if (tmp_wind_dir < 0.0)
+  {
+    act_log_debug(act_log_msg("WIND DIR"));
     valid = FALSE;
+  }
   
   float tmp_ext_temp = scrape_ext_temp(msg_copy, len);
   if (tmp_ext_temp < ABS_ZERO_TEMP_C + 1.0)
+  {
+    act_log_debug(act_log_msg("EXTT"));
     valid = FALSE;
+  }
   
   float tmp_ext_dew_temp = scrape_ext_dew_temp(msg_copy, len);
   if (tmp_ext_dew_temp < ABS_ZERO_TEMP_C + 1.0)
+  {
+    act_log_debug(act_log_msg("DEWT"));
     valid = FALSE;
+  }
   
   float tmp_cloud = scrape_cloud(msg_copy, len);
   if (tmp_cloud < 0)
+  {
+    act_log_debug(act_log_msg("CLOUD"));
     valid = FALSE;
+  }
   
   if (!valid)
   {
@@ -263,7 +272,7 @@ void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer swasp_we
  * \param str String to convert. Conversion is done in-place.
  * \return (void)
  */
-void string_to_upper(char *str)
+static void string_to_upper(char *str)
 {
   int i;
   for (i=0; str[i] != '\0'; i++)
@@ -297,7 +306,7 @@ void string_to_upper(char *str)
  *        - If yes, return column
  *        - If no, go to next line.
  */
-char find_rowcol(const char *swasp_dat, unsigned int len, const char *valname, unsigned int *rownum, unsigned int *colnum)
+static char find_rowcol(const char *swasp_dat, unsigned int len, const char *valname, unsigned int *rownum, unsigned int *colnum)
 {
   unsigned int tmp_row = 0, tmp_col = 0;
   char *valname_char = strstr(swasp_dat, valname);
@@ -431,7 +440,7 @@ char find_rowcol(const char *swasp_dat, unsigned int len, const char *valname, u
  *        - If no, go to next line.
  *        - If yes, extract value encapsulated within \<TD\> tags.
  */
-char *find_rowcolval(const char *swasp_dat, int len, unsigned int rownum, unsigned int colnum)
+static char *find_rowcolval(const char *swasp_dat, int len, unsigned int rownum, unsigned int colnum)
 {
   unsigned int cur_row = 0, cur_col = 0;
   const char *curchar = swasp_dat, *next_char = NULL, *end_char = swasp_dat+len-1, *tagend = NULL;
@@ -570,7 +579,7 @@ char *find_rowcolval(const char *swasp_dat, int len, unsigned int rownum, unsign
  * Only processes the first 3 characters in the cardinal direction string, error is 22.5 degrees, which is large
  * but accurate enough for wind direction, which is what this function was designed to interpret.
  */
-double cardinal_to_deg(char *dir)
+static double cardinal_to_deg(char *dir)
 {
   char tmp_dir[10];
   sscanf(dir,"%s",tmp_dir);
@@ -607,6 +616,7 @@ double cardinal_to_deg(char *dir)
     return 180.0;
   if (strncmp(tmp_dir,"W",1) == 0)
     return 270.0;
+  act_log_error(act_log_msg("Failed to extract wind direction."));
   return -1.0;
 }
 
@@ -638,7 +648,7 @@ double cardinal_to_deg(char *dir)
  *  -# Interpret the values in the string.
  *  -# Return success.
  */
-char scrape_unidt(const char *swasp_dat, int len, struct datestruct *unid, struct timestruct *unit)
+static char scrape_unidt(const char *swasp_dat, int len, struct datestruct *unid, struct timestruct *unit)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "TCS STATUS", &row, &column))
@@ -683,7 +693,7 @@ char scrape_unidt(const char *swasp_dat, int len, struct datestruct *unid, struc
  *  -# Extract value in corresponding row of next column as a string (find_colval).
  *  -# Extract relative humidity.
  */
-char scrape_rel_hum(const char *swasp_dat, int len)
+static char scrape_rel_hum(const char *swasp_dat, int len)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "RH%", &row, &column))
@@ -705,6 +715,7 @@ char scrape_rel_hum(const char *swasp_dat, int len)
     rel_hum = -1;
   }
   free(str);
+  return rel_hum;
 }
 
 
@@ -720,7 +731,7 @@ char scrape_rel_hum(const char *swasp_dat, int len)
  *  -# Extract value in corresponding row of next column as a string (find_colval).
  *  -# Extract RAIN indicator and return 1 if indicator is "DRY"
  */
-char scrape_is_dry(const char *swasp_dat, int len)
+static char scrape_is_dry(const char *swasp_dat, int len)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "RAIN", &row, &column))
@@ -758,7 +769,7 @@ char scrape_is_dry(const char *swasp_dat, int len)
  *  -# Extract value in corresponding row of next column as a string (find_colval).
  *  -# Extract wind speed.
  */
-short scrape_wind_speed(const char *swasp_dat, int len)
+static short scrape_wind_speed(const char *swasp_dat, int len)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "WIND", &row, &column))
@@ -797,7 +808,7 @@ short scrape_wind_speed(const char *swasp_dat, int len)
  *  -# Extract value in corresponding row of next column as a string (find_colval).
  *  -# Extract wind direction.
  */
-float scrape_wind_dir(const char *swasp_dat, int len)
+static float scrape_wind_dir(const char *swasp_dat, int len)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "WIND", &row, &column))
@@ -828,7 +839,7 @@ float scrape_wind_dir(const char *swasp_dat, int len)
  *  -# Extract value in corresponding row of next column as a string (find_colval).
  *  -# Extract external temperature.
  */
-float scrape_ext_temp(const char *swasp_dat, int len)
+static float scrape_ext_temp(const char *swasp_dat, int len)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "T<SUB>EXT</SUB>", &row, &column))
@@ -846,6 +857,7 @@ float scrape_ext_temp(const char *swasp_dat, int len)
   float ext_temp;
   if (sscanf(str, "%f", &ext_temp) != 1)
   {
+    act_log_error(act_log_msg("Failed to extract exterior temperature."));
     free(str);
     return ABS_ZERO_TEMP_C;
   }
@@ -865,7 +877,7 @@ float scrape_ext_temp(const char *swasp_dat, int len)
  *  -# Extract value in corresponding row of next column as a string (find_colval).
  *  -# Extract (T_ext - T_dew).
  */
-float scrape_ext_dew_temp(const char *swasp_dat, int len)
+static float scrape_ext_dew_temp(const char *swasp_dat, int len)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "T<SUB>EXT</SUB> - T<SUB>DEW</SUB>", &row, &column))
@@ -883,6 +895,7 @@ float scrape_ext_dew_temp(const char *swasp_dat, int len)
   float ext_dew_temp;
   if (sscanf(str, "%f", &ext_dew_temp) != 1)
   {
+    act_log_error(act_log_msg("Failed to extract dew point temperature."));
     free(str);
     return ABS_ZERO_TEMP_C;
   }
@@ -901,7 +914,7 @@ float scrape_ext_dew_temp(const char *swasp_dat, int len)
  *  -# Extract value in corresponding row of next column as a string (find_colval).
  *  -# Extract cload coverage.
  */
-float scrape_cloud(const char *swasp_dat, int len)
+static float scrape_cloud(const char *swasp_dat, int len)
 {
   unsigned int row, column;
   if (!find_rowcol(swasp_dat, len, "CLOUD", &row, &column))
@@ -920,6 +933,7 @@ float scrape_cloud(const char *swasp_dat, int len)
   float cloud;
   if (sscanf(tmpchar, "(%f)", &cloud) != 1)
   {
+    act_log_error(act_log_msg("Failed to extract cloud level."));
     free(str);
     return -1.0;
   }

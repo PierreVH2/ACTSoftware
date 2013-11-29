@@ -48,7 +48,7 @@ static int calc_fcs(const char *str, int length)
   return A;
 }
 
-static int check_fcs(const char *str, int length)
+static int check_fcs(const char *str)
 {
   int fcs;
   fcs = hexchar2int(str[STAT_FCS_OFFS])*16 + hexchar2int(str[STAT_FCS_OFFS+1]);
@@ -175,7 +175,7 @@ int main(int argc, char **argv)
     return 1;
   }
   printf("[%s %s] Status response has correct header.\n", __progname, ttydevname);
-  if ((!check_fcs(msg,pos+1)) || (!check_endcode(msg,pos)))
+  if ((!check_fcs(msg)) || (!check_endcode(msg,pos)))
   {
     fprintf(stderr, "[%s %s] Returned status has invalid FCS/endcode.\n", __progname, ttydevname);
     close(tty_fd);

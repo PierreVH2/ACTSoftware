@@ -1,32 +1,53 @@
 #include <gtk/gtk.h>
-#include "env_weather.h"
-#include "salt_weath.h"
-#include "swasp_weath.h"
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
 #include <act_ipc.h>
 #include <act_log.h>
 #include <act_timecoord.h>
 #include <act_positastro.h>
 #include "env_weather.h"
-#include "swasp_scrape.h"
-#include "salt_extract.h"
+#include "salt_weath.h"
+#include "swasp_weath.h"
 
 /// Maximum permissible difference between current time and time stamp on weather data
 #define UPDATE_TIMEOUT_S       60
 
 /// Maximum permissible wind speed (km/h)
-#define WIND_SPEED_WARN_KMPH   50
-#define WIND_SPEED_LIMIT_KMPH  60
+#define WIND_SPEED_WARN_KMPH   50.0
+#define WIND_SPEED_LIMIT_KMPH  60.0
 /// Maximum permissible relative humidity (percentage)
-#define REL_HUM_WARN_PERC      85
-#define REL_HUM_LIMIT_PERC     90
+#define REL_HUM_WARN_PERC      85.0
+#define REL_HUM_LIMIT_PERC     90.0
 /// Maximum permissible altitude of the Sun (degrees)
-#define SUN_ALT_WARN_DEG       -10
-#define SUN_ALT_LIMIT_DEG      -5
-#define CLOUD_COVER_WARN       40
-#define CLOUD_COVER_LIMIT      30
-#define MOON_PROX_WARN_DEG     5
+#define SUN_ALT_WARN_DEG       -10.0
+#define SUN_ALT_LIMIT_DEG      -5.0
+/// Maximum permissible cloud levels
+#define CLOUD_COVER_WARN       40.0
+#define CLOUD_COVER_LIMIT      30.0
+/// Maximum permissible proximity to Moon
+#define MOON_PROX_LIMIT_DEG     5.0
+#define MOON_PROX_WARN_DEG     10.0
 
 #define TABLE_PADDING          3
+
+
+static void class_init(EnvWeatherClass *klass);
+static void instance_init(GtkWidget *env_weather);
+static void instance_dispose(GObject *env_weather);
+static gboolean update_weather(gpointer env_weather);
+static void update_indicators(EnvWeather *objs);
+static void update_salt_weath(gpointer env_weather, gboolean salt_ok);
+static void update_swasp_weath(gpointer env_weather, gboolean swasp_ok);
+static void process_msg_time(EnvWeather *objs, struct act_msg_time *msg_time);
+static void process_msg_coord(EnvWeather *objs, struct act_msg_coord *msg_coord);
+static void process_msg_environ(EnvWeather *objs, struct act_msg_environ *msg_environ);
+static void process_msg_targset(EnvWeather *objs, struct act_msg_targset *msg_targset);
+static void process_msg_datapmt(EnvWeather *objs, struct act_msg_datapmt *msg_datapmt);
+static void process_msg_dataccd(EnvWeather *objs, struct act_msg_dataccd *msg_dataccd);
+static unsigned char process_obsn(EnvWeather *objs, struct rastruct *targ_ra, struct decstruct *targ_dec);
+static double calc_moon_dist(struct rastruct *moon_ra, struct decstruct *moon_dec, struct rastruct *targ_ra, struct decstruct *targ_dec);
+
 
 enum
 {
@@ -56,7 +77,7 @@ GType env_weather_get_type (void)
       NULL
     };
     
-    env_weather_type = g_type_register_static (G_TYPE_OBJECT, "EnvWeather", &env_weather_info, 0);
+    env_weather_type = g_type_register_static (GTK_TYPE_FRAME, "EnvWeather", &env_weather_info, 0);
   }
   
   return env_weather_type;
@@ -64,27 +85,36 @@ GType env_weather_get_type (void)
 
 GtkWidget *env_weather_new (void)
 {
+  act_log_debug(act_log_msg("Creating env_weather object."));
+//   EnvWeather *objs = ENV_WEATHER(g_object_new(env_weather_get_type(), NULL));
+//   gtk_container_add(GTK_CONTAINER(objs), gtk_label_new("TEST"));
+//   return GTK_WIDGET(objs);
   return GTK_WIDGET(g_object_new(env_weather_get_type(), NULL));
 }
 
-void process_msg (GtkWidget *env_weather, struct act_msg *msg)
+void env_weather_process_msg (GtkWidget *env_weather, struct act_msg *msg)
 {
+  act_log_debug(act_log_msg("Processing message (type %d)", msg->mtype));
+  EnvWeather *objs = ENV_WEATHER(env_weather);
   switch(msg->mtype)
   {
     case MT_TIME:
-      process_msg_time(env_weather, &msg->content.msg_time);
+      process_msg_time(objs, &msg->content.msg_time);
+      break;
+    case MT_COORD:
+      process_msg_coord(objs, &msg->content.msg_coord);
       break;
     case MT_ENVIRON:
-      process_msg_environ(env_weather, &msg->content.msg_environ);
+      process_msg_environ(objs, &msg->content.msg_environ);
       break;
-    case MT_TARGSET:
-      process_msg_targset(env_weather, &msg->content.msg_targset);
+    case MT_TARG_SET:
+      process_msg_targset(objs, &msg->content.msg_targset);
       break;
-    case MT_DATAPMT:
-      process_msg_datapmt(env_weather, &msg->content.msg_datapmt);
+    case MT_DATA_PMT:
+      process_msg_datapmt(objs, &msg->content.msg_datapmt);
       break;
-    case MT_DATACCD:
-      process_msg_dataccd(env_weather, &msg->content.msg_dataccd);
+    case MT_DATA_CCD:
+      process_msg_dataccd(objs, &msg->content.msg_dataccd);
       break;
   }
 }
@@ -104,19 +134,19 @@ static void instance_init(GtkWidget *env_weather)
   objs->all_env.clouds = 100.0;
   objs->all_env.rain = TRUE;
   objs->all_env.wind_vel = WIND_SPEED_LIMIT_KMPH+1;
-  convert_D_DMS_azm(0.0, &objs->all_env.wind_dir);
+  convert_D_DMS_azm(0.0, &objs->all_env.wind_azm);
   objs->all_env.psf_asec = 0;
   convert_D_DMS_alt(SUN_ALT_LIMIT_DEG+1, &objs->all_env.sun_alt);
   convert_H_HMSMS_ra(0.0, &objs->all_env.moon_ra);
   convert_D_DMS_dec(0.0, &objs->all_env.moon_dec);
   
-  gtk_table_set_homogeneous(GTK_TABLE(env_weather), FALSE);
-  // gtk_table_resize(GTK_TABLE(env_weather), 0, 0);
+  objs->box_main = gtk_table_new(8, 1, FALSE);
+  gtk_container_add(GTK_CONTAINER(objs), objs->box_main);
   
   GdkColor newcol;
   gdk_color_parse("#0000AA", &newcol);
   GtkWidget *frm_source_stat = gtk_frame_new("Source");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_source_stat, 0,1,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_source_stat, 0,1,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *box_source_stat = gtk_hbox_new(TRUE, 0);
   gtk_container_add(GTK_CONTAINER(frm_source_stat),box_source_stat);
   objs->evb_swasp_stat = gtk_event_box_new();
@@ -133,7 +163,7 @@ static void instance_init(GtkWidget *env_weather)
   gtk_box_pack_start(GTK_BOX(box_source_stat),objs->evb_salt_stat,TRUE,TRUE,0);
   
   GtkWidget *frm_humidity = gtk_frame_new("Humidity");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_humidity, 1,2,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_humidity, 1,2,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   objs->evb_humidity = gtk_event_box_new();
   gtk_widget_modify_bg(objs->evb_humidity, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->evb_humidity);
@@ -144,7 +174,7 @@ static void instance_init(GtkWidget *env_weather)
   gtk_container_add(GTK_CONTAINER(objs->evb_humidity),objs->lbl_humidity);
   
   GtkWidget *frm_cloud = gtk_frame_new("Cloud");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_cloud, 2,3,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_cloud, 2,3,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   objs->evb_cloud = gtk_event_box_new();
   gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->evb_cloud);
@@ -155,7 +185,7 @@ static void instance_init(GtkWidget *env_weather)
   gtk_container_add(GTK_CONTAINER(objs->evb_cloud),objs->lbl_cloud);
   
   GtkWidget *frm_rain = gtk_frame_new("Rain");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_rain, 3,4,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_rain, 3,4,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   objs->evb_rain = gtk_event_box_new();
   gtk_widget_modify_bg(objs->evb_rain, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->evb_rain);
@@ -166,7 +196,7 @@ static void instance_init(GtkWidget *env_weather)
   gtk_container_add(GTK_CONTAINER(objs->evb_rain),objs->lbl_rain);
   
   GtkWidget *frm_wind = gtk_frame_new("Wind");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_wind, 4,5,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_wind, 4,5,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   objs->evb_wind = gtk_event_box_new();
   gtk_widget_modify_bg(objs->evb_wind, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->evb_wind);
@@ -177,7 +207,7 @@ static void instance_init(GtkWidget *env_weather)
   gtk_container_add(GTK_CONTAINER(objs->evb_wind),objs->lbl_wind);
   
   GtkWidget *frm_sunalt = gtk_frame_new("Sun Alt.");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_sunalt, 5,6,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_sunalt, 5,6,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   objs->evb_sunalt = gtk_event_box_new();
   gtk_widget_modify_bg(objs->evb_sunalt, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->evb_sunalt);
@@ -187,8 +217,8 @@ static void instance_init(GtkWidget *env_weather)
   g_object_ref(objs->lbl_sunalt);
   gtk_container_add(GTK_CONTAINER(objs->evb_sunalt),objs->lbl_sunalt);
   
-  GtkWidget *frm_moonpos = gtk_frame_new("Moon Pos.");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_moonpos, 6,7,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *frm_moonpos = gtk_frame_new("Moon RA Dec");
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_moonpos, 6,7,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   objs->evb_moonpos = gtk_event_box_new();
   gtk_widget_modify_bg(objs->evb_moonpos, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->evb_moonpos);
@@ -199,22 +229,22 @@ static void instance_init(GtkWidget *env_weather)
   gtk_container_add(GTK_CONTAINER(objs->evb_moonpos),objs->lbl_moonpos);
   
   GtkWidget *frm_activemode = gtk_frame_new("Active Mode");
-  gtk_table_attach(GTK_TABLE(env_weather), frm_activemode, 7,8,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(objs->box_main), frm_activemode, 7,8,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL, TABLE_PADDING, TABLE_PADDING);
   objs->evb_active_mode = gtk_event_box_new();
   gtk_widget_modify_bg(objs->evb_active_mode, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->evb_active_mode);
   gtk_container_set_border_width(GTK_CONTAINER(objs->evb_active_mode), TABLE_PADDING);
   gtk_container_add(GTK_CONTAINER(frm_activemode),objs->evb_active_mode);
-  objs->lbl_active_mode = gtk_label_new("");
-  update_active_indicator(objs);
+  objs->lbl_active_mode = gtk_label_new("N/A");
+  gtk_widget_modify_bg(objs->evb_active_mode, GTK_STATE_NORMAL, &newcol);
   g_object_ref(objs->lbl_active_mode);
   gtk_container_add(GTK_CONTAINER(objs->evb_active_mode),objs->lbl_active_mode);
   
   objs->salt_ok = objs->swasp_ok = FALSE;
   objs->salt_weath = salt_weath_new();
   objs->swasp_weath = swasp_weath_new();
-  g_signal_connect_swapped(G_OBJECT(objs->salt_weath), "salt-weath-update", update_salt_weath, objs);
-  g_signal_connect_swapped(G_OBJECT(objs->swasp_weath), "swasp-weath-update", update_swasp_weath, objs);
+  g_signal_connect_swapped(G_OBJECT(objs->salt_weath), "salt-weath-update", G_CALLBACK(update_salt_weath), objs);
+  g_signal_connect_swapped(G_OBJECT(objs->swasp_weath), "swasp-weath-update", G_CALLBACK(update_swasp_weath), objs);
   
   objs->weath_change_to_id = objs->active_change_to_id = 0;
   objs->update_to_id = g_timeout_add_seconds(UPDATE_TIMEOUT_S, update_weather, objs);
@@ -251,22 +281,6 @@ static void instance_dispose(GObject *env_weather)
   {
     g_source_remove(objs->active_change_to_id);
     objs->active_change_to_id = 0;
-  }
-  
-  if (objs->fetch_to_id > 0)
-  {
-    g_source_remove(objs->fetch_to_id);
-    objs->fetch_to_id = 0;
-  }
-  if (objs->time_to_id != 0)
-  {
-    g_source_remove(objs->time_to_id);
-    objs->time_to_id = 0;
-  }
-  if ((objs->fetch_session != NULL) && (objs->fetch_msg != NULL))
-  {
-    soup_session_cancel_message (objs->fetch_session, objs->fetch_msg, SOUP_STATUS_CANCELLED);
-    objs->fetch_msg = NULL;
   }
   
   if (objs->evb_swasp_stat != NULL)
@@ -353,7 +367,7 @@ static void instance_dispose(GObject *env_weather)
   G_OBJECT_CLASS(env_weather)->dispose(env_weather);
 }
 
-gboolean update_weather(gpointer env_weather)
+static gboolean update_weather(gpointer env_weather)
 {
   EnvWeather *objs = ENV_WEATHER(env_weather);
   struct act_msg_environ salt_env, swasp_env;
@@ -420,7 +434,7 @@ gboolean update_weather(gpointer env_weather)
     else
       objs->all_env.humidity = swasp_env.humidity;
     objs->all_env.clouds = swasp_env.clouds;
-    objs->all_env.rain = objs->salt_env.rain || objs->swasp_env.rain;
+    objs->all_env.rain = salt_env.rain || swasp_env.rain;
     if (salt_env.wind_vel > swasp_env.wind_vel)
     {
       objs->all_env.wind_vel = salt_env.wind_vel;
@@ -442,9 +456,10 @@ gboolean update_weather(gpointer env_weather)
   update_indicators(objs);
   
   g_signal_emit(G_OBJECT(env_weather), env_weather_signals[ENV_WEATHER_UPDATE], 0);
+  return TRUE;
 }
 
-void update_indicators(EnvWeather *objs)
+static void update_indicators(EnvWeather *objs)
 {
   GdkColor colred;
   GdkColor colyellow;
@@ -462,7 +477,7 @@ void update_indicators(EnvWeather *objs)
     gtk_widget_modify_bg(objs->evb_humidity, GTK_STATE_NORMAL, &colyellow);
   else
     gtk_widget_modify_bg(objs->evb_humidity, GTK_STATE_NORMAL, &colgreen);
-  snprintf(tmpstr, sizeof(tmpstr), "%2d%%", objs->all_env.humidity);
+  snprintf(tmpstr, sizeof(tmpstr), "%5.1f%%", objs->all_env.humidity);
   gtk_label_set_text(GTK_LABEL(objs->lbl_humidity), tmpstr);
   
   if (objs->all_env.clouds <= CLOUD_COVER_LIMIT)
@@ -471,8 +486,9 @@ void update_indicators(EnvWeather *objs)
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colyellow);
   else
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colgreen);
-  snprintf(tmpstr, sizeof(tmpstr), "%3d", objs->all_env.clouds);
+  snprintf(tmpstr, sizeof(tmpstr), "%5.1f", objs->all_env.clouds);
   gtk_label_set_text(GTK_LABEL(objs->lbl_cloud), tmpstr);
+  gtk_widget_show(objs->lbl_cloud);
   
   if (objs->all_env.rain)
   {
@@ -495,29 +511,9 @@ void update_indicators(EnvWeather *objs)
   snprintf(tmpstr, sizeof(tmpstr), "%5.1f km/h, %s", objs->all_env.wind_vel, wind_azm_str);
   free(wind_azm_str);
   gtk_label_set_text(GTK_LABEL(objs->lbl_wind), tmpstr);
-  
-/*  float new_sun_alt = convert_DMS_D_alt(&objs->all_env.sun_alt);
-  if (new_sun_alt >= SUN_ALT_LIMIT_DEG)
-    gtk_widget_modify_bg(objs->evb_sunalt, GTK_STATE_NORMAL, &colred);
-  else if (new_sun_alt >= SUN_ALT_WARN_DEG)
-    gtk_widget_modify_bg(objs->evb_sunalt, GTK_STATE_NORMAL, &colyellow);
-  else
-    gtk_widget_modify_bg(objs->evb_sunalt, GTK_STATE_NORMAL, &colgreen);
-  char *sun_alt_str = alt_to_str(&objs->all_env.sun_alt);
-  snprintf(tmpstr, sizeof(tmpstr), "%s", sun_alt_str);
-  free(sun_alt_str);
-  gtk_label_set_text(GTK_LABEL(objs->lbl_sunalt), tmpstr);
-  
-  gtk_widget_modify_bg(objs->evb_moonpos, GTK_STATE_NORMAL, &colgreen);
-  char *moon_ra_str = ra_to_str(&objs->all_env.moon_ra);
-  char *moon_dec_str = dec_to_str(&objs->all_env.moon_dec);
-  snprintf(tmpstr, sizeof(tmpstr), "%s %s", moon_ra_str, moon_dec_str);
-  free(moon_ra_str);
-  free(moon_dec_str);
-  gtk_label_set_text(GTK_LABEL(objs->lbl_moonpos), tmpstr);*/
 }
 
-void update_salt_weath(gpointer env_weather, gboolean salt_ok)
+static void update_salt_weath(gpointer env_weather, gboolean salt_ok)
 {
   EnvWeather *objs = ENV_WEATHER(env_weather);
   objs->salt_ok = salt_ok;
@@ -529,7 +525,7 @@ void update_salt_weath(gpointer env_weather, gboolean salt_ok)
   gtk_widget_modify_bg(objs->evb_salt_stat, GTK_STATE_NORMAL, &new_col);
 }
 
-void update_swasp_weath(gpointer env_weather, gboolean swasp_ok)
+static void update_swasp_weath(gpointer env_weather, gboolean swasp_ok)
 {
   EnvWeather *objs = ENV_WEATHER(env_weather);
   objs->swasp_ok = swasp_ok;
@@ -541,6 +537,115 @@ void update_swasp_weath(gpointer env_weather, gboolean swasp_ok)
   gtk_widget_modify_bg(objs->evb_swasp_stat, GTK_STATE_NORMAL, &new_col);
 }
 
+static void process_msg_time(EnvWeather *objs, struct act_msg_time *msg_time)
+{
+  act_log_debug(act_log_msg("Processing time."));
+  swasp_weath_set_time(objs->swasp_weath, msg_time->gjd);
+  salt_weath_set_time(objs->salt_weath, msg_time->gjd);
+  
+  struct rastruct tmp_sun_ra;
+  struct decstruct tmp_sun_dec;
+  calc_sun (msg_time->gjd, NULL, NULL, &tmp_sun_ra, &tmp_sun_dec, NULL);
+  struct hastruct tmp_sun_ha;
+  calc_HAngle (&tmp_sun_ra, &msg_time->sidt, &tmp_sun_ha);
+  struct altstruct tmp_sun_alt;
+  convert_EQUI_ALTAZ (&tmp_sun_ha, &tmp_sun_dec, &tmp_sun_alt, NULL);
+  memcpy(&objs->all_env.sun_alt, &tmp_sun_alt, sizeof(struct altstruct));
+  double sun_alt_d = convert_DMS_D_alt(&tmp_sun_alt);
+  char sun_alt_str[20];
+  sprintf(sun_alt_str, "%6.2f", sun_alt_d);
+  gtk_label_set_text(GTK_LABEL(objs->lbl_sunalt), sun_alt_str);
+  GdkColor new_col;
+  if (sun_alt_d < SUN_ALT_WARN_DEG)
+    gdk_color_parse("#00AA00", &new_col);
+  else if (sun_alt_d < SUN_ALT_LIMIT_DEG)
+    gdk_color_parse("#AAAA00", &new_col);
+  else
+    gdk_color_parse("#AA0000", &new_col);
+  gtk_widget_modify_bg(objs->evb_sunalt, GTK_STATE_NORMAL, &new_col);
+  if (sun_alt_d < SUN_ALT_WARN_DEG)
+  {
+    objs->all_env.status_active = ACTIVE_TIME_NIGHT;
+    gdk_color_parse("#00AA00", &new_col);
+    gtk_label_set_text(GTK_LABEL(objs->lbl_active_mode), "NIGHT");
+  }
+  else
+  {
+    objs->all_env.status_active = ACTIVE_TIME_DAY;
+    gdk_color_parse("#AA0000", &new_col);
+    gtk_label_set_text(GTK_LABEL(objs->lbl_active_mode), "DAY");
+  }
+  gtk_widget_modify_bg(objs->evb_active_mode, GTK_STATE_NORMAL, &new_col);
+  
+  calc_moon_pos (msg_time->gjd/36525.0, &objs->all_env.moon_ra, &objs->all_env.moon_dec);
+  char moon_pos_str[40];
+  sprintf(moon_pos_str, "%6.2f %6.2f", convert_HMSMS_H_ra(&objs->all_env.moon_ra), convert_DMS_D_dec(&objs->all_env.moon_dec));
+  gtk_label_set_text(GTK_LABEL(objs->lbl_moonpos), moon_pos_str);
+}
+
+static void process_msg_coord(EnvWeather *objs, struct act_msg_coord *msg_coord)
+{
+  double dist = calc_moon_dist(&objs->all_env.moon_ra, &objs->all_env.moon_dec, &msg_coord->ra, &msg_coord->dec);
+  GdkColor new_col;
+  if (dist > MOON_PROX_WARN_DEG)
+    gdk_color_parse("#00AA00", &new_col);
+  else if (dist > MOON_PROX_LIMIT_DEG)
+    gdk_color_parse("#AAAA00", &new_col);
+  else
+    gdk_color_parse("#AA0000", &new_col);
+  gtk_widget_modify_bg(objs->evb_moonpos, GTK_STATE_NORMAL, &new_col);
+}
+
+static void process_msg_environ(EnvWeather *objs, struct act_msg_environ *msg_environ)
+{
+  memcpy(msg_environ, &objs->all_env, sizeof(struct act_msg_environ));
+}
+
+static void process_msg_targset(EnvWeather *objs, struct act_msg_targset *msg_targset)
+{
+  if (!msg_targset->mode_auto)
+    return;
+  if (msg_targset->status != OBSNSTAT_GOOD)
+    return;
+  msg_targset->status = process_obsn(objs, &msg_targset->targ_ra, &msg_targset->targ_dec);
+}
+
+static void process_msg_datapmt(EnvWeather *objs, struct act_msg_datapmt *msg_datapmt)
+{
+  if (!msg_datapmt->mode_auto)
+    return;
+  if (msg_datapmt->status != OBSNSTAT_GOOD)
+    return;
+  msg_datapmt->status = process_obsn(objs, &msg_datapmt->targ_ra, &msg_datapmt->targ_dec);
+}
+
+static void process_msg_dataccd(EnvWeather *objs, struct act_msg_dataccd *msg_dataccd)
+{
+  if (!msg_dataccd->mode_auto)
+    return;
+  if (msg_dataccd->status != OBSNSTAT_GOOD)
+    return;
+  msg_dataccd->status = process_obsn(objs, &msg_dataccd->targ_ra, &msg_dataccd->targ_dec);
+}
+
+static unsigned char process_obsn(EnvWeather *objs, struct rastruct *targ_ra, struct decstruct *targ_dec)
+{
+  if (!objs->all_env.weath_ok)
+    return OBSNSTAT_ERR_WAIT;
+  if (calc_moon_dist(&objs->all_env.moon_ra, &objs->all_env.moon_dec, targ_ra, targ_dec) < MOON_PROX_LIMIT_DEG)
+    return OBSNSTAT_ERR_NEXT;
+  return OBSNSTAT_GOOD;
+}
+
+static double calc_moon_dist(struct rastruct *moon_ra, struct decstruct *moon_dec, struct rastruct *targ_ra, struct decstruct *targ_dec)
+{
+  double targ_ra_rad = convert_H_RAD(convert_HMSMS_H_ra(targ_ra));
+  double targ_dec_rad = convert_DEG_RAD(convert_DMS_D_dec(targ_dec));
+  double moon_ra_rad = convert_H_RAD(convert_HMSMS_H_ra(moon_ra));
+  double moon_dec_rad = convert_DEG_RAD(convert_DMS_D_dec(moon_dec));
+  double dist_rad = acos(sin(targ_dec_rad)*sin(moon_dec_rad) + cos(targ_dec_rad)*cos(moon_dec_rad)*cos(targ_ra_rad-moon_ra_rad));
+  return convert_RAD_DEG(dist_rad);
+}
 
 
 
@@ -549,7 +654,7 @@ void update_swasp_weath(gpointer env_weather, gboolean swasp_ok)
 
 
 
-
+/*
 
 void update_environ(struct environ_objects *objs, unsigned int update_period_ms)
 {
@@ -1049,3 +1154,4 @@ gboolean prompt_counter_countdown(gpointer user_data)
   g_signal_connect(G_OBJECT(user_data), "value-changed", G_CALLBACK(countdown_change_value), NULL);
   return TRUE;
 }
+*/

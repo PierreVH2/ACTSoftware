@@ -104,6 +104,7 @@ void process_dataccd(gpointer form, gpointer msg, guchar ret);
 void process_message_all(gpointer form, gpointer msg);
 void process_stat_resp(gpointer form, gpointer msg, guchar ret);
 void process_response_all(gpointer msg);
+void process_manual_quit(gpointer msg);
 void destroy_gui_plug(GtkWidget *plug, gpointer box_main);
 
 int main(int argc, char** argv)
@@ -299,7 +300,6 @@ void main_receive_message(gpointer form, gpointer msg)
     g_object_ref_sink(G_OBJECT(msg));
   dti_msg_set_dtistage(msg, 0);
   gint mtype = dti_msg_get_mtype(msg);
-  act_log_debug(act_log_msg("Message received, type %d.", mtype));
   switch(mtype)
   {
     case MT_QUIT:
@@ -330,6 +330,7 @@ void main_receive_message(gpointer form, gpointer msg)
       process_message_all(form, msg);
       break;
     case MT_ENVIRON:
+      act_log_debug(act_log_msg("Received ENVIRON message."));
       process_message_all(form, msg);
       break;
     case MT_TARG_CAP:
@@ -374,12 +375,12 @@ void main_receive_message(gpointer form, gpointer msg)
 void main_process_message_resp(gpointer form, guchar ret, gpointer msg)
 {
   gint mtype = dti_msg_get_mtype(msg);
-  act_log_debug(act_log_msg("Message response received (type %d).", mtype));
+//   act_log_debug(act_log_msg("Message response received (type %d).", mtype));
   switch(mtype)
   {
     case MT_QUIT:
       if (!dti_msg_get_quit(msg)->mode_auto)
-        process_response_all(msg);
+        process_manual_quit(msg);
       else
         process_quit(form, msg, ret);
       break;
@@ -826,6 +827,20 @@ void process_response_all(gpointer msg)
     if (num_pending < 1)
       act_log_error(act_log_msg("Message response received, but pending counter already at 0."));
     g_object_unref(msg);
+  }
+  else
+    dti_msg_dec_num_pending(msg);
+}
+
+void process_manual_quit(gpointer msg)
+{
+  guint num_pending = dti_msg_get_num_pending(msg);
+  if (num_pending <= 1)
+  {
+    if (num_pending < 1)
+      act_log_error(act_log_msg("Message response received, but pending counter already at 0."));
+    g_object_unref(msg);
+    gtk_main_quit();
   }
   else
     dti_msg_dec_num_pending(msg);

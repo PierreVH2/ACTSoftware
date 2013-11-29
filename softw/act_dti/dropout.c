@@ -282,8 +282,7 @@ static guchar process_environ(Dropout *objs, struct act_msg_environ *msg_environ
   if (objs->env_to_id)
     g_source_remove(objs->env_to_id);
   objs->env_to_id = g_timeout_add_seconds(DROPOUT_ENV_TIME_S, env_timeout, objs);
-  float new_sun_alt = convert_DMS_D_alt(&msg_environ->sun_alt);
-  return environ_change(objs, msg_environ->weath_ok>0, new_sun_alt<0.0);
+  return environ_change(objs, msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_DAY) > 0);
 }
 
 static guchar process_targset(Dropout *objs, struct act_msg_targset *msg_targset)

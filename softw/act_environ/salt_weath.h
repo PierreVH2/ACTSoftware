@@ -56,7 +56,7 @@ struct _SaltWeath
   /// Temperature - 30m mast (fractional degrees Celcius)
   float temp_30;
   /// Rain (yes/no)
-  char rain;
+  unsigned char rain;
 };
 
 struct _SaltWeathClass

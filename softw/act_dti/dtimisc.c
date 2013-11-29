@@ -208,7 +208,6 @@ void dtimisc_update_focus_stat(GtkWidget *dtimisc, guchar new_focus_stat)
 void dtimisc_update_focus_pos(GtkWidget *dtimisc, gint new_focus_pos)
 {
   Dtimisc *objs = DTIMISC(dtimisc);
-  GdkColor new_col;
   
   char tmpstr[50];
   sprintf(tmpstr, "Focus... (%hd)", new_focus_pos);

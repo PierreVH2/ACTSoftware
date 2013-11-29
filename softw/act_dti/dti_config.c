@@ -135,7 +135,6 @@ char parse_tel_limits(MYSQL *conn, struct act_msg_targcap *targcap_msg)
     return FALSE;
   }
   
-  int rowcount = mysql_num_rows(result);
   if ((mysql_num_rows(result) != 1) || (mysql_num_fields(result) != 4))
   {
     act_log_error(act_log_msg("Could not retrieve soft limits - Invalid number of rows/columns returned (%d rows, %d columns).", mysql_num_rows(result), mysql_num_fields(result)));
@@ -180,6 +179,7 @@ char parse_tel_limits(MYSQL *conn, struct act_msg_targcap *targcap_msg)
   convert_H_HMSMS_ha(tmp_lim_E, &targcap_msg->ha_lim_E);
   convert_D_DMS_dec(tmp_lim_N, &targcap_msg->dec_lim_N);
   convert_D_DMS_dec(tmp_lim_S, &targcap_msg->dec_lim_S);
+  return TRUE;
 }
 
 char parse_pmtapertures(MYSQL *conn, struct act_msg_pmtcap *pmtcap_msg)

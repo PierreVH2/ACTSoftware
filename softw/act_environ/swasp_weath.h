@@ -28,9 +28,9 @@ struct _SwaspWeath
   /// Julian date (fractional days)
   double weath_jd;
   /// Relative humidity (integer percentage)
-  char rel_hum;
+  float rel_hum;
   /// Rain (yes/no)
-  char rain;
+  unsigned char rain;
   /// Wind speed (integer km/h)
   short wind_speed;
   /// Wind direction (fractional degrees in azimuth)

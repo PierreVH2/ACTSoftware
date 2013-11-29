@@ -11,17 +11,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-// #include <unistd.h>
-// #include <fcntl.h>
 #include <errno.h>
 #include <math.h>
-// #include <sys/socket.h>
-// #include <sys/types.h>
-// #include <netdb.h>
-// #include <sys/stat.h>
-// #include <time.h>
 #include <argtable2.h>
-// #include <curl/curl.h>
 #include <gtk/gtk.h>
 #include <act_ipc.h>
 #include <act_site.h>
@@ -29,15 +21,12 @@
 #include <act_positastro.h>
 #include "env_weather.h"
 
-#define TIME_TIMEOUT_PERIOD       10000
-#define TIMEOUT_ENV_UPDATE_PERIOD 60000
 #define TIMEOUT_CHECK_GUI_PERIOD  5000
 
-struct formobjects
+struct guicheck_to_objs
 {
-  GtkWidget *box_main;
+  GtkWidget *env_weather;
   GIOChannel *net_chan;
-  struct environ_objects *env_objs;
 };
 
 /** \brief Callback when plug (parent of all GTK objects) destroyed, adds a reference to plug's child so it (and it's
@@ -46,13 +35,15 @@ struct formobjects
  * \param user_data The parent of all objects contained within plug.
  * \return (void)
  */
-void destroy_plug(GtkWidget *plug, gpointer user_data)
+void destroy_plug(GtkWidget *plug, gpointer env_weather)
 {
-  gtk_container_remove(GTK_CONTAINER(plug),GTK_WIDGET(user_data));
+  act_log_debug(act_log_msg("Plug destroyed."));
+  gtk_container_remove(GTK_CONTAINER(plug), GTK_WIDGET(env_weather));
 }
 
 int net_send(GIOChannel *channel, struct act_msg *msg)
 {
+  act_log_debug(act_log_msg("Sending network message (type %d).", msg->mtype));
   unsigned int num_bytes;
   int status;
   GError *error = NULL;
@@ -89,10 +80,10 @@ int net_send(GIOChannel *channel, struct act_msg *msg)
  *  - MT_OBSN:
  *    -# Collect photometry with the PMT as indicated in the observation command message.
  */
-gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer net_read_data)
+gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer env_weather)
 {
   (void)condition;
-  struct formobjects *objs = (struct formobjects *)net_read_data;
+//   struct formobjects *objs = (struct formobjects *)net_read_data;
   struct act_msg msgbuf;
   unsigned int num_bytes;
   int status;
@@ -114,6 +105,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     act_log_error(act_log_msg("Received message has invalid length: %d", num_bytes));
     return TRUE;
   }
+  act_log_debug(act_log_msg("Processing message (type %d).\n", msgbuf.mtype));
   switch (msgbuf.mtype)
   {
     case MT_QUIT:
@@ -125,7 +117,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     {
       struct act_msg_cap *cap_msg = &msgbuf.content.msg_cap;
       cap_msg->service_provides = SERVICE_ENVIRON;
-      cap_msg->service_needs = SERVICE_TIME;
+      cap_msg->service_needs = SERVICE_TIME | SERVICE_COORD;
       cap_msg->targset_prov = TARGSET_ENVIRON;
       cap_msg->datapmt_prov = DATAPMT_ENVIRON;
       cap_msg->dataccd_prov = DATACCD_ENVIRON;
@@ -139,49 +131,45 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     {
       if (msgbuf.content.msg_stat.status != 0)
         break;
-      char env_ready = get_env_ready(objs->env_objs);
-      if (env_ready < 0)
-      {
-        act_log_error(act_log_msg("Failed to retrieve act_environ readiness. This shouldn't happen."));
-        msgbuf.content.msg_stat.status = PROGSTAT_ERR_RESTART;
-      }
-      else if (env_ready == 0)
-        msgbuf.content.msg_stat.status = PROGSTAT_STARTUP;
-      else
-        msgbuf.content.msg_stat.status = PROGSTAT_RUNNING;
+      msgbuf.content.msg_stat.status = PROGSTAT_RUNNING;
       if (net_send(source, &msgbuf) != sizeof(msgbuf))
         act_log_error(act_log_msg("Failed to send status response message."));
       break;
     }
     case MT_GUISOCK:
     {
-      if (msgbuf.content.msg_guisock.gui_socket > 0)
+      if (msgbuf.content.msg_guisock.gui_socket <= 0)
       {
-        GtkWidget *plug = gtk_widget_get_parent(objs->box_main);
-        if (plug != NULL)
-        {
-          gtk_container_remove(GTK_CONTAINER(plug), objs->box_main);
-          gtk_widget_destroy(plug);
-        }
-        plug = gtk_plug_new(msgbuf.content.msg_guisock.gui_socket);
-        act_log_normal(act_log_msg("Received GUI socket (%d).", msgbuf.content.msg_guisock.gui_socket));
-        gtk_container_add(GTK_CONTAINER(plug),objs->box_main);
-        g_signal_connect(G_OBJECT(plug),"destroy",G_CALLBACK(destroy_plug),objs->box_main);
-        gtk_widget_show_all(plug);
+	act_log_debug(act_log_msg("Received invalid GUI socket ID (%d)", msgbuf.content.msg_guisock.gui_socket));
+	break;
       }
-      else
-        act_log_error(act_log_msg("Received 0 GUI socket."));
+      GtkWidget *plug = gtk_widget_get_parent(GTK_WIDGET(env_weather));
+      if (plug != NULL)
+      {
+	gtk_container_remove(GTK_CONTAINER(plug), GTK_WIDGET(env_weather));
+	gtk_widget_destroy(plug);
+      }
+      plug = gtk_plug_new(msgbuf.content.msg_guisock.gui_socket);
+      act_log_normal(act_log_msg("Received GUI socket (%d).", msgbuf.content.msg_guisock.gui_socket));
+      gtk_container_add(GTK_CONTAINER(plug),GTK_WIDGET(env_weather));
+      g_signal_connect(G_OBJECT(plug),"destroy",G_CALLBACK(destroy_plug),GTK_WIDGET(env_weather));
+      gtk_widget_show_all(plug);
+      break;
+    }
+    case MT_COORD:
+    {
+      env_weather_process_msg(GTK_WIDGET(env_weather), &msgbuf);
       break;
     }
     case MT_TIME:
     {
-      update_time(objs->env_objs, &msgbuf.content.msg_time);
+      env_weather_process_msg(GTK_WIDGET(env_weather), &msgbuf);
       break;
     }
     case MT_ENVIRON:
     {
       act_log_debug(act_log_msg("Strange: Received an ENVIRONMENT message. Responding with latest environment message."));
-      memcpy(&msgbuf.content.msg_environ, &objs->env_objs->all_env, sizeof(struct act_msg_environ));
+      env_weather_process_msg(GTK_WIDGET(env_weather), &msgbuf);
       if (net_send(source, &msgbuf) != sizeof(msgbuf))
         act_log_error(act_log_msg("Failed to send (unexpected) ENVIRONMENT message response."));
       break;
@@ -198,21 +186,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     }
     case MT_TARG_SET:
     {
-      struct act_msg_targset *msg_targset = &msgbuf.content.msg_targset;
-      if (msg_targset->status == OBSNSTAT_GOOD)
-      {
-        char new_stat;
-        if (msg_targset->mode_auto)
-          new_stat = check_env_obsn_auto(objs->env_objs, &msg_targset->targ_ra, &msg_targset->targ_dec);
-        else
-          new_stat = check_env_obsn_manual(objs->env_objs, &msg_targset->targ_ra, &msg_targset->targ_dec);
-        if (new_stat < 0)
-        {
-          act_log_error(act_log_msg("An error occurred while checking environment for auto/manual TARGSET viability."));
-          new_stat = OBSNSTAT_ERR_WAIT;
-        }
-        msg_targset->status = new_stat;
-      }
+      env_weather_process_msg(GTK_WIDGET(env_weather), &msgbuf);
       if (net_send(source, &msgbuf) != sizeof(msgbuf))
         act_log_error(act_log_msg("Failed to send TARGSET response."));
       break;
@@ -229,17 +203,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     }
     case MT_DATA_PMT:
     {
-      struct act_msg_datapmt *msg_datapmt = &msgbuf.content.msg_datapmt;
-      if ((msg_datapmt->status == OBSNSTAT_GOOD) && (msg_datapmt->mode_auto))
-      {
-        char new_status = check_env_obsn_auto(objs->env_objs, &msg_datapmt->targ_ra, &msg_datapmt->targ_dec);
-        if (new_status < 0)
-        {
-          act_log_error(act_log_msg("An error occurred while checking environment for auto DATAPMT viability."));
-          new_status = OBSNSTAT_ERR_WAIT;
-        }
-        msg_datapmt->status = new_status;
-      }
+      env_weather_process_msg(GTK_WIDGET(env_weather), &msgbuf);
       if (net_send(source, &msgbuf) != sizeof(msgbuf))
         act_log_error(act_log_msg("Failed to send DATAPMT response."));
       break;
@@ -256,17 +220,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     }
     case MT_DATA_CCD:
     {
-      struct act_msg_dataccd *msg_dataccd = &msgbuf.content.msg_dataccd;
-      if ((msg_dataccd->status == OBSNSTAT_GOOD) && (msg_dataccd->mode_auto))
-      {
-        char new_status = check_env_obsn_auto(objs->env_objs, &msg_dataccd->targ_ra, &msg_dataccd->targ_dec);
-        if (new_status < 0)
-        {
-          act_log_error(act_log_msg("An error occurred while checking environment for auto DATACCD viability."));
-          new_status = OBSNSTAT_ERR_WAIT;
-        }
-        msg_dataccd->status = new_status;
-      }
+      env_weather_process_msg(GTK_WIDGET(env_weather), &msgbuf);
       if (net_send(source, &msgbuf) != sizeof(msgbuf))
         act_log_error(act_log_msg("Failed to send DATACCD response."));
       break;
@@ -279,7 +233,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
   }
   int new_cond = g_io_channel_get_buffer_condition (source);
   if ((new_cond & G_IO_IN) != 0)
-    return read_net_message(source, new_cond, net_read_data);
+    return read_net_message(source, new_cond, env_weather);
   return TRUE;
 }
 
@@ -292,6 +246,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
  */
 GIOChannel *setup_net(const char* host, const char* port)
 {
+  act_log_debug(act_log_msg("Setting up networking."));
   char hostport[256];
   if (snprintf(hostport, sizeof(hostport), "%s:%s", host, port) != (int)(strlen(host)+strlen(port)+1))
   {
@@ -332,41 +287,6 @@ GIOChannel *setup_net(const char* host, const char* port)
   return channel;
 }
 
-/** \brief Main programme loop to update and disseminate weather data.
- * \return return TRUE (call function again).
- */
-gboolean timeout_env_update(gpointer user_data)
-{
-/*  act_log_debug(act_log_msg("Updating environmental information."));
-  struct env_indicators *objs = (struct env_indicators *)user_data;
-  struct act_msg msgbuf;
-  msgbuf.mtype = MT_ENVIRON;
-  struct act_msg_environ *tmp_env_msg = &msgbuf.content.msg_environ;
-  char src_status = update_environ(tmp_env_msg, G_swasp_http_handle, G_salt_http_handle, G_gjd, G_sidt);
-  update_env_indicators(objs, src_status, &G_environ_msg, tmp_env_msg);
-  if ((G_environ_msg.status_active != tmp_env_msg->status_active) || (G_environ_msg.weath_ok != tmp_env_msg->weath_ok))
-  {
-    if (!objs->mode_change_prompted)
-    {
-      act_log_debug(act_log_msg("Old status active: %hhu %hhu", G_environ_msg.status_active, G_environ_msg.weath_ok));
-      prompt_mode_change(objs->evb_active_mode, &objs->mode_change_prompted, tmp_env_msg->status_active, tmp_env_msg->weath_ok, &G_environ_msg, G_netsock_fd);
-    }
-    tmp_env_msg->status_active = G_environ_msg.status_active;
-    tmp_env_msg->weath_ok = G_environ_msg.weath_ok;
-    act_log_debug(act_log_msg("New status active: %hhu %hhu", G_environ_msg.status_active, G_environ_msg.weath_ok));
-  }
-  memcpy(&G_environ_msg, tmp_env_msg, sizeof(struct act_msg_environ));*/
-  act_log_debug(act_log_msg("Environment update"));
-  struct formobjects *objs = (struct formobjects *)user_data;
-  update_environ(objs->env_objs, TIMEOUT_ENV_UPDATE_PERIOD);
-  struct act_msg envmsg;
-  envmsg.mtype = MT_ENVIRON;
-  memcpy(&envmsg.content.msg_environ, &objs->env_objs->all_env, sizeof(struct act_msg_environ));
-  if (net_send(objs->net_chan, &envmsg) != sizeof(struct act_msg))
-    act_log_error(act_log_msg("Error sending environment service message."));
-  return TRUE;
-}
-
 /** \brief Main programme loop to check for messages.
  * \param user_data Pointer to struct formobjects which contains all data relevant to this function.
  * \return Return FALSE if main loop should not be called again, otherwise always return TRUE.
@@ -374,18 +294,31 @@ gboolean timeout_env_update(gpointer user_data)
  * Tasks:
  *  -# Process all incoming messages and request GUI socket if necessary.
  */
-gboolean timeout_check_gui(gpointer user_data)
+gboolean timeout_check_gui(gpointer check_gui_objs)
 {
-  struct formobjects *objs = (struct formobjects *)user_data;
-  unsigned char main_embedded = gtk_widget_get_parent(GTK_WIDGET(objs->box_main)) != NULL;
+  act_log_debug(act_log_msg("Checking gui socket."));
+  GtkWidget *env_weather = ((struct guicheck_to_objs *)check_gui_objs)->env_weather;
+  GIOChannel *net_chan = ((struct guicheck_to_objs *)check_gui_objs)->net_chan;
+  unsigned char main_embedded = gtk_widget_get_parent(GTK_WIDGET(env_weather)) != NULL;
   if (main_embedded)
     return TRUE;
   struct act_msg guimsg;
+  memset(&guimsg, 0, sizeof(struct act_msg));
   guimsg.mtype = MT_GUISOCK;
-  memset(&guimsg.content.msg_guisock, 0, sizeof(struct act_msg_guisock));
-  if (net_send(objs->net_chan, &guimsg) != sizeof(struct act_msg))
+  if (net_send(net_chan, &guimsg) != sizeof(struct act_msg))
     act_log_error(act_log_msg("Error sending GUI socket request message."));
   return TRUE;
+}
+
+void update_weather(GtkWidget *env_weather, gpointer net_chan)
+{
+  act_log_debug(act_log_msg("Updating weather."));
+  struct act_msg envmsg;
+  memset(&envmsg, 0, sizeof(struct act_msg));
+  envmsg.mtype = MT_ENVIRON;
+  env_weather_process_msg(env_weather, &envmsg);
+  if (net_send(net_chan, &envmsg) != sizeof(struct act_msg))
+    act_log_error(act_log_msg("Error sending environment message."));
 }
 
 /** \brief Main function.
@@ -426,42 +359,35 @@ int main (int argc, char **argv)
   port = portarg->sval[0];
   arg_freetable(argtable,sizeof(argtable)/sizeof(argtable[0]));
 
-  struct formobjects objs;
-  memset(&objs, 0, sizeof(struct formobjects));
-  
-  objs.net_chan = setup_net(host, port);
-  if (objs.net_chan == NULL)
+  GIOChannel *net_chan = setup_net(host, port);
+  if (net_chan == NULL)
   {
     act_log_error(act_log_msg("Error setting up network connection."));
     return 1;
   }
   
-  objs.box_main = gtk_event_box_new();
-  objs.env_objs = init_environ(objs.box_main);
-  if (objs.env_objs == NULL)
-  {
-    act_log_error(act_log_msg("Failed to create environ objects."));
-    return 1;
-  }
+  GtkWidget *env_weather = env_weather_new();
+  g_object_ref(G_OBJECT(env_weather));
+  struct guicheck_to_objs guicheck_objs = { .env_weather=env_weather, .net_chan=net_chan};
+  g_object_ref(env_weather);
+  g_io_channel_ref(net_chan);
+
+  g_signal_connect(G_OBJECT(env_weather), "env-weather-update", G_CALLBACK(update_weather), net_chan);
+  int net_watch_id = g_io_add_watch(net_chan, G_IO_IN, read_net_message, env_weather);
+  int gui_check_to_id = g_timeout_add_seconds(TIMEOUT_CHECK_GUI_PERIOD/1000, timeout_check_gui, &guicheck_objs);
   
   act_log_normal(act_log_msg("Entering main loop."));
-  int to_env_upd_id, to_check_gui_id;
-  if (TIMEOUT_ENV_UPDATE_PERIOD % 1000 == 0)
-    to_env_upd_id = g_timeout_add_seconds(TIMEOUT_ENV_UPDATE_PERIOD/1000, timeout_env_update, &objs);
-  else
-    to_env_upd_id = g_timeout_add(TIMEOUT_ENV_UPDATE_PERIOD, timeout_env_update, &objs);
-  if (TIMEOUT_CHECK_GUI_PERIOD % 1000 == 0)
-    to_check_gui_id = g_timeout_add_seconds(TIMEOUT_CHECK_GUI_PERIOD/1000, timeout_check_gui, &objs);
-  else
-    to_check_gui_id = g_timeout_add(TIMEOUT_CHECK_GUI_PERIOD, timeout_check_gui, &objs);
-  int net_watch_id = g_io_add_watch(objs.net_chan, G_IO_IN, read_net_message, &objs);
+//   gtk_container_add(GTK_CONTAINER(ENV_WEATHER(env_weather)->evb_swasp_stat), gtk_label_new("TEST"));
+//   gtk_label_set_text(GTK_LABEL(ENV_WEATHER(env_weather)->lbl_salt_stat), "TEST");
   gtk_main();
-  g_source_remove(to_env_upd_id);
-  g_source_remove(to_check_gui_id);
   g_source_remove(net_watch_id);
-  g_io_channel_unref(objs.net_chan);
-  finalise_environ(objs.env_objs);
-  gtk_widget_destroy(objs.box_main);
+  g_source_remove(gui_check_to_id);
+  g_io_channel_unref(guicheck_objs.net_chan);
+  g_object_unref(G_OBJECT(guicheck_objs.env_weather));
+  guicheck_objs.net_chan = NULL;
+  guicheck_objs.env_weather = NULL;
+  g_io_channel_unref(net_chan);
+  g_object_unref(G_OBJECT(env_weather));
   act_log_normal(act_log_msg("Exiting"));
   return 0;
 }
