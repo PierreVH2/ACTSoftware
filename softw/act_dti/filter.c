@@ -230,11 +230,6 @@ static void filt_select(GtkWidget *cmb_filtsel, gpointer filter)
   int filt_active = -1;
   GtkTreeModel *model = gtk_combo_box_get_model(GTK_COMBO_BOX(cmb_filtsel));
   gtk_tree_model_get(model, &active_filt, FILTSTORE_COL_SLOT, &filt_active, -1);
-  if ((filt_active < 0) || (filt_active >= IPC_MAX_NUM_FILTAPERS))
-  {
-    act_log_error(act_log_msg("Invalid filter slot: %d", filt_active));
-    return;
-  }
   send_filt(objs, filt_active);
 }
 
@@ -316,17 +311,20 @@ static void process_complete(Filter *objs, guchar status)
 
 static void send_filt(Filter *objs, guchar filt_slot)
 {
-  act_log_debug(act_log_msg("Sending filter %hhu\n", filt_slot));
+  act_log_debug(act_log_msg("Sending filter %hhu", filt_slot));
   g_signal_emit(G_OBJECT(objs), filter_signals[SEND_FILT_SIGNAL], 0, filt_slot);
-  objs->filt_goal = filt_slot;
+  if (filt_slot >= IPC_MAX_NUM_FILTAPERS)
+    objs->filt_goal = 0;
+  else
+    objs->filt_goal = filt_slot;
   if (objs->fail_to_id)
     g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = g_timeout_add_seconds(FILT_FAIL_TIME_S, fail_timeout, objs);
+  if (objs->filt_slot != objs->filt_goal)
+    objs->fail_to_id = g_timeout_add_seconds(FILT_FAIL_TIME_S, fail_timeout, objs);
 }
 
 void add_filt_to_cmb(struct filtaper *filt_info, gpointer filtstore)
 {
-  act_log_debug(act_log_msg("Adding filter %s", filt_info->name));
   GtkTreeIter iter;
   gtk_list_store_append(GTK_LIST_STORE(filtstore), &iter);
   gtk_list_store_set(GTK_LIST_STORE(filtstore), &iter, FILTSTORE_COL_ID, filt_info->db_id, FILTSTORE_COL_SLOT, filt_info->slot, FILTSTORE_COL_NAME, filt_info->name, -1);

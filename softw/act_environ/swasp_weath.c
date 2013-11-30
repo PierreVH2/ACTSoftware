@@ -44,7 +44,6 @@ static guint swasp_weath_signals[LAST_SIGNAL] = { 0 };
 
 GType swasp_weath_get_type (void)
 {
-  act_log_debug(act_log_msg("SWASP weather type."));
   static GType swasp_wath_type = 0;
   
   if (!swasp_wath_type)
@@ -71,7 +70,6 @@ GType swasp_weath_get_type (void)
 
 SwaspWeath *swasp_weath_new (void)
 {
-  act_log_debug(act_log_msg("Creating SWASP weather object."));
   SwaspWeath *objs = SWASP_WEATH(g_object_new (swasp_weath_get_type(), NULL));
   objs->fetch_session = soup_session_async_new();
   fetch_swasp((void *)objs);
@@ -82,7 +80,6 @@ SwaspWeath *swasp_weath_new (void)
 
 void swasp_weath_set_time(SwaspWeath * objs, double jd)
 {
-  act_log_debug(act_log_msg("Setting time."));
   objs->cur_jd = jd;
   if (objs->time_to_id != 0)
   {
@@ -94,7 +91,6 @@ void swasp_weath_set_time(SwaspWeath * objs, double jd)
 
 gboolean swasp_weath_get_env_data (SwaspWeath * objs, struct act_msg_environ *env_data)
 {
-  act_log_debug(act_log_msg("Requested weather data (%f %f %f).", objs->weath_jd, objs->cur_jd, fabs(objs->weath_jd - objs->cur_jd)));
   if (fabs(objs->weath_jd - objs->cur_jd) > INVAL_TIMEOUT_D)
   {
     act_log_normal(act_log_msg("No recent weather data available."));
@@ -177,7 +173,6 @@ static void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer s
   (void)soup_session;
   SwaspWeath *objs = SWASP_WEATH(swasp_weath);
   objs->fetch_msg = NULL;
-  act_log_debug(act_log_msg("Processing SuperWASP weather data."));
   if (msg->status_code != SOUP_STATUS_OK)
   {
     act_log_error(act_log_msg("An error occurred while retrieving SuperWASP weather data. Reason: %s", msg->reason_phrase));

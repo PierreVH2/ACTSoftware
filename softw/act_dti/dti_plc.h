@@ -37,6 +37,8 @@
 #define dti_plc_eht_low(eht_stat)                  ((eht_stat & EHT_LOW_MASK) > 0)
 #define dti_plc_eht_high(eht_stat)                 ((eht_stat & EHT_HIGH_MASK) > 0)
 
+#define DTI_PLC_FILTAPER_INIT        100
+#define DTI_PLC_FILTAPER_STOP        101
 
 G_BEGIN_DECLS
 
@@ -67,6 +69,7 @@ struct _DtiPlcClass
 
 GType dti_plc_get_type (void);
 DtiPlc *dti_plc_new (void);
+void dti_plc_init_emit_all(gpointer dti_plc);
 
 gfloat dti_plc_get_dome_azm(gpointer dti_plc);
 gboolean dti_plc_get_dome_moving(gpointer dti_plc);

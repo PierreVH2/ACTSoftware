@@ -73,9 +73,10 @@ GtkWidget *dropout_new (guchar dropout_stat)
   GtkWidget *dropout = g_object_new (dropout_get_type (), NULL);
   Dropout *objs = DROPOUT(dropout);
   objs->weath_ok = objs->sun_alt_ok = FALSE;
-  objs->dropout_goal = dropout_stat;
-  objs->dropout_cur = dropout_stat;
-  dropout_update (dropout, dropout_stat);
+  objs->dropout_cur = -1;
+//   objs->dropout_goal = dropout_stat;
+//   objs->dropout_cur = dropout_stat;
+//   dropout_update (dropout, dropout_stat);
   if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_open)))
     gtk_widget_set_sensitive(objs->btn_open, FALSE);
   
@@ -282,7 +283,7 @@ static guchar process_environ(Dropout *objs, struct act_msg_environ *msg_environ
   if (objs->env_to_id)
     g_source_remove(objs->env_to_id);
   objs->env_to_id = g_timeout_add_seconds(DROPOUT_ENV_TIME_S, env_timeout, objs);
-  return environ_change(objs, msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_DAY) > 0);
+  return environ_change(objs, msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_NIGHT) > 0);
 }
 
 static guchar process_targset(Dropout *objs, struct act_msg_targset *msg_targset)
@@ -417,8 +418,9 @@ static void send_start_open(Dropout *objs)
   g_signal_emit(objs, dropout_signals[SEND_START_OPEN_SIGNAL], 0);
   if (objs->fail_to_id != 0)
     g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = g_timeout_add_seconds(DROPOUT_FAIL_TIME_S, fail_timeout, objs);
   objs->dropout_goal = DSHUTT_OPEN_MASK;
+  if (objs->dropout_cur != DSHUTT_OPEN_MASK)
+    objs->fail_to_id = g_timeout_add_seconds(DROPOUT_FAIL_TIME_S, fail_timeout, objs);
 }
 
 static void send_start_close(Dropout *objs)
@@ -426,8 +428,9 @@ static void send_start_close(Dropout *objs)
   g_signal_emit(objs, dropout_signals[SEND_START_CLOSE_SIGNAL], 0);
   if (objs->fail_to_id != 0)
     g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = g_timeout_add_seconds(DROPOUT_FAIL_TIME_S, fail_timeout, objs);
   objs->dropout_goal = DSHUTT_CLOSED_MASK;
+  if (objs->dropout_cur != DSHUTT_CLOSED_MASK)
+    objs->fail_to_id = g_timeout_add_seconds(DROPOUT_FAIL_TIME_S, fail_timeout, objs);
 }
 
 static void send_stop(Dropout *objs)

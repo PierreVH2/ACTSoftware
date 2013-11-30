@@ -73,8 +73,9 @@ GtkWidget *domeshutter_new (guchar dshutt_stat)
   GtkWidget *domeshutter = g_object_new (domeshutter_get_type (), NULL);
   Domeshutter *objs = DOMESHUTTER(domeshutter);
   objs->weath_ok = objs->sun_alt_ok = FALSE;
-  objs->dshutt_cur = ~dshutt_stat;
-  domeshutter_update (domeshutter, dshutt_stat);
+  objs->dshutt_cur = -1;
+//   objs->dshutt_cur = ~dshutt_stat;
+//   domeshutter_update (domeshutter, dshutt_stat);
   // Button should actually be insensitive at start, in case of !weath_ok or !sun_alt_ok, but if it'll mess things up if it's already open
   if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_open)))
     gtk_widget_set_sensitive(objs->btn_open, FALSE);
@@ -285,8 +286,8 @@ static guchar process_environ(Domeshutter *objs, struct act_msg_environ *msg_env
   if (objs->env_to_id)
     g_source_remove(objs->env_to_id);
   objs->env_to_id = g_timeout_add_seconds(DOMESHUTTER_ENV_TIME_S, env_timeout, objs);
-  act_log_debug(act_log_msg("Processing environ (%hhu %hhu)", msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_DAY) > 0));
-  return environ_change(objs, msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_DAY) > 0);
+  act_log_debug(act_log_msg("Processing environ (%hhu %hhu)", msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_NIGHT) > 0));
+  return environ_change(objs, msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_NIGHT) > 0);
 }
 
 static guchar process_targset(Domeshutter *objs, struct act_msg_targset *msg_targset)
@@ -413,8 +414,9 @@ static void send_start_open(Domeshutter *objs)
   g_signal_emit(objs, domeshutter_signals[SEND_START_OPEN_SIGNAL], 0);
   if (objs->fail_to_id != 0)
     g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = g_timeout_add_seconds(DOMESHUTTER_FAIL_TIME_S, fail_timeout, objs);
   objs->dshutt_goal = DSHUTT_OPEN_MASK;
+  if (objs->dshutt_cur != DSHUTT_OPEN_MASK)
+    objs->fail_to_id = g_timeout_add_seconds(DOMESHUTTER_FAIL_TIME_S, fail_timeout, objs);
 }
 
 static void send_start_close(Domeshutter *objs)
@@ -422,8 +424,9 @@ static void send_start_close(Domeshutter *objs)
   g_signal_emit(objs, domeshutter_signals[SEND_START_CLOSE_SIGNAL], 0);
   if (objs->fail_to_id != 0)
     g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = g_timeout_add_seconds(DOMESHUTTER_FAIL_TIME_S, fail_timeout, objs);
   objs->dshutt_goal = DSHUTT_CLOSED_MASK;
+  if (objs->dshutt_cur != DSHUTT_CLOSED_MASK)
+    objs->fail_to_id = g_timeout_add_seconds(DOMESHUTTER_FAIL_TIME_S, fail_timeout, objs);
 }
 
 static void send_stop(Domeshutter *objs)

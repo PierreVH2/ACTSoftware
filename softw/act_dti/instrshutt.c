@@ -76,20 +76,13 @@ GtkWidget* instrshutt_new (gboolean instrshutt_open)
 void instrshutt_update (GtkWidget *instrshutt, gboolean new_instrshutt_open)
 {
   Instrshutt *objs = INSTRSHUTT(instrshutt);
-  objs->instrshutt_open = new_instrshutt_open;
+  act_log_debug(act_log_msg("Instrument shutter update (new %hhu, old %hhu)", new_instrshutt_open, objs->instrshutt_open));
   if (objs->fail_to_id)
   {
     g_source_remove(objs->fail_to_id);
     objs->fail_to_id = 0;
   }
   GdkColor new_col;
-  if (objs->powerup_to_id > 0)
-  {
-    g_source_remove(objs->powerup_to_id);
-    objs->powerup_to_id = 0;
-    objs->timer_sec = 0;
-    gtk_button_set_label(GTK_BUTTON(objs->btn_open), "Open");
-  }
   set_buttons(objs, new_instrshutt_open);
   if (new_instrshutt_open)
   {
@@ -117,15 +110,19 @@ void instrshutt_update (GtkWidget *instrshutt, gboolean new_instrshutt_open)
       act_log_crit(act_log_msg("Instrument shutter closed when it should be open."));
       process_complete(objs, OBSNSTAT_ERR_RETRY);
     }
-    objs->powerup_to_id = g_timeout_add_seconds(1, powerup_timeout, objs);
-    objs->timer_sec = SHUTTER_POWERUP_TIME_S;
-    GdkColor new_col;
-    gdk_color_parse("#AAAA00", &new_col);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_NORMAL, &new_col);
-    char tmpstr[20];
-    snprintf(tmpstr, sizeof(tmpstr)-1, "Open (%d s)", SHUTTER_POWERUP_TIME_S);
-    gtk_button_set_label(GTK_BUTTON(objs->btn_open), tmpstr);
+    if (objs->instrshutt_open)
+    {
+      objs->powerup_to_id = g_timeout_add_seconds(1, powerup_timeout, objs);
+      objs->timer_sec = SHUTTER_POWERUP_TIME_S;
+      GdkColor new_col;
+      gdk_color_parse("#AAAA00", &new_col);
+      gtk_widget_modify_bg(objs->btn_open, GTK_STATE_NORMAL, &new_col);
+      char tmpstr[20];
+      snprintf(tmpstr, sizeof(tmpstr)-1, "Open (%d s)", SHUTTER_POWERUP_TIME_S);
+      gtk_button_set_label(GTK_BUTTON(objs->btn_open), tmpstr);
+    }
   }
+  objs->instrshutt_open = new_instrshutt_open;
 }
 
 void instrshutt_process_msg(GtkWidget *instrshutt, DtiMsg *msg)
@@ -261,12 +258,15 @@ static void send_open(Instrshutt *objs, gboolean open)
   g_signal_emit(G_OBJECT(objs), instrshutt_signals[SEND_INSTRSHUTT_OPEN_SIGNAL], 0, open);
   if (objs->fail_to_id > 0)
     g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = g_timeout_add_seconds(SHUTTER_FAIL_TIME_S, fail_timeout, objs);
+  if (objs->instrshutt_open != open)
+    objs->fail_to_id = g_timeout_add_seconds(SHUTTER_FAIL_TIME_S, fail_timeout, objs);
   if ((open) && (objs->powerup_to_id > 0))
   {
     act_log_normal(act_log_msg("Shutter re-opened before power-up cycle complete."));
     g_source_remove(objs->powerup_to_id);
     objs->powerup_to_id = 0;
+    objs->timer_sec = 0;
+    gtk_button_set_label(GTK_BUTTON(objs->btn_open), "Open");
   }
 }
 

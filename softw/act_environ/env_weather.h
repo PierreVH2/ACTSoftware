@@ -3,7 +3,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
-#include <gtk/gtkframe.h>
+#include <gtk/gtkeventbox.h>
 #include <libsoup/soup.h>
 #include <act_ipc.h>
 #include "swasp_weath.h"
@@ -22,7 +22,7 @@ typedef struct _EnvWeatherClass  EnvWeatherClass;
 
 struct _EnvWeather
 {
-  GtkFrame parent;
+  GtkEventBox parent;
   gint update_to_id, weath_change_to_id, active_change_to_id;
   struct act_msg_environ all_env;
   gboolean salt_ok, swasp_ok;
@@ -42,7 +42,7 @@ struct _EnvWeather
 
 struct _EnvWeatherClass
 {
-  GtkFrameClass parent_class;
+  GtkEventBoxClass parent_class;
 };
 
 GType env_weather_get_type (void);

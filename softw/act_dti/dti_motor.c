@@ -361,10 +361,8 @@ static void check_coord_poll(Dtimotor *objs)
     g_source_remove(objs->coord_to_id);
   if ((objs->cur_stat & MOTOR_STAT_MOVING) > 0)
     objs->coord_to_id = g_timeout_add(300, coord_poll, objs);
-  else if ((objs->cur_stat & MOTOR_STAT_TRACKING) > 0)
-    objs->coord_to_id = g_timeout_add(1000, coord_poll, objs);
   else
-    act_log_debug(act_log_msg("Telescope idle. Not restarting coordinates poll."));
+    objs->coord_to_id = g_timeout_add(1000, coord_poll, objs);
 }
 
 static gboolean coord_poll(gpointer dti_motor)

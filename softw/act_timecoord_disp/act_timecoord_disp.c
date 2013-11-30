@@ -631,7 +631,6 @@ gboolean disptimes_timeout()
 {
   if (!get_meantime(G_time_fd, &G_msg_time.loct, &G_msg_time.locd, &G_msg_time.unit, &G_msg_time.unid))
     act_log_error(act_log_msg("Error reading mean date/time."));
-  act_log_debug(act_log_msg("%hd-%hhu-%hhu %hhu:%hhu:%hhu", G_msg_time.unid.year, G_msg_time.unid.month, G_msg_time.unid.day, G_msg_time.unit.hours, G_msg_time.unit.minutes, G_msg_time.unit.seconds));
   G_msg_time.gjd = calc_GJD (&G_msg_time.unid, &G_msg_time.unit);
   if (G_msg_coord != NULL)
     calc_sun (G_msg_time.gjd, &G_msg_coord->ra, &G_msg_coord->dec, NULL, NULL, &G_msg_time.hjd);

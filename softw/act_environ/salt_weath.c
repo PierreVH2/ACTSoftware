@@ -27,7 +27,6 @@ static guint salt_weath_signals[LAST_SIGNAL] = { 0 };
 
 GType salt_weath_get_type (void)
 {
-  act_log_debug(act_log_msg("SALT type."));
   static GType salt_weath_type = 0;
   
   if (!salt_weath_type)
@@ -54,7 +53,6 @@ GType salt_weath_get_type (void)
 
 SaltWeath *salt_weath_new (void)
 {
-  act_log_debug(act_log_msg("Creating salt_weath"));
   SaltWeath *objs = SALT_WEATH(g_object_new (salt_weath_get_type(), NULL));
   objs->fetch_session = soup_session_async_new();
   fetch_salt((void *)objs);
@@ -65,7 +63,6 @@ SaltWeath *salt_weath_new (void)
 
 void salt_weath_set_time(SaltWeath * objs, double jd)
 {
-  act_log_debug(act_log_msg("Setting time."));
   objs->cur_jd = jd;
   if (objs->time_to_id != 0)
   {
@@ -77,7 +74,6 @@ void salt_weath_set_time(SaltWeath * objs, double jd)
 
 gboolean salt_weath_get_env_data (SaltWeath * objs, struct act_msg_environ *env_data)
 {
-  act_log_debug(act_log_msg("Requested salt weather data (%f %f %f).", objs->weath_jd, objs->cur_jd, fabs(objs->weath_jd - objs->cur_jd)));
   if (fabs(objs->weath_jd - objs->cur_jd) > INVAL_TIMEOUT_D)
   {
     act_log_normal(act_log_msg("No recent weather data available."));
@@ -167,7 +163,6 @@ static void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer s
   (void)soup_session;
   SaltWeath *objs = SALT_WEATH(salt_weath);
   objs->fetch_msg = NULL;
-  act_log_debug(act_log_msg("Processing SALT weather data."));
   if (msg->status_code != SOUP_STATUS_OK)
   {
     act_log_error(act_log_msg("An error occurred while retrieving SALT weather data. Reason: %s", msg->reason_phrase));
@@ -229,7 +224,6 @@ static void process_resp(SoupSession *soup_session, SoupMessage *msg, gpointer s
     memcpy(&unid, &locd, sizeof(struct datestruct));
     check_systime_discrep(&unid, &loct, &unit);
     objs->weath_jd = calc_GJD(&unid, &unit);
-    act_log_debug(act_log_msg("SALT jd: %f (%hd-%hhu-%hhu %hhu:%hhu:%hhu)", objs->weath_jd, unid.year, unid.month, unid.day, unit.hours, unit.minutes, unit.seconds));
     objs->air_press = tmp_floatvals[0];
     objs->dew_point_T = tmp_floatvals[1];
     objs->rel_hum = tmp_floatvals[2];

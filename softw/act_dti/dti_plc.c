@@ -103,6 +103,28 @@ DtiPlc *dti_plc_new (void)
   return objs;
 }
 
+void dti_plc_init_emit_all(gpointer dti_plc)
+{
+  DtiPlc *objs = DTI_PLC(dti_plc);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[POWER_FAIL_UPDATE], 0, objs->plc_stat.power_fail);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[WATCHDOG_TRIP_UPDATE], 0, objs->plc_stat.watchdog_trip);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[DOME_AZM_UPDATE], 0, objs->plc_stat.dome_pos/10.0);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[DOME_STAT_UPDATE], 0, objs->plc_stat.dome_moving);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[DOMESHUTT_STAT_UPDATE], 0, objs->plc_stat.shutter);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[DROPOUT_STAT_UPDATE], 0, objs->plc_stat.dropout);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[FOCUS_POS_UPDATE], 0, objs->plc_stat.focus_pos);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[FOCUS_STAT_UPDATE], 0, objs->plc_stat.foc_stat);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[APER_POS_UPDATE], 0, objs->plc_stat.aper_pos);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[APER_STAT_UPDATE], 0, objs->plc_stat.aper_stat);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[FILT_POS_UPDATE], 0, objs->plc_stat.filt_pos);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[FILT_STAT_UPDATE], 0, objs->plc_stat.filt_stat);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[ACQMIR_STAT_UPDATE], 0, objs->plc_stat.acqmir);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[EHT_STAT_UPDATE], 0, objs->plc_stat.eht_mode);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[INSTRSHUTT_OPEN_UPDATE], 0, objs->plc_stat.instrshutt_open);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[HANDSET_STAT_UPDATE], 0, objs->plc_stat.handset);
+  g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[TRAPDOOR_OPEN_UPDATE], 0, objs->plc_stat.trapdoor_open);
+}
+
 gfloat dti_plc_get_dome_azm(gpointer dti_plc)
 {
   return DTI_PLC(dti_plc)->plc_stat.dome_pos/10.0;
@@ -399,6 +421,8 @@ static gboolean plc_watch(GIOChannel *plc_chan, GIOCondition cond, gpointer dti_
     g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[ACQMIR_STAT_UPDATE], 0, tmp_plc_stat.acqmir);
   if (tmp_plc_stat.eht_mode != objs->plc_stat.eht_mode)
     g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[EHT_STAT_UPDATE], 0, tmp_plc_stat.eht_mode);
+  if (tmp_plc_stat.instrshutt_open != objs->plc_stat.instrshutt_open)
+    g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[INSTRSHUTT_OPEN_UPDATE], 0, tmp_plc_stat.instrshutt_open);
   if (tmp_plc_stat.handset != objs->plc_stat.handset)
     g_signal_emit(G_OBJECT(dti_plc), dti_plc_signals[HANDSET_STAT_UPDATE], 0, tmp_plc_stat.handset);
   if (tmp_plc_stat.trapdoor_open != objs->plc_stat.trapdoor_open)

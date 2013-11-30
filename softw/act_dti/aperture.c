@@ -230,11 +230,6 @@ static void aper_select(GtkWidget *cmb_apersel, gpointer aperture)
   int aper_active = -1;
   GtkTreeModel *model = gtk_combo_box_get_model(GTK_COMBO_BOX(cmb_apersel));
   gtk_tree_model_get(model, &active_aper, APERSTORE_COL_SLOT, &aper_active, -1);
-  if ((aper_active < 0) || (aper_active >= IPC_MAX_NUM_FILTAPERS))
-  {
-    act_log_error(act_log_msg("Invalid aperture slot: %d", aper_active));
-    return;
-  }
   send_aper(objs, aper_active);
 }
 
@@ -308,10 +303,14 @@ static void process_complete(Aperture *objs, guchar status)
 static void send_aper(Aperture *objs, guchar aper_slot)
 {
   g_signal_emit(G_OBJECT(objs), aperture_signals[SEND_APER_SIGNAL], 0, aper_slot);
-  objs->aper_goal = aper_slot;
+  if (aper_slot >= IPC_MAX_NUM_FILTAPERS)
+    objs->aper_goal = 0;
+  else
+    objs->aper_goal = aper_slot;
   if (objs->fail_to_id)
     g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = g_timeout_add_seconds(APER_FAIL_TIME_S, fail_timeout, objs);
+  if (objs->aper_slot != objs->aper_goal)
+    objs->fail_to_id = g_timeout_add_seconds(APER_FAIL_TIME_S, fail_timeout, objs);
 }
 
 static void add_aper_to_cmb(struct filtaper *aper_info, gpointer aperstore)

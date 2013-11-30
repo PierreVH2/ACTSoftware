@@ -15,6 +15,7 @@
 static void acqmir_class_init (AcqmirClass *klass);
 static void acqmir_init(GtkWidget *acqmir);
 static void acqmir_destroy(gpointer acqmir);
+static void view_toggled(gpointer acqmir);
 static void meas_toggled(gpointer acqmir);
 static void acqmir_nand(GtkWidget *button1, gpointer button2);
 static void set_buttons_meas(Acqmir *objs);
@@ -30,6 +31,7 @@ static void process_complete(Acqmir *objs, guchar status);
 static void send_stop(Acqmir *objs);
 static void send_view(Acqmir *objs);
 static void send_meas(Acqmir *objs);
+static void send_acqmir(Acqmir *objs, guchar acqmir_goal, guint signum);
 static gboolean fail_timeout(gpointer acqmir);
 
 enum
@@ -74,10 +76,12 @@ GtkWidget *acqmir_new (guchar cur_acqmir)
   GtkWidget *acqmir = g_object_new (acqmir_get_type (), NULL);
   Acqmir *objs = ACQMIR(acqmir);
   objs->acqmir_cur = ~cur_acqmir;
+  objs->acqmir_goal = cur_acqmir & (ACQMIR_VIEW_MASK | ACQMIR_MEAS_MASK);
   acqmir_update (acqmir, cur_acqmir);
   
   g_signal_connect_swapped(G_OBJECT(acqmir), "destroy", G_CALLBACK(acqmir_destroy), acqmir);
   g_signal_connect_swapped(G_OBJECT(objs->btn_meas), "toggled", G_CALLBACK(meas_toggled), acqmir);
+  g_signal_connect_swapped(G_OBJECT(objs->btn_view), "toggled", G_CALLBACK(view_toggled), acqmir);
   g_signal_connect(G_OBJECT(objs->btn_meas), "toggled", G_CALLBACK(acqmir_nand), objs->btn_view);
   g_signal_connect(G_OBJECT(objs->btn_view), "toggled", G_CALLBACK(acqmir_nand), objs->btn_meas);
   
@@ -87,9 +91,9 @@ GtkWidget *acqmir_new (guchar cur_acqmir)
 void acqmir_update (GtkWidget *acqmir, guchar new_acqmir)
 {
   Acqmir *objs = ACQMIR(acqmir);
-  objs->acqmir_cur = new_acqmir;
+  objs->acqmir_cur = new_acqmir & (ACQMIR_MEAS_MASK | ACQMIR_VIEW_MASK | ACQMIR_MOVING_MASK);
   GdkColor new_col;
-  if ((new_acqmir & ACQMIR_MOVING_MASK) || (objs->fail_to_id > 0))
+  if ((new_acqmir & ACQMIR_MOVING_MASK) || (objs->acqmir_cur != objs->acqmir_goal))
   {
     gdk_color_parse("#AAAA00", &new_col);
     gtk_widget_modify_bg(objs->btn_view, GTK_STATE_ACTIVE, &new_col);
@@ -200,17 +204,22 @@ static void acqmir_destroy(gpointer acqmir)
   process_complete(objs, OBSNSTAT_CANCEL);
 }
 
+static void view_toggled(gpointer acqmir)
+{
+  Acqmir *objs = ACQMIR(acqmir);
+  if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_view)))
+    send_view(objs);
+  else if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_meas)))
+    send_stop(objs);
+}
+
 static void meas_toggled(gpointer acqmir)
 {
   Acqmir *objs = ACQMIR(acqmir);
-  if ((!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_view))) && (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_meas))))
-    send_stop(objs);
-  else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_view)))
-    send_view(objs);
-  else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_meas)))
+  if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_meas)))
     send_meas(objs);
-  else
-    act_log_error(act_log_msg("Logical error in acquisition mirror button toggles (%hhu, %hhu).", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_view)), gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_meas))));
+  else if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_view)))
+    send_stop(objs);
 }
 
 static void acqmir_nand(GtkWidget *button1, gpointer button2)
@@ -312,37 +321,40 @@ static void process_complete(Acqmir *objs, guchar status)
 
 static void send_stop(Acqmir *objs)
 {
-  g_signal_emit (G_OBJECT(objs), acqmir_signals[SEND_ACQMIR_STOP_SIGNAL], 0);
-  if (objs->fail_to_id > 0)
-  {
-    g_source_remove(objs->fail_to_id);
-    objs->fail_to_id = 0;
-  }
-  objs->acqmir_goal = 0;
+  act_log_debug(act_log_msg("Emitting stop."));
+  send_acqmir(objs, 0, acqmir_signals[SEND_ACQMIR_STOP_SIGNAL]);
 }
 
 static void send_view(Acqmir *objs)
 {
-  g_signal_emit (G_OBJECT(objs), acqmir_signals[SEND_ACQMIR_VIEW_SIGNAL], 0);
-  if (objs->fail_to_id > 0)
-  {
-    g_source_remove(objs->fail_to_id);
-    objs->fail_to_id = 0;
-  }
-  objs->fail_to_id = g_timeout_add_seconds(ACQMIR_FAIL_TIME_S, fail_timeout, G_OBJECT(objs));
-  objs->acqmir_goal = ACQMIR_VIEW_MASK;
+  act_log_debug(act_log_msg("Emitting send view."));
+  send_acqmir(objs, ACQMIR_VIEW_MASK, acqmir_signals[SEND_ACQMIR_VIEW_SIGNAL]);
 }
 
 static void send_meas(Acqmir *objs)
 {
-  g_signal_emit (G_OBJECT(objs), acqmir_signals[SEND_ACQMIR_MEAS_SIGNAL], 0);
+  act_log_debug(act_log_msg("Emitting send meas."));
+  send_acqmir(objs, ACQMIR_MEAS_MASK, acqmir_signals[SEND_ACQMIR_MEAS_SIGNAL]);
+}
+
+static void send_acqmir(Acqmir *objs, guchar acqmir_goal, guint signum)
+{
+  g_signal_emit(G_OBJECT(objs), signum, 0);
   if (objs->fail_to_id > 0)
   {
+    act_log_debug(act_log_msg("Cancelling fail timeout."));
     g_source_remove(objs->fail_to_id);
     objs->fail_to_id = 0;
   }
-  objs->fail_to_id = g_timeout_add_seconds(ACQMIR_FAIL_TIME_S, fail_timeout, G_OBJECT(objs));
-  objs->acqmir_goal = ACQMIR_MEAS_MASK;
+  if (acqmir_goal == 0)
+    objs->acqmir_goal = objs->acqmir_cur;
+  else
+    objs->acqmir_goal = acqmir_goal;
+  if (objs->acqmir_goal != objs->acqmir_cur)
+  {
+    act_log_debug(act_log_msg("Starting fail timeout (%hhu %hhu).", objs->acqmir_goal, objs->acqmir_cur));
+    objs->fail_to_id = g_timeout_add_seconds(ACQMIR_FAIL_TIME_S, fail_timeout, G_OBJECT(objs));
+  }
 }
 
 static gboolean fail_timeout(gpointer acqmir)

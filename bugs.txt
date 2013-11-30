@@ -1,11 +1,24 @@
 Bug list:
 
-act_dti does not get correct status_active (possibly act_environ is sending the wrong info?)
-Once act_dti gets proper status_active, ensure that dome shutter open button is enabled
-act_dti is not sending coordinates
 Determine proper treatment of SuperWASP cloud data
-Change act_environ wind direction display so only gives degrees
-act_environ - degree symbol in sun alt, hour and degree symbols in moon ra, dec
 act_environ - status light must remain red when weather data outdated
 dti workout - check all componets operating as expected
-dti - rearrange widgets - dome stuff in one block, instrument stuff in another, etc.
+  - Filters work
+  - Apertures work
+  - PMT Shutter works
+  - Acqmir works
+  - Focus works
+  - EHT works
+  - Domeshutter works (quick check), env lock works
+  - Dropout (quick check, lock works)
+  - Telmove (card, goto)
+  - Dome rotation works
+  - (Watchdog)
+  - Trapdoor
+  - Main power
+Check motor handset move (and INIT)
+ENV - Change indicators if time/coord not received for some time
+DTI - Remove status from widget_new functions, rather set initial values with DTI initial signals
+DTI - Use finalise instead of destroy
+TIME - check frequency of time messages
+ENV - Moon RA, Dec incorrect

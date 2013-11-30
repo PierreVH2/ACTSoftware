@@ -37,13 +37,11 @@ struct guicheck_to_objs
  */
 void destroy_plug(GtkWidget *plug, gpointer env_weather)
 {
-  act_log_debug(act_log_msg("Plug destroyed."));
   gtk_container_remove(GTK_CONTAINER(plug), GTK_WIDGET(env_weather));
 }
 
 int net_send(GIOChannel *channel, struct act_msg *msg)
 {
-  act_log_debug(act_log_msg("Sending network message (type %d).", msg->mtype));
   unsigned int num_bytes;
   int status;
   GError *error = NULL;
@@ -105,7 +103,6 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     act_log_error(act_log_msg("Received message has invalid length: %d", num_bytes));
     return TRUE;
   }
-  act_log_debug(act_log_msg("Processing message (type %d).\n", msgbuf.mtype));
   switch (msgbuf.mtype)
   {
     case MT_QUIT:
@@ -140,14 +137,14 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
     {
       if (msgbuf.content.msg_guisock.gui_socket <= 0)
       {
-	act_log_debug(act_log_msg("Received invalid GUI socket ID (%d)", msgbuf.content.msg_guisock.gui_socket));
-	break;
+        act_log_debug(act_log_msg("Received invalid GUI socket ID (%d)", msgbuf.content.msg_guisock.gui_socket));
+        break;
       }
       GtkWidget *plug = gtk_widget_get_parent(GTK_WIDGET(env_weather));
       if (plug != NULL)
       {
-	gtk_container_remove(GTK_CONTAINER(plug), GTK_WIDGET(env_weather));
-	gtk_widget_destroy(plug);
+        gtk_container_remove(GTK_CONTAINER(plug), GTK_WIDGET(env_weather));
+        gtk_widget_destroy(plug);
       }
       plug = gtk_plug_new(msgbuf.content.msg_guisock.gui_socket);
       act_log_normal(act_log_msg("Received GUI socket (%d).", msgbuf.content.msg_guisock.gui_socket));
@@ -246,7 +243,6 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
  */
 GIOChannel *setup_net(const char* host, const char* port)
 {
-  act_log_debug(act_log_msg("Setting up networking."));
   char hostport[256];
   if (snprintf(hostport, sizeof(hostport), "%s:%s", host, port) != (int)(strlen(host)+strlen(port)+1))
   {
@@ -272,7 +268,6 @@ GIOChannel *setup_net(const char* host, const char* port)
   
   socket = g_socket_connection_get_socket(socket_connection);
   fd = g_socket_get_fd(socket);
-  act_log_debug(act_log_msg("Connected on socket %d", fd));
   channel = g_io_channel_unix_new(fd);
   g_io_channel_set_close_on_unref (channel, TRUE);
   g_io_channel_set_encoding (channel, NULL, &error);
@@ -296,7 +291,6 @@ GIOChannel *setup_net(const char* host, const char* port)
  */
 gboolean timeout_check_gui(gpointer check_gui_objs)
 {
-  act_log_debug(act_log_msg("Checking gui socket."));
   GtkWidget *env_weather = ((struct guicheck_to_objs *)check_gui_objs)->env_weather;
   GIOChannel *net_chan = ((struct guicheck_to_objs *)check_gui_objs)->net_chan;
   unsigned char main_embedded = gtk_widget_get_parent(GTK_WIDGET(env_weather)) != NULL;
@@ -312,7 +306,6 @@ gboolean timeout_check_gui(gpointer check_gui_objs)
 
 void update_weather(GtkWidget *env_weather, gpointer net_chan)
 {
-  act_log_debug(act_log_msg("Updating weather."));
   struct act_msg envmsg;
   memset(&envmsg, 0, sizeof(struct act_msg));
   envmsg.mtype = MT_ENVIRON;

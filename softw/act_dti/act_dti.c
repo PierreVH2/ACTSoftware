@@ -75,7 +75,7 @@ struct form_main
   guchar progstat;
   gint watchdog_reset_to_id;
   gpointer dti_net, dti_motor, dti_plc;
-  GtkWidget *box_main;
+  GtkWidget *box_main, *box_instrument;
   GtkWidget *domeshutter, *dropout, *domemove;
   GtkWidget *telmove, *dtimisc;
   GtkWidget *acqmir, *filter, *aperture, *instrshutt;
@@ -182,8 +182,10 @@ int main(int argc, char** argv)
   g_object_ref_sink(G_OBJECT(form.dti_motor));
   g_object_ref_sink(G_OBJECT(form.dti_plc));
     
-  form.box_main = gtk_table_new(0, 0, FALSE);
+  form.box_main = gtk_table_new(4, 3, FALSE);
   g_object_ref (G_OBJECT(form.box_main));
+  form.box_instrument = gtk_table_new(4, 1,FALSE);
+  gtk_table_attach(GTK_TABLE(form.box_main), form.box_instrument, 2, 3, 0, 4, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
   form.domeshutter = domeshutter_new(dti_plc_get_domeshutt_stat(DTI_PLC(form.dti_plc)));
   gtk_table_attach(GTK_TABLE(form.box_main), form.domeshutter, 0, 1, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
@@ -232,28 +234,28 @@ int main(int argc, char** argv)
   g_signal_connect_swapped(G_OBJECT(form.telmove), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
 
   form.acqmir = acqmir_new(dti_plc_get_acqmir_stat(DTI_PLC(form.dti_plc)));
-  gtk_table_attach(GTK_TABLE(form.box_main), form.acqmir, 2, 3, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(form.box_instrument), form.acqmir, 0, 1, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.acqmir), "send-acqmir-view", G_CALLBACK(dti_plc_send_acqmir_view), form.dti_plc);g_signal_connect_swapped(G_OBJECT(form.acqmir), "send-acqmir-meas", G_CALLBACK(dti_plc_send_acqmir_meas), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.acqmir), "send-acqmir-stop", G_CALLBACK(dti_plc_send_acqmir_stop), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.acqmir), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "acqmir-stat-update", G_CALLBACK(acqmir_update), form.acqmir);
   
   form.filter = filter_new(dti_plc_get_filt_stat(DTI_PLC(form.dti_plc)), dti_plc_get_filt_slot(DTI_PLC(form.dti_plc)));
-  gtk_table_attach(GTK_TABLE(form.box_main), form.filter, 2, 3, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(form.box_instrument), form.filter, 0, 1, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.filter), "send-filter", G_CALLBACK(dti_plc_send_change_filter), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.filter), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "filt-pos-update", G_CALLBACK(filter_update_slot), form.filter);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "filt-stat-update", G_CALLBACK(filter_update_stat), form.filter);
   
   form.aperture = aperture_new(dti_plc_get_aper_stat(DTI_PLC(form.dti_plc)), dti_plc_get_aper_slot(DTI_PLC(form.dti_plc)));
-  gtk_table_attach(GTK_TABLE(form.box_main), form.aperture, 2, 3, 2, 3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(form.box_instrument), form.aperture, 0, 1, 2, 3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.aperture), "send-aperture", G_CALLBACK(dti_plc_send_change_aperture), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.aperture), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "aper-pos-update", G_CALLBACK(aperture_update_slot), form.aperture);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "aper-stat-update", G_CALLBACK(aperture_update_stat), form.aperture);
   
   form.instrshutt = instrshutt_new(dti_plc_get_instrshutt_open(DTI_PLC(form.dti_plc)));
-  gtk_table_attach(GTK_TABLE(form.box_main), form.instrshutt, 2, 3, 3, 4, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(form.box_instrument), form.instrshutt, 0, 1, 3, 4, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   g_signal_connect_swapped(G_OBJECT(form.instrshutt), "send-instrshutt-open", G_CALLBACK(dti_plc_send_instrshutt_toggle), form.dti_plc);
   g_signal_connect_swapped(G_OBJECT(form.instrshutt), "proc-complete", G_CALLBACK(main_process_message_resp), &form);
   g_signal_connect_swapped(G_OBJECT(form.dti_plc), "instrshutt-open-update", G_CALLBACK(instrshutt_update), form.instrshutt);
@@ -261,6 +263,7 @@ int main(int argc, char** argv)
   g_signal_connect_swapped(G_OBJECT(form.dti_net), "message-received", G_CALLBACK(main_receive_message), &form);
   
 //   main_set_caps((void *)&form);
+  dti_plc_init_emit_all(form.dti_plc);
   request_guisock(form.dti_net);
   watchdog_reset((void *)form.dti_plc);
   form.watchdog_reset_to_id = g_timeout_add_seconds(WATCHDOG_TIMEOUT_S, watchdog_reset, form.dti_plc);

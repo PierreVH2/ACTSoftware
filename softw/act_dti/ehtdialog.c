@@ -52,7 +52,7 @@ GtkWidget *ehtdialog_new (GtkWidget *parent, guchar eht_stat, gint stab_time)
   gtk_window_set_transient_for(GTK_WINDOW(ehtdialog), GTK_WINDOW(parent));
   EHTdialog *objs = EHTDIALOG(ehtdialog);
   objs->eht_stat = ~eht_stat;
-  objs->stab_time = stab_time +1;
+  objs->stab_time = stab_time+1;
   ehtdialog_update(ehtdialog, eht_stat, stab_time);
   
   return ehtdialog;
@@ -61,7 +61,6 @@ GtkWidget *ehtdialog_new (GtkWidget *parent, guchar eht_stat, gint stab_time)
 void ehtdialog_update (GtkWidget *ehtdialog, guchar eht_stat, gint stab_time)
 {
   EHTdialog *objs = EHTDIALOG(ehtdialog);
-  printf("EHT dialog update: %hhu, %hhu %d %d\n", objs->eht_stat, eht_stat, objs->stab_time, stab_time);
   if ((objs->eht_stat == eht_stat) && (objs->stab_time == stab_time))
     return;
   
@@ -82,7 +81,7 @@ void ehtdialog_update (GtkWidget *ehtdialog, guchar eht_stat, gint stab_time)
   }
   else
   {
-    if (objs->stab_time <= 0)
+    if (stab_time <= 0)
       gdk_color_parse("#00AA00", &new_col);
     else
       gdk_color_parse("#AAAA00", &new_col);
@@ -106,18 +105,15 @@ void ehtdialog_update (GtkWidget *ehtdialog, guchar eht_stat, gint stab_time)
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_off), G_CALLBACK(off_toggled), ehtdialog);
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_high), G_CALLBACK(high_toggled), ehtdialog);
   
-  if (objs->stab_time != stab_time)
-  {
-    char tmpstr[100];
-    if ((eht_stat & EHT_HIGH_MASK) == 0)
-      sprintf(tmpstr, "HT off");
-    else if (stab_time <= 0)
-      sprintf(tmpstr, "HT stable");
-    else
-      sprintf(tmpstr, "Time until HT stabilises: %d seconds", stab_time);
-    gtk_label_set_text(GTK_LABEL(objs->lbl_stab_time), tmpstr);
-    objs->stab_time = stab_time;
-  }
+  char tmpstr[100];
+  if ((eht_stat & EHT_HIGH_MASK) == 0)
+    sprintf(tmpstr, "HT off");
+  else if (stab_time <= 0)
+    sprintf(tmpstr, "HT stable");
+  else
+    sprintf(tmpstr, "Time until HT stabilises: %d seconds", stab_time);
+  gtk_label_set_text(GTK_LABEL(objs->lbl_stab_time), tmpstr);
+  objs->stab_time = stab_time;
 
   objs->eht_stat = eht_stat;
 }
@@ -162,7 +158,7 @@ static void off_toggled(gpointer ehtdialog)
     return;
   if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_off)) && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_high)))
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_high), FALSE);
-  g_signal_emit(G_OBJECT(ehtdialog), ehtdialog_signals[SEND_EHT_HIGH_SIGNAL], FALSE);
+  g_signal_emit(G_OBJECT(ehtdialog), ehtdialog_signals[SEND_EHT_HIGH_SIGNAL], 0, FALSE);
 }
 
 static void high_toggled(gpointer ehtdialog)
@@ -174,5 +170,5 @@ static void high_toggled(gpointer ehtdialog)
     return;
   if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_off)) && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_high)))
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_off), FALSE);
-  g_signal_emit(G_OBJECT(ehtdialog), ehtdialog_signals[SEND_EHT_HIGH_SIGNAL], TRUE);
+  g_signal_emit(G_OBJECT(ehtdialog), ehtdialog_signals[SEND_EHT_HIGH_SIGNAL], 0, TRUE);
 }

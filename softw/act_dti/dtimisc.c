@@ -292,6 +292,7 @@ static void focus_clicked(GtkWidget *btn_focus, gpointer dtimisc)
   Dtimisc *objs = DTIMISC(dtimisc);
   if (objs->focusdialog)
   {
+    gtk_window_present(GTK_WINDOW(objs->focusdialog));
     act_log_debug(act_log_msg("Focus dialog already displayed"));
     return;
   }
@@ -321,6 +322,7 @@ static void eht_clicked(GtkWidget *btn_eht, gpointer dtimisc)
   Dtimisc *objs = DTIMISC(dtimisc);
   if (objs->ehtdialog)
   {
+    gtk_window_present(GTK_WINDOW(objs->ehtdialog));
     act_log_debug(act_log_msg("EHT dialog already displayed"));
     return;
   }

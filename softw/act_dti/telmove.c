@@ -275,11 +275,15 @@ static void motor_limits_update(gpointer telmove)
 static void motor_coord_update(gpointer telmove, GActTelcoord *new_coord)
 {
   Telmove *objs = TELMOVE(telmove);
+  if (g_object_is_floating(G_OBJECT(new_coord)))
+    g_object_ref_sink(G_OBJECT(new_coord));
   struct act_msg msg;
+  memset(&msg, 0, sizeof(struct act_msg));
   msg.mtype = MT_COORD;
   struct act_msg_coord *msg_coord = &msg.content.msg_coord;
   memcpy(&msg_coord->ha, &new_coord->ha, sizeof(struct hastruct));
   memcpy(&msg_coord->dec, &new_coord->dec, sizeof(struct decstruct));
+  g_object_unref(G_OBJECT(new_coord));
   convert_EQUI_ALTAZ (&msg_coord->ha, &msg_coord->dec, &msg_coord->alt, &msg_coord->azm);
   check_sidt(telmove);
   if (objs->sidt_h < 0.0)
@@ -300,7 +304,7 @@ static void motor_coord_update(gpointer telmove, GActTelcoord *new_coord)
     update_coorddisp_sid(objs, &msg_coord->ra, &msg_coord->dec);
   else
     update_coorddisp_nonsid(objs, &msg_coord->ha, &msg_coord->dec);
-  g_signal_emit(G_OBJECT(telmove), telmove_signals[SEND_COORD_SIGNAL], 0, gact_telcoord_new(&msg_coord->ha, &msg_coord->dec));
+  g_signal_emit(G_OBJECT(telmove), telmove_signals[SEND_COORD_SIGNAL], 0, dti_msg_new (&msg, 0));
 }
 
 static void motor_goto_finish(gpointer telmove, gboolean success)
@@ -525,7 +529,7 @@ static guchar process_quit(Telmove *objs, struct act_msg_quit *msg_quit)
 
 static guchar process_time(Telmove *objs, struct act_msg_time *msg_time)
 {
-  objs->sidt_h = convert_HMSMS_MS_time(&msg_time->sidt);
+  objs->sidt_h = convert_HMSMS_H_time(&msg_time->sidt);
   g_timer_start(objs->sidt_timer);
   return OBSNSTAT_GOOD;
 }
