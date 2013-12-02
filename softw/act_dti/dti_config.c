@@ -127,7 +127,7 @@ char parse_tel_limits(MYSQL *conn, struct act_msg_targcap *targcap_msg)
 {
   MYSQL_RES *result;
   MYSQL_ROW row;
-  mysql_query(conn,"SELECT IFNULL(gn.conf_value,\"100.0\"), IFNULL(gs.conf_value,\"-200.0\"), IFNULL(ge.conf_value, \"-20.0\"), IFNULL(gw.conf_value, \"20.0\") FROM (SELECT 0 AS t) AS s LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_N\") AS gn ON gn.t=s.t LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_S\") AS gs ON gs.t=s.t LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_E\") AS ge ON ge.t=s.t LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_W\") AS gw ON gw.t=s.t;");
+  mysql_query(conn,"SELECT IFNULL(gn.conf_value,\"100.0\"), IFNULL(gs.conf_value,\"-200.0\"), IFNULL(ge.conf_value, \"-20.0\"), IFNULL(gw.conf_value, \"20.0\"), IFNULL(ga.conf_value,\"100.0\")  FROM (SELECT 0 AS t) AS s LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_N\") AS gn ON gn.t=s.t LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_S\") AS gs ON gs.t=s.t LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_E\") AS ge ON ge.t=s.t LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_W\") AS gw ON gw.t=s.t LEFT JOIN (SELECT 0 AS t, conf_value FROM global_config WHERE conf_key=\"soft_lim_alt\") AS ga ON ga.t=s.t;");
   result = mysql_store_result(conn);
   if (result == NULL)
   {
@@ -135,14 +135,14 @@ char parse_tel_limits(MYSQL *conn, struct act_msg_targcap *targcap_msg)
     return FALSE;
   }
   
-  if ((mysql_num_rows(result) != 1) || (mysql_num_fields(result) != 4))
+  if ((mysql_num_rows(result) != 1) || (mysql_num_fields(result) != 5))
   {
     act_log_error(act_log_msg("Could not retrieve soft limits - Invalid number of rows/columns returned (%d rows, %d columns).", mysql_num_rows(result), mysql_num_fields(result)));
     return FALSE;
   }
   
   row = mysql_fetch_row(result);
-  double tmp_lim_N, tmp_lim_S, tmp_lim_E, tmp_lim_W;
+  double tmp_lim_N, tmp_lim_S, tmp_lim_E, tmp_lim_W, tmp_lim_alt;
   char num_parsed = 0;
   if (sscanf(row[0], "%lf", &tmp_lim_N) != 1)
     act_log_error(act_log_msg("Error parsing Northern limit (%s).", row[0]));
@@ -168,9 +168,15 @@ char parse_tel_limits(MYSQL *conn, struct act_msg_targcap *targcap_msg)
     act_log_error(act_log_msg("Invalid Western limit: %lf", tmp_lim_W));
   else
     num_parsed++;
+  if (sscanf(row[4], "%lf", &tmp_lim_alt) != 1)
+    act_log_error(act_log_msg("Error parsing altitude limit (%s).", row[4]));
+  else if (tmp_lim_alt > 90.0)
+    act_log_error(act_log_msg("Invalid altitude limit: %lf", tmp_lim_alt));
+  else
+    num_parsed++;
   
   mysql_free_result(result);
-  if (num_parsed != 4)
+  if (num_parsed != 5)
   {
     act_log_error(act_log_msg("Not all software limits parsed."));
     return FALSE;
@@ -179,6 +185,7 @@ char parse_tel_limits(MYSQL *conn, struct act_msg_targcap *targcap_msg)
   convert_H_HMSMS_ha(tmp_lim_E, &targcap_msg->ha_lim_E);
   convert_D_DMS_dec(tmp_lim_N, &targcap_msg->dec_lim_N);
   convert_D_DMS_dec(tmp_lim_S, &targcap_msg->dec_lim_S);
+  convert_D_DMS_alt(tmp_lim_alt, &targcap_msg->alt_lim);
   return TRUE;
 }
 

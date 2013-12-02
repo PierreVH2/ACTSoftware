@@ -1,4 +1,4 @@
-Bug list:
+Current bugs/notes:
 
 Determine proper treatment of SuperWASP cloud data
 act_environ - status light must remain red when weather data outdated
@@ -9,6 +9,7 @@ dti workout - check all componets operating as expected
   - Acqmir works
   - Focus works
   - EHT works
+  - Telmove works
   - Domeshutter works (quick check), env lock works
   - Dropout (quick check, lock works)
   - Telmove (card, goto)
@@ -16,9 +17,27 @@ dti workout - check all componets operating as expected
   - (Watchdog)
   - Trapdoor
   - Main power
-Check motor handset move (and INIT)
 ENV - Change indicators if time/coord not received for some time
 DTI - Remove status from widget_new functions, rather set initial values with DTI initial signals
 DTI - Use finalise instead of destroy
 TIME - check frequency of time messages
 ENV - Moon RA, Dec incorrect
+Change time, env, dti so set progstat_starting when time/env/coord messages not received for a while and update indicators accordingly
+Add speed selection to DTI goto
+ACQ - figure out why it segfaults when it exits
+
+Changes revision 463
+
+MOTOR - When handset move to limit, emergency stop is activated
+MOTOR - Handset emergency stop doesn't work and other problems with handset
+MOTOR - Tested handset, few bugs encountered, all fine now
+MOTOR - When starting/stopping motion, motor coordinates sometimes jumped - problem with send_steps, function was returning before IO operation complete, changed all inb and outb functions to inb_p and outb_p
+MOTOR/DTI - Tested goto, encountered several bugs, all resolved
+MOTOR/DTI - Tested cardinal move, encountered several bugs, all resolved
+MOTOR - Ramp up/down needs to be faster - decreased check_motor period to 50 msec
+MOTOR - Don't update coordinates when not init'd - when not init'd, motor driver gives fake (0) coordinates
+Check motor handset move (and INIT) - mostly working
+DTI/TELMOVE - Found and fixed bug, in check_button_sens, was checking for Southern limit where should have been checking for Western limit
+ACQ - Removed unnecessary mysql.h include from act_imgdisp
+ACQ - Changed message reporting backup data directory
+ACQ - Fixed RA,dec display (RA East-West orientation was opposite to that of image)

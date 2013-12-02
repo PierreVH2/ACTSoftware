@@ -41,12 +41,13 @@
 static void telmove_class_init (TelmoveClass *klass);
 static void telmove_init(GtkWidget *telmove);
 static void telmove_destroy(gpointer telmove);
-static void motor_stat_update(gpointer telmove);
-static void motor_limits_update(gpointer telmove);
-static void motor_coord_update(gpointer telmove, GActTelcoord *new_coord);
-static void motor_goto_finish(gpointer telmove, gboolean success);
-static void update_statdisp(Telmove *objs);
-static void update_limitdisp(Telmove *objs);
+static void stat_update(gpointer telmove, guchar stat);
+static void limits_update(gpointer telmove, guchar limits);
+static void warn_update(gpointer telmove, guchar warn);
+static void coord_update(gpointer telmove, GActTelcoord *new_coord);
+static void goto_finish(gpointer telmove, gboolean success);
+// static void update_statdisp(Telmove *objs);
+// static void update_limitdisp(Telmove *objs);
 static void check_button_sens(Telmove *objs);
 static void update_coorddisp_nonsid(Telmove *objs, struct hastruct *ha, struct decstruct *dec);
 static void update_coorddisp_sid(Telmove *objs, struct rastruct *ra, struct decstruct *dec);
@@ -116,22 +117,23 @@ GtkWidget *telmove_new (void)
   objs->dti_motor = dti_motor_new();
   if (g_object_is_floating(G_OBJECT(objs->dti_motor)))
     g_object_ref_sink(G_OBJECT(objs->dti_motor));
-  update_statdisp(objs);
-  GActTelcoord *tmp_coord = dti_motor_get_coord(objs->dti_motor);
-  if (g_object_is_floating(G_OBJECT(tmp_coord)))
-    g_object_ref_sink((G_OBJECT(tmp_coord)));
-  update_coorddisp_nonsid(objs, &tmp_coord->ha, &tmp_coord->dec);
-  g_object_unref(tmp_coord);
-  check_button_sens(objs);
-  update_limitdisp(objs);
-  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "stat-update", G_CALLBACK(motor_stat_update), objs);
-  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "limits-update", G_CALLBACK(motor_limits_update), objs);
-  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "coord-update", G_CALLBACK(motor_coord_update), objs);
-  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "goto-finish", G_CALLBACK(motor_goto_finish), objs);
+  
+  objs->motor_stat = dti_motor_get_stat(objs->dti_motor);
+  objs->motor_limits = dti_motor_get_limits(objs->dti_motor);
+  objs->motor_warn = dti_motor_get_warn(objs->dti_motor);
+  stat_update(objs, objs->motor_stat);
+  limits_update(objs, objs->motor_limits);
+  warn_update(objs, objs->motor_warn);
+  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "stat-update", G_CALLBACK(stat_update), objs);
+  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "limits-update", G_CALLBACK(limits_update), objs);
+  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "warn-update", G_CALLBACK(warn_update), objs);
+  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "coord-update", G_CALLBACK(coord_update), objs);
+  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "goto-finish", G_CALLBACK(goto_finish), objs);
   
   g_signal_connect_swapped(G_OBJECT(telmove), "destroy", G_CALLBACK(telmove_destroy), telmove);
   g_signal_connect(G_OBJECT(objs->btn_goto), "clicked", G_CALLBACK(user_tel_goto), telmove);
   g_signal_connect_swapped(G_OBJECT(objs->btn_cancel), "clicked", G_CALLBACK(user_cancel_goto), telmove);
+  g_signal_connect(G_OBJECT(objs->btn_emgny_stop), "toggled", G_CALLBACK(user_emgny_stop), telmove);
   g_signal_connect(G_OBJECT(objs->btn_track), "toggled", G_CALLBACK(user_track), telmove);
   g_signal_connect(G_OBJECT(objs->btn_moveN), "button-press-event", G_CALLBACK(start_moveN), telmove);
   g_signal_connect(G_OBJECT(objs->btn_moveS), "button-press-event", G_CALLBACK(start_moveS), telmove);
@@ -234,13 +236,16 @@ static void telmove_init(GtkWidget *telmove)
   objs->lbl_dec_label = gtk_label_new("Dec");
   gtk_table_attach(GTK_TABLE(objs->box), objs->lbl_dec_label, 0,1,5,6, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   objs->lbl_hara = gtk_label_new("");
+  gtk_label_set_width_chars(GTK_LABEL(objs->lbl_hara), 12);
   gtk_table_attach(GTK_TABLE(objs->box),objs->lbl_hara,1,3,4,5, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   objs->lbl_dec = gtk_label_new("");
+  gtk_label_set_width_chars(GTK_LABEL(objs->lbl_dec), 12);
   gtk_table_attach(GTK_TABLE(objs->box),objs->lbl_dec,1,3,5,6, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   gtk_table_attach(GTK_TABLE(objs->box),gtk_vseparator_new(),3,4,4,6,GTK_SHRINK, GTK_FILL|GTK_EXPAND, TABLE_PADDING,TABLE_PADDING);
   objs->evb_stat = gtk_event_box_new();
   gtk_table_attach(GTK_TABLE(objs->box),objs->evb_stat,4,7,4,5, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   objs->lbl_stat = gtk_label_new("");
+  gtk_label_set_width_chars(GTK_LABEL(objs->lbl_stat), 20);
   gtk_container_add(GTK_CONTAINER(objs->evb_stat),objs->lbl_stat);
 }
 
@@ -258,21 +263,125 @@ static void telmove_destroy(gpointer telmove)
   objs->dti_motor = NULL;
 }
 
-static void motor_stat_update(gpointer telmove)
+static void stat_update(gpointer telmove, guchar stat)
 {
   Telmove *objs = TELMOVE(telmove);
-  update_statdisp(objs);
+  
+  if ((gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_track)) > 0) != (dti_motor_stat_tracking(stat)))
+  {
+    g_signal_handlers_block_by_func(G_OBJECT(objs->btn_track), G_CALLBACK(user_track), objs);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_track), dti_motor_stat_tracking(stat));
+    g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_track), G_CALLBACK(user_track), objs);
+  }
+  if ((gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_emgny_stop)) > 0) != (dti_motor_stat_emgny_stop(stat) > 0))
+  {
+    g_signal_handlers_block_by_func(G_OBJECT(objs->btn_emgny_stop), G_CALLBACK(user_emgny_stop), objs);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_emgny_stop), dti_motor_stat_emgny_stop(stat));
+    g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_emgny_stop), G_CALLBACK(user_emgny_stop), objs);
+  }
+  
+  GdkColor new_col;
+  
+  if (dti_motor_stat_emgny_stop(stat))
+  {
+    gtk_label_set_text(GTK_LABEL(objs->lbl_stat), "EMRG. STOP");
+    gdk_color_parse("#AAAA00", &new_col);
+    gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
+    return;
+  }
+  if (dti_motor_limit_reached(stat))
+  {
+    gtk_label_set_text(GTK_LABEL(objs->lbl_stat), "HARD LIMIT");
+    gdk_color_parse("#AAAA00", &new_col);
+    gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
+    return;
+  }
+  if (!dti_motor_stat_init(stat))
+  {
+    gtk_label_set_text(GTK_LABEL(objs->lbl_stat), "NOT INIT'D");
+    gdk_color_parse("#AAAA00", &new_col);
+    gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
+    return;
+  }
+  
+  char tmplabel[100];
+  if (dti_motor_stat_moving(stat))
+    sprintf(tmplabel, "MOVE");
+  else if (dti_motor_stat_tracking(stat))
+    sprintf(tmplabel, "TRACK");
+  else
+    sprintf(tmplabel, "IDLE");
+
+  if (objs->sidt_h < 0)
+  {
+    gdk_color_parse("#AAAA00", &new_col);
+    strcat(tmplabel, " (no SIDT)");
+  }
+  else
+    gdk_color_parse("#00AA00", &new_col);
+  gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
+  gtk_label_set_text(GTK_LABEL(objs->lbl_stat), tmplabel);
+
+  objs->motor_stat = stat;
   check_button_sens(objs);
 }
 
-static void motor_limits_update(gpointer telmove)
+static void limits_update(gpointer telmove, guchar limits)
 {
   Telmove *objs = TELMOVE(telmove);
-  update_limitdisp(objs);
+  objs->motor_limits = limits;
   check_button_sens(objs);
 }
 
-static void motor_coord_update(gpointer telmove, GActTelcoord *new_coord)
+static void warn_update(gpointer telmove, guchar warn)
+{
+  Telmove *objs = TELMOVE(telmove);
+  GdkColor new_col;
+  gdk_color_parse("#AAAA00", &new_col);
+  if (dti_motor_warn_N (warn))
+  {
+    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_NORMAL, &new_col);
+    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_ACTIVE, &new_col);
+  }
+  else
+  {
+    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_NORMAL, NULL);
+    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_ACTIVE, NULL);
+  }
+  if (dti_motor_warn_S (warn))
+  {
+    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_NORMAL, &new_col);
+    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_ACTIVE, &new_col);
+  }
+  else
+  {
+    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_NORMAL, NULL);
+    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_ACTIVE, NULL);
+  }
+  if (dti_motor_warn_E (warn))
+  {
+    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_NORMAL, &new_col);
+    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_ACTIVE, &new_col);
+  }
+  else
+  {
+    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_NORMAL, NULL);
+    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_ACTIVE, NULL);
+  }
+  if (dti_motor_warn_W (warn))
+  {
+    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_NORMAL, &new_col);
+    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_ACTIVE, &new_col);
+  }
+  else
+  {
+    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_NORMAL, NULL);
+    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_ACTIVE, NULL);
+  }
+  objs->motor_warn = warn;
+}
+
+static void coord_update(gpointer telmove, GActTelcoord *new_coord)
 {
   Telmove *objs = TELMOVE(telmove);
   if (g_object_is_floating(G_OBJECT(new_coord)))
@@ -288,7 +397,7 @@ static void motor_coord_update(gpointer telmove, GActTelcoord *new_coord)
   check_sidt(telmove);
   if (objs->sidt_h < 0.0)
   {
-    act_log_debug(act_log_msg("Sidereal time not available, not calculating telescope RA."));
+//     act_log_debug(act_log_msg("Sidereal time not available, not calculating telescope RA."));
     memset(&msg_coord->ra, 0, sizeof(struct rastruct));
   }
   else
@@ -307,14 +416,11 @@ static void motor_coord_update(gpointer telmove, GActTelcoord *new_coord)
   g_signal_emit(G_OBJECT(telmove), telmove_signals[SEND_COORD_SIGNAL], 0, dti_msg_new (&msg, 0));
 }
 
-static void motor_goto_finish(gpointer telmove, gboolean success)
+static void goto_finish(gpointer telmove, gboolean success)
 {
   Telmove *objs = TELMOVE(telmove);
   if (objs->pending_msg == NULL)
-  {
-    act_log_debug(act_log_msg("Goto complete,but no goto operation pending (probably a user-initiated goto."));
     return;
-  }
   if (!success)
   {
     process_complete(objs, OBSNSTAT_ERR_NEXT);
@@ -324,160 +430,40 @@ static void motor_goto_finish(gpointer telmove, gboolean success)
   process_complete(objs, OBSNSTAT_GOOD);
 }
 
-static void update_statdisp(Telmove *objs)
-{
-  if ((gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_track)) > 0) != (dti_motor_stat_tracking(objs->dti_motor) > 0))
-  {
-    act_log_debug(act_log_msg("Motor tracking on/off does not match tracking toggle button."));
-    g_signal_handlers_block_by_func(G_OBJECT(objs->btn_track), G_CALLBACK(user_track), objs);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_track), dti_motor_stat_tracking(objs->dti_motor));
-    g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_track), G_CALLBACK(user_track), objs);
-  }
-  if ((gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_emgny_stop)) > 0) != (dti_motor_stat_emgny_stop(objs->dti_motor) > 0))
-  {
-    act_log_debug(act_log_msg("Motor stop on/off does not match toggle button."));
-    g_signal_handlers_block_by_func(G_OBJECT(objs->btn_emgny_stop), G_CALLBACK(user_emgny_stop), objs);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_track), dti_motor_stat_tracking(objs->dti_motor));
-    g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_emgny_stop), G_CALLBACK(user_emgny_stop), objs);
-  }
-  
-  GdkColor new_col;
-  
-  if (dti_motor_stat_emgny_stop(objs->dti_motor))
-  {
-    gtk_label_set_text(GTK_LABEL(objs->lbl_stat), "EMRG. STOP");
-    gdk_color_parse("#AAAA00", &new_col);
-    gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
-    return;
-  }
-  if (dti_motor_limit_reached(objs->dti_motor))
-  {
-    gtk_label_set_text(GTK_LABEL(objs->lbl_stat), "HARD LIMIT");
-    gdk_color_parse("#AAAA00", &new_col);
-    gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
-    return;
-  }
-  if (!dti_motor_stat_init(objs->dti_motor))
-  {
-    gtk_label_set_text(GTK_LABEL(objs->lbl_stat), "NOT INIT'D");
-    gdk_color_parse("#AAAA00", &new_col);
-    gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
-    return;
-  }
-  
-  char tmplabel[100];
-  if (dti_motor_stat_moving(objs->dti_motor))
-    sprintf(tmplabel, "MOVE");
-  else if (dti_motor_stat_tracking(objs->dti_motor))
-    sprintf(tmplabel, "TRACK");
-  else
-    sprintf(tmplabel, "IDLE");
-
-  if (objs->sidt_h < 0)
-  {
-    gdk_color_parse("#AAAA00", &new_col);
-    strcat(tmplabel, " (no SIDT)");
-  }
-  else
-    gdk_color_parse("#00AA00", &new_col);
-  gtk_widget_modify_bg(objs->evb_stat, GTK_STATE_NORMAL, &new_col);
-  gtk_label_set_text(GTK_LABEL(objs->lbl_stat), tmplabel);
-}
-
-static void update_limitdisp(Telmove *objs)
-{
-  GdkColor new_col;
-  gdk_color_parse("#AAAA00", &new_col);
-  if (dti_motor_warn_N (objs->dti_motor))
-  {
-    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_NORMAL, &new_col);
-    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_ACTIVE, &new_col);
-  }
-  else
-  {
-    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_NORMAL, NULL);
-    gtk_widget_modify_bg(objs->btn_moveN, GTK_STATE_ACTIVE, NULL);
-  }
-  if (dti_motor_warn_S (objs->dti_motor))
-  {
-    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_NORMAL, &new_col);
-    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_ACTIVE, &new_col);
-  }
-  else
-  {
-    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_NORMAL, NULL);
-    gtk_widget_modify_bg(objs->btn_moveS, GTK_STATE_ACTIVE, NULL);
-  }
-  if (dti_motor_warn_E (objs->dti_motor))
-  {
-    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_NORMAL, &new_col);
-    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_ACTIVE, &new_col);
-  }
-  else
-  {
-    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_NORMAL, NULL);
-    gtk_widget_modify_bg(objs->btn_moveE, GTK_STATE_ACTIVE, NULL);
-  }
-  if (dti_motor_warn_W (objs->dti_motor))
-  {
-    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_NORMAL, &new_col);
-    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_ACTIVE, &new_col);
-  }
-  else
-  {
-    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_NORMAL, NULL);
-    gtk_widget_modify_bg(objs->btn_moveW, GTK_STATE_ACTIVE, NULL);
-  }
-}
-
 static void check_button_sens(Telmove *objs)
 {
-  if ((dti_motor_stat_emgny_stop(objs->dti_motor)) || (!dti_motor_stat_init(objs->dti_motor)))
+  gboolean card_disable = FALSE, track_disable = dti_motor_lim_W(objs->motor_limits);
+  if ((dti_motor_stat_emgny_stop(objs->motor_stat)) || (!dti_motor_stat_init(objs->motor_stat)))
   {
-    gtk_widget_set_sensitive(objs->btn_track, FALSE);
     gtk_widget_set_sensitive(objs->btn_goto, FALSE);
     gtk_widget_set_sensitive(objs->btn_cancel, FALSE);
-    gtk_widget_set_sensitive(objs->btn_moveN, FALSE);
-    gtk_widget_set_sensitive(objs->btn_moveS, FALSE);
-    gtk_widget_set_sensitive(objs->btn_moveE, FALSE);
-    gtk_widget_set_sensitive(objs->btn_moveW, FALSE);
-    return;
+    track_disable = TRUE;
+    card_disable = TRUE;
   }
-  if (dti_motor_stat_moving(objs->dti_motor))
+  else if (dti_motor_stat_goto(objs->motor_stat))
   {
-    gtk_widget_set_sensitive(objs->btn_cancel, TRUE);
     gtk_widget_set_sensitive(objs->btn_goto, FALSE);
+    gtk_widget_set_sensitive(objs->btn_cancel, TRUE);
+    card_disable = TRUE;
+  }
+  else if (dti_motor_stat_card(objs->motor_stat))
+  {
+    gtk_widget_set_sensitive(objs->btn_goto, FALSE);
+    gtk_widget_set_sensitive(objs->btn_cancel, FALSE);
+    card_disable = FALSE;
   }
   else
   {
     gtk_widget_set_sensitive(objs->btn_cancel, FALSE);
     gtk_widget_set_sensitive(objs->btn_goto, TRUE);
+    card_disable = FALSE;
   }
-  if (dti_motor_lim_N(objs->dti_motor))
-    gtk_widget_set_sensitive(objs->btn_moveN, FALSE);
-  else
-    gtk_widget_set_sensitive(objs->btn_moveN, TRUE);
   
-  if (dti_motor_lim_S(objs->dti_motor))
-    gtk_widget_set_sensitive(objs->btn_moveS, FALSE);
-  else
-    gtk_widget_set_sensitive(objs->btn_moveS, TRUE);
-  
-  if (dti_motor_lim_E(objs->dti_motor))
-    gtk_widget_set_sensitive(objs->btn_moveE, FALSE);
-  else
-    gtk_widget_set_sensitive(objs->btn_moveE, TRUE);
-  
-  if (dti_motor_lim_S(objs->dti_motor))
-  {
-    gtk_widget_set_sensitive(objs->btn_moveW, FALSE);
-    gtk_widget_set_sensitive(objs->btn_track, FALSE);
-  }
-  else
-  {
-    gtk_widget_set_sensitive(objs->btn_moveW, TRUE);
-    gtk_widget_set_sensitive(objs->btn_track, TRUE);
-  }
+  gtk_widget_set_sensitive(objs->btn_moveN, !(dti_motor_lim_N(objs->motor_limits) || card_disable));
+  gtk_widget_set_sensitive(objs->btn_moveS, !(dti_motor_lim_S(objs->motor_limits) || card_disable));
+  gtk_widget_set_sensitive(objs->btn_moveE, !(dti_motor_lim_E(objs->motor_limits) || card_disable));
+  gtk_widget_set_sensitive(objs->btn_moveW, !(dti_motor_lim_W(objs->motor_limits) || card_disable));
+  gtk_widget_set_sensitive(objs->btn_track, !track_disable);
 }
 
 static void update_coorddisp_nonsid(Telmove *objs, struct hastruct *ha, struct decstruct *dec)
@@ -512,14 +498,14 @@ static guchar process_quit(Telmove *objs, struct act_msg_quit *msg_quit)
     act_log_error(act_log_msg("A task is currently being processed. Cancelling in-progress task."));
     process_complete(objs, OBSNSTAT_CANCEL);
   }
-  if ((dti_motor_stat_emgny_stop(objs->dti_motor)) || (!dti_motor_stat_init(objs->dti_motor)))
+  if ((dti_motor_stat_emgny_stop(objs->motor_stat)) || (!dti_motor_stat_init(objs->motor_stat)))
   {
     act_log_debug(act_log_msg("Cannot park telescope because all-stop is active or telescope has not been initialised."));
     return OBSNSTAT_CANCEL;
   }
-  if (dti_motor_stat_moving(objs->dti_motor))
+  if (dti_motor_stat_moving(objs->motor_stat))
   {
-    act_log_debug(act_log_msg("Motor busy initialising or going to. Cancelling initialisation/goto."));
+    act_log_debug(act_log_msg("Motor is moving. Cancelling motion."));
     dti_motor_stop (objs->dti_motor);
     g_timeout_add_seconds(1, check_prequit_stop, objs);
     return 0;
@@ -555,7 +541,7 @@ static guchar process_targset(Telmove *objs, struct act_msg_targset *msg_targset
     act_log_debug(act_log_msg("Busy processing a message, cannot process automatic target set."));
     return OBSNSTAT_ERR_WAIT;
   }
-  if (!dti_motor_stat_init(objs->dti_motor))
+  if (!dti_motor_stat_init(objs->motor_stat))
   {
     act_log_crit(act_log_msg("Telescope has not been initialised."));
     return OBSNSTAT_ERR_CRIT;
@@ -582,7 +568,7 @@ static void process_complete(Telmove *objs, guchar status)
 
 static guchar park_telescope(Telmove *objs)
 {
-  if (dti_motor_stat_tracking(objs->dti_motor))
+  if (dti_motor_stat_tracking(objs->motor_stat))
   {
     act_log_debug(act_log_msg("Parking telescope; disabling tracking."));
     gint ret = dti_motor_set_tracking (objs->dti_motor, FALSE);
@@ -614,12 +600,12 @@ static gboolean check_prequit_stop(gpointer telmove)
 {
   act_log_debug(act_log_msg("Checking if telescope ready to be parked."));
   Telmove *objs = TELMOVE(telmove);
-  if (dti_motor_stat_emgny_stop(objs->dti_motor))
+  if (dti_motor_stat_emgny_stop(objs->motor_stat))
   {
     act_log_debug(act_log_msg("Cannot park telescope because all-stop is active."));
     return FALSE;
   }
-  if (dti_motor_stat_moving(objs->dti_motor))
+  if (dti_motor_stat_moving(objs->motor_stat))
     return TRUE;
   park_telescope(objs);
   return FALSE;
@@ -777,9 +763,11 @@ static void tel_goto_response(GtkWidget *coorddialog, int response_id, gpointer 
     return;
   }
   Telmove *objs = TELMOVE(telmove);
+  gboolean is_sidereal;
   GActTelcoord *tmp_coord;
   if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_track)))
   {
+    is_sidereal = TRUE;
     unsigned long sidtdelta_us;
     double sidtdelta_s = g_timer_elapsed(objs->sidt_timer, &sidtdelta_us);
     sidtdelta_s += (double)sidtdelta_us/1e6;
@@ -787,13 +775,16 @@ static void tel_goto_response(GtkWidget *coorddialog, int response_id, gpointer 
     tmp_coord = telmove_coorddialog_get_coord(coorddialog, sidt_h);
   }
   else
+  {
+    is_sidereal = FALSE;
     tmp_coord = telmove_coorddialog_get_coord(coorddialog, -1.0);
+  }
 
-  gtk_widget_destroy(coorddialog);
   if (g_object_is_floating(G_OBJECT(tmp_coord)))
     g_object_ref_sink(G_OBJECT(tmp_coord));
+  gtk_widget_destroy(coorddialog);
 
-  GActTelgoto *tmp_cmd = gact_telgoto_new (&tmp_coord->ha, &tmp_coord->dec, DTI_MOTOR_SPEED_SLEW, objs->sidt_h >= 0.0);
+  GActTelgoto *tmp_cmd = gact_telgoto_new (&tmp_coord->ha, &tmp_coord->dec, DTI_MOTOR_SPEED_SLEW, is_sidereal);
   g_object_unref(tmp_coord);
   if (g_object_is_floating(tmp_cmd))
     g_object_ref_sink(tmp_cmd);

@@ -43,6 +43,7 @@ enum
 {
   STAT_UPDATE,
   LIMITS_UPDATE,
+  WARN_UPDATE,
   COORD_UPDATE,
   GOTO_FINISH,
   LAST_SIGNAL
@@ -151,84 +152,107 @@ void dti_motor_set_soft_limits (Dtimotor *objs, struct hastruct *lim_W, struct h
     objs->lim_alt_d = convert_DMS_D_alt(lim_alt);
 }
 
-gboolean dti_motor_stat_init (Dtimotor *objs)
+guchar dti_motor_get_stat (Dtimotor *objs)
 {
-  return (objs->cur_stat & MOTOR_STAT_HA_INIT) && (objs->cur_stat & MOTOR_STAT_DEC_INIT);
+  return objs->cur_stat;
 }
 
-gboolean dti_motor_stat_tracking (Dtimotor *objs)
+gboolean dti_motor_stat_init (guchar stat)
 {
-  return (objs->cur_stat & MOTOR_STAT_TRACKING) > 0;
+  return (stat & MOTOR_STAT_HA_INIT) && (stat & MOTOR_STAT_DEC_INIT);
 }
 
-gboolean dti_motor_stat_moving (Dtimotor *objs)
+gboolean dti_motor_stat_tracking (guchar stat)
 {
-  return (objs->cur_stat & MOTOR_STAT_MOVING) > 0;
+  return (stat & MOTOR_STAT_TRACKING) > 0;
 }
 
-gboolean dti_motor_stat_emgny_stop (Dtimotor *objs)
+gboolean dti_motor_stat_moving (guchar stat)
 {
-  return (objs->cur_stat & MOTOR_STAT_ALLSTOP) > 0;
+  return (stat & MOTOR_STAT_MOVING) > 0;
 }
 
-gboolean dti_motor_limit_reached (Dtimotor *objs)
+gboolean dti_motor_stat_goto (guchar stat)
 {
-  return objs->cur_limits > 0;
+  return (stat & MOTOR_STAT_GOTO) > 0;
 }
 
-gboolean dti_motor_lim_N (Dtimotor *objs)
+gboolean dti_motor_stat_card (guchar stat)
 {
-  return MOTOR_LIM_N(objs->cur_limits);
+  return (stat & MOTOR_STAT_CARD) > 0;
 }
 
-gboolean dti_motor_lim_S (Dtimotor *objs)
+gboolean dti_motor_stat_emgny_stop (guchar stat)
 {
-  return MOTOR_LIM_S(objs->cur_limits);
+  return (stat & MOTOR_STAT_ALLSTOP) > 0;
 }
 
-gboolean dti_motor_lim_E (Dtimotor *objs)
+gboolean dti_motor_limit_reached (guchar stat)
 {
-  return MOTOR_LIM_E(objs->cur_limits);
+  return (stat & MOTOR_STAT_ERR_LIMS) > 0;
 }
 
-gboolean dti_motor_lim_W (Dtimotor *objs)
+guchar dti_motor_get_limits (Dtimotor *objs)
 {
-  return MOTOR_LIM_W(objs->cur_limits);
+  return objs->cur_limits;
 }
 
-gboolean dti_motor_warn_N (Dtimotor *objs)
+gboolean dti_motor_lim_N (guchar limits)
 {
-  return (objs->cur_warn & DTI_MOTOR_WARN_N) > 0;
+  return MOTOR_LIM_N(limits);
 }
 
-gboolean dti_motor_warn_S (Dtimotor *objs)
+gboolean dti_motor_lim_S (guchar limits)
 {
-  return (objs->cur_warn & DTI_MOTOR_WARN_S) > 0;
+  return MOTOR_LIM_S(limits);
 }
 
-gboolean dti_motor_warn_E (Dtimotor *objs)
+gboolean dti_motor_lim_E (guchar limits)
 {
-  return (objs->cur_warn & DTI_MOTOR_WARN_E) > 0;
+  return MOTOR_LIM_E(limits);
 }
 
-gboolean dti_motor_warn_W (Dtimotor *objs)
+gboolean dti_motor_lim_W (guchar limits)
 {
-  return (objs->cur_warn & DTI_MOTOR_WARN_W) > 0;
+  return MOTOR_LIM_W(limits);
+}
+
+guchar dti_motor_get_warn (Dtimotor *objs)
+{
+  return objs->cur_warn;
+}
+
+gboolean dti_motor_warn_N (guchar warn)
+{
+  return (warn & DTI_MOTOR_WARN_N) > 0;
+}
+
+gboolean dti_motor_warn_S (guchar warn)
+{
+  return (warn & DTI_MOTOR_WARN_S) > 0;
+}
+
+gboolean dti_motor_warn_E (guchar warn)
+{
+  return (warn & DTI_MOTOR_WARN_E) > 0;
+}
+
+gboolean dti_motor_warn_W (guchar warn)
+{
+  return (warn & DTI_MOTOR_WARN_W) > 0;
 }
 
 GActTelcoord *dti_motor_get_coord(Dtimotor *objs)
 {
-  struct hastruct tmp_ha;
-  struct decstruct tmp_dec;
-  memcpy(&tmp_ha, &objs->cur_coord->ha, sizeof(struct hastruct));
-  memcpy(&tmp_dec, &objs->cur_coord->dec, sizeof(struct decstruct));
-  pointing_model_reverse(&tmp_ha, &tmp_dec);
-  return gact_telcoord_new(&tmp_ha, &tmp_dec);
+  return gact_telcoord_new(&objs->cur_coord->ha, &objs->cur_coord->dec);
 }
 
-GActTelcoord *dti_motor_get_coord_raw(Dtimotor *objs)
+void dti_motor_apply_pointing(GActTelcoord *coord)
 {
-  return gact_telcoord_new(&objs->cur_coord->ha, &objs->cur_coord->dec);
+  if (IS_GACT_TELCOORD(coord))
+    pointing_model_reverse(&coord->ha, &coord->dec);
+  else
+    act_log_error(act_log_msg("Invalid input parameters."));
 }
 
 gint dti_motor_move_card (Dtimotor *objs, guchar dir, guchar speed)
@@ -275,8 +299,9 @@ gint dti_motor_set_tracking(Dtimotor *objs, gboolean tracking_on)
 
 static void dti_motor_class_init (DtimotorClass *klass)
 {
-  dti_motor_signals[STAT_UPDATE] = g_signal_new("stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
-  dti_motor_signals[LIMITS_UPDATE] = g_signal_new("limits-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
+  dti_motor_signals[STAT_UPDATE] = g_signal_new("stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
+  dti_motor_signals[LIMITS_UPDATE] = g_signal_new("limits-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
+  dti_motor_signals[WARN_UPDATE] = g_signal_new("warn-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
   dti_motor_signals[COORD_UPDATE] = g_signal_new("coord-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__OBJECT, G_TYPE_NONE, 1, G_TYPE_OBJECT);
   dti_motor_signals[GOTO_FINISH] = g_signal_new("goto-finish", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__BOOLEAN, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
   G_OBJECT_CLASS(klass)->dispose = dti_motor_instance_dispose;
@@ -327,7 +352,7 @@ static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpoi
   guchar tmp_stat;
   gint motor_fd = g_io_channel_unix_get_fd(motor_chan);
   gint ret = read_motor_stat(motor_fd, &tmp_stat);
-  if (ret != 0)
+  if (ret < 0)
     return TRUE;
   if (tmp_stat == objs->cur_stat)
     return TRUE;
@@ -342,15 +367,22 @@ static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpoi
   objs->cur_stat = tmp_stat;
   check_coord_poll(objs);
   if ((tmp_stat & MOTOR_STAT_ERR_LIMS) == 0)
+  {
+    if (objs->cur_limits != 0)
+    {
+      objs->cur_limits = 0;
+      g_signal_emit(G_OBJECT(objs), dti_motor_signals[LIMITS_UPDATE], 0, 0);
+    }
     return TRUE;
+  }
   guchar tmp_limits;
   ret = read_motor_limits(motor_fd, &tmp_limits);
   if (ret != 0)
     return TRUE;
   if (tmp_limits != objs->cur_limits)
   {
-    g_signal_emit(G_OBJECT(objs), dti_motor_signals[LIMITS_UPDATE], 0, tmp_limits);
     objs->cur_limits = tmp_limits;
+    g_signal_emit(G_OBJECT(objs), dti_motor_signals[LIMITS_UPDATE], 0, tmp_limits);
   }
   return TRUE;
 }
@@ -377,7 +409,7 @@ static gboolean coord_poll(gpointer dti_motor)
   guchar tmp_warn = check_warn(objs);
   if (tmp_warn != objs->cur_warn)
   {
-    g_signal_emit(G_OBJECT(objs), dti_motor_signals[LIMITS_UPDATE], 0, tmp_warn);
+    g_signal_emit(G_OBJECT(objs), dti_motor_signals[WARN_UPDATE], 0, tmp_warn);
     objs->cur_warn = tmp_warn;
   }
   
@@ -398,7 +430,7 @@ static gboolean coord_poll(gpointer dti_motor)
 
 static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec)
 {
-  act_log_debug(act_log_msg("Not implemented yet."));
+//   act_log_debug(act_log_msg("Not implemented yet."));
   (void) ha;
   (void) dec;
   (void) adj_ha;
@@ -414,7 +446,7 @@ static guchar check_warn(Dtimotor *objs)
     tmp_warn |= DTI_MOTOR_WARN_E;
   if (convert_DMS_D_dec(&objs->cur_coord->dec) > objs->lim_N_d)
     tmp_warn |= DTI_MOTOR_WARN_N;
-  if (convert_DMS_D_dec(&objs->cur_coord->dec) > objs->lim_S_d)
+  if (convert_DMS_D_dec(&objs->cur_coord->dec) < objs->lim_S_d)
     tmp_warn |= DTI_MOTOR_WARN_S;
   
   struct altstruct tmpalt;
@@ -426,11 +458,11 @@ static guchar check_warn(Dtimotor *objs)
     if ((tmpazm_d > -90.0) && (tmpazm_d < 90.0))
       tmp_warn |= DTI_MOTOR_WARN_N;
     if ((tmpazm_d > 0.0) && (tmpazm_d < 180.0))
-      tmp_warn |= DTI_MOTOR_WARN_W;
+      tmp_warn |= DTI_MOTOR_WARN_E;
     if ((tmpazm_d > 90.0) && (tmpazm_d < 270.0))
     tmp_warn |= DTI_MOTOR_WARN_S;
     if ((tmpazm_d > 180.0) && (tmpazm_d < 360.0))
-      tmp_warn |= DTI_MOTOR_WARN_E;
+      tmp_warn |= DTI_MOTOR_WARN_W;
   }
   
   return tmp_warn;
@@ -483,20 +515,24 @@ static gint read_motor_limits(gint motor_fd, guchar *limits_stat)
 static void read_motor_coord(gint motor_fd, struct hastruct *ha, struct decstruct *dec)
 {
   struct motor_tel_coord coord;
+  gint ret;
+  double range_ha, range_dec;
 #ifdef MOTOR_USE_ENCOD
-  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GET_ENCOD_POS, &coord);
-  double steps_ha = MOTOR_STEPS_E_LIM, steps_dec = MOTOR_STEPS_N_LIM;
+  ret = ioctl(motor_fd, IOCTL_MOTOR_GET_ENCOD_POS, &coord);
+  range_ha = MOTOR_ENCOD_E_LIM;
+  range_dec = MOTOR_ENCOD_N_LIM;
 #else
-  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GET_MOTOR_POS, &coord);
-  double steps_ha = MOTOR_ENCOD_E_LIM, steps_dec = MOTOR_ENCOD_N_LIM;
+  ret = ioctl(motor_fd, IOCTL_MOTOR_GET_MOTOR_POS, &coord);
+  range_ha = MOTOR_STEPS_E_LIM;
+  range_dec = MOTOR_STEPS_N_LIM;
 #endif
   if (ret < 0)
   {
     act_log_error(act_log_msg("Failed to read telescope coordinates from motor driver - %s.", strerror(errno)));
     return;
   }
-  double ha_h = ((double) (MOTOR_LIM_E_MSEC - MOTOR_LIM_W_MSEC) * coord.tel_ha / steps_ha + MOTOR_LIM_W_MSEC) / 3600000.0;
-  double dec_d = ((double) (MOTOR_LIM_N_ASEC - MOTOR_LIM_S_ASEC) * coord.tel_dec / steps_dec + MOTOR_LIM_S_ASEC) / 3600.0;
+  double ha_h = ((double) (MOTOR_LIM_E_MSEC - MOTOR_LIM_W_MSEC) * coord.tel_ha / range_ha + MOTOR_LIM_W_MSEC) / 3600000.0;
+  double dec_d = ((double) (MOTOR_LIM_N_ASEC - MOTOR_LIM_S_ASEC) * coord.tel_dec / range_dec + MOTOR_LIM_S_ASEC) / 3600.0;
   convert_H_HMSMS_ha(ha_h, ha);
   convert_D_DMS_dec(dec_d, dec);
 }
@@ -517,12 +553,12 @@ static gint send_motor_goto(gint motor_fd, struct hastruct *ha, struct decstruct
   
   struct motor_goto_cmd cmd;
   #ifdef MOTOR_USE_ENCOD
-  cmd.targ_ha = (ha_h*3600000.0 - MOTOR_LIM_W_MSEC) * MOTOR_STEPS_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
-  cmd.targ_dec = (dec_d*3600000.0 - MOTOR_LIM_S_ASEC) * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
+  cmd.targ_ha = (ha_h*3600000.0 - MOTOR_LIM_W_MSEC) * MOTOR_ENCOD_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
+  cmd.targ_dec = (dec_d*3600.0 - MOTOR_LIM_S_ASEC) * MOTOR_ENCOD_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
   cmd.use_encod = TRUE;
   #else
-  cmd.targ_ha = (ha_h*3600000.0 - MOTOR_LIM_W_MSEC) * MOTOR_ENCOD_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
-  cmd.targ_dec = (dec_d*3600000.0 - MOTOR_LIM_S_ASEC) * MOTOR_ENCOD_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
+  cmd.targ_ha = (ha_h*3600000.0 - MOTOR_LIM_W_MSEC) * MOTOR_STEPS_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
+  cmd.targ_dec = (dec_d*3600.0 - MOTOR_LIM_S_ASEC) * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
   cmd.use_encod = FALSE;
   #endif
   cmd.speed = motor_speed;
@@ -543,13 +579,13 @@ static void send_motor_stop(gint motor_fd)
 static void send_motor_emgny_stop(gint motor_fd, gboolean stop_on)
 {
   glong stop_val = stop_on > 0;
-  ioctl(motor_fd, IOCTL_MOTOR_EMERGENCY_STOP, &stop_val);
+  ioctl(motor_fd, IOCTL_MOTOR_EMERGENCY_STOP, stop_val);
 }
 
 static gint send_motor_tracking(gint motor_fd, gboolean tracking_on)
 {
   guchar tmp_on = tracking_on;
-  gint ret = ioctl(motor_fd, IOCTL_MOTOR_SET_TRACKING, &tmp_on);
+  gint ret = ioctl(motor_fd, IOCTL_MOTOR_SET_TRACKING, tmp_on);
   if (ret < 0)
   {
     act_log_error(act_log_msg("Failed to set telescope tracking rate - %s.", strerror(errno)));

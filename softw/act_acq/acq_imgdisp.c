@@ -2,7 +2,6 @@
 #define GL_GLEXT_PROTOTYPES
 #include <gtk/gtkgl.h>
 #include <GL/gl.h>
-#include <mysql/mysql.h>
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -725,9 +724,9 @@ gboolean mouse_move(GtkWidget* evb_ccdimg, GdkEventMotion* motdata, gpointer use
   
   unsigned short x, y;
   if ((G_flip_img & IMG_FLIP_EW) == IMG_FLIP_EW)
-    x = motdata->x;
-  else
     x = ccdcntrl_get_max_width() - motdata->x;
+  else
+    x = motdata->x;
   if ((G_flip_img & IMG_FLIP_NS) == IMG_FLIP_NS)
     y = ccdcntrl_get_max_height() - motdata->y;
   else
@@ -746,7 +745,7 @@ gboolean mouse_move(GtkWidget* evb_ccdimg, GdkEventMotion* motdata, gpointer use
   if (fabs(img_dec) > 89.0)
     img_dec = 89.0;
   double ra_offset_deg = (XAPERTURE - motdata->x) * ccdcntrl_get_ra_width() / ccdcntrl_get_max_width() / cos(convert_DEG_RAD(img_dec)) / 3600.0;
-  if ((G_flip_img & IMG_FLIP_EW) == IMG_FLIP_EW)
+  if ((G_flip_img & IMG_FLIP_EW) != IMG_FLIP_EW)
     ra_offset_deg *= -1,0;
   struct rastruct mouse_ra;
   convert_H_HMSMS_ra(convert_HMSMS_H_ra(&G_img_ra) + convert_DEG_H(ra_offset_deg), &mouse_ra);

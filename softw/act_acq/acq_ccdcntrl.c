@@ -1018,7 +1018,7 @@ char get_data_dir(struct ccdcntrl_objects *ccdcntrl_objs)
     return create_data_dir(ccdcntrl_objs->data_dir);
   }
 
-  act_log_normal(act_log_msg("Saving image data to %s.", ccdcntrl_objs->data_dir));
+  act_log_normal(act_log_msg("Backup image data directory - %s.", ccdcntrl_objs->data_dir));
   mysql_free_result(result);
   return TRUE;
 }

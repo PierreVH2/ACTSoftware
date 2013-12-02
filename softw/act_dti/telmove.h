@@ -33,6 +33,7 @@ struct _Telmove
   GtkWidget *lbl_hara_label, *lbl_dec_label, *lbl_hara, *lbl_dec;
   GtkWidget *evb_stat, *lbl_stat;
   
+  guchar motor_stat, motor_limits, motor_warn;
   gdouble sidt_h;
   GTimer *sidt_timer;
   gint fail_to_id;

@@ -8,7 +8,7 @@
 
 G_BEGIN_DECLS
 
-#define TELMOVE_COORDDIALOG_TYPE              (telmove_get_type())
+#define TELMOVE_COORDDIALOG_TYPE              (telmove_coorddialog_get_type())
 #define TELMOVE_COORDDIALOG(objs)             (G_TYPE_CHECK_INSTANCE_CAST ((objs), TELMOVE_COORDDIALOG_TYPE, TelmoveCoorddialog))
 #define TELMOVE_COORDDIALOG_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), TELMOVE_COORDDIALOG_TYPE, TelmoveCoorddialogClass))
 #define IS_TELMOVE_COORDDIALOG(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), TELMOVE_COORDDIALOG_TYPE))
@@ -35,7 +35,7 @@ struct _TelmoveCoorddialogClass
   GtkDialogClass parent_class;
 };
 
-GType telmove_get_type (void);
+GType telmove_coorddialog_get_type (void);
 GtkWidget *telmove_coorddialog_new(const gchar *title, GtkWidget *parent, gdouble sidt_h, GActTelcoord *cur_coord);
 GActTelcoord *telmove_coorddialog_get_coord(GtkWidget *coorddialog, gdouble sidt_h);
 

@@ -83,7 +83,7 @@ struct motor_track_adj
 #define IOCTL_MOTOR_TRACKING_ADJ _IOW(MOTOR_IOCTL_NUM, 5, void *)
 
 /// IOCTL to read the status of the electronic limit switches
-#define IOCTL_MOTOR_GET_LIMITS _IOR(MOTOR_IOCTL_NUM, 6, unsigned char)
+#define IOCTL_MOTOR_GET_LIMITS _IOR(MOTOR_IOCTL_NUM, 6, unsigned char *)
 
 /// IOCTL to do an emergency stop - set 1 for an emergency stop, set to 0 to enable motion again
 #define IOCTL_MOTOR_EMERGENCY_STOP _IOW(MOTOR_IOCTL_NUM, 7, unsigned char)

@@ -1,5 +1,6 @@
 #include <gtk/gtk.h>
 #include <math.h>
+#include <stdlib.h>
 #include <act_timecoord.h>
 #include <act_positastro.h>
 #include "telmove_coorddialog.h"
@@ -51,6 +52,8 @@ GtkWidget *telmove_coorddialog_new(const gchar *title, GtkWidget *parent, gdoubl
     convert_H_HMSMS_time(sidt_h, &tmp_sidt);
     calc_RA(&cur_coord->ha, &tmp_sidt, &tmp_ra);
     
+    objs->hara_sign_pos = TRUE;
+    gtk_button_set_label(GTK_BUTTON(objs->btn_harasign), "+");
     gtk_widget_set_sensitive(objs->btn_harasign, FALSE);
     gtk_label_set_text(GTK_LABEL(objs->lbl_haralabel), "Right Ascension");
     gtk_spin_button_set_range (GTK_SPIN_BUTTON(objs->spn_hara_h), 0, 23);
@@ -60,13 +63,33 @@ GtkWidget *telmove_coorddialog_new(const gchar *title, GtkWidget *parent, gdoubl
   }
   else
   {
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_hara_h), cur_coord->ha.hours);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_hara_m), cur_coord->ha.minutes);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_hara_s), cur_coord->ha.seconds + cur_coord->ha.milliseconds/1000.0);
+    if (convert_HMSMS_H_ha(&cur_coord->ha) < 0.0)
+    {
+      objs->hara_sign_pos = FALSE;
+      gtk_button_set_label(GTK_BUTTON(objs->btn_harasign), "-");
+    }
+    else
+    {
+      objs->hara_sign_pos = TRUE;
+      gtk_button_set_label(GTK_BUTTON(objs->btn_harasign), "+");
+    }
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_hara_h), abs(cur_coord->ha.hours));
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_hara_m), abs(cur_coord->ha.minutes));
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_hara_s), abs(cur_coord->ha.seconds) + abs(cur_coord->ha.milliseconds)/1000.0);
   }
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_dec_d), cur_coord->dec.degrees);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_dec_am), cur_coord->dec.amin);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_dec_as), cur_coord->dec.asec);
+  if (convert_DMS_D_dec(&cur_coord->dec) < 0.0)
+  {
+    objs->dec_sign_pos = FALSE;
+    gtk_button_set_label(GTK_BUTTON(objs->btn_decsign), "-");
+  }
+  else
+  {
+    objs->dec_sign_pos = TRUE;
+    gtk_button_set_label(GTK_BUTTON(objs->btn_decsign), "+");
+  }
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_dec_d), abs(cur_coord->dec.degrees));
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_dec_am), abs(cur_coord->dec.amin));
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_dec_as), abs(cur_coord->dec.asec));
   
   g_signal_connect(G_OBJECT(objs->btn_harasign), "clicked", G_CALLBACK(change_haradec_sign), (void*)&objs->hara_sign_pos);
   g_signal_connect(G_OBJECT(objs->btn_decsign), "clicked", G_CALLBACK(change_haradec_sign), (void*)&objs->dec_sign_pos);
@@ -79,7 +102,7 @@ GActTelcoord *telmove_coorddialog_get_coord(GtkWidget *coorddialog, gdouble sidt
 {
   TelmoveCoorddialog *objs = TELMOVE_COORDDIALOG(coorddialog);
   gboolean is_sidereal = objs->sidt_h >= 0.0;
-  // If dialog created for sidereal coordinates, use newet available sidereal time (i.e. if sidereal coordinates requested with sidt_h>=0, use that sidt, otherwise fallback to using the sidt stored when the dialog was created - this is may lead to deviations if a sidereal-type coordinates dialog is created and non-sidereal coordinates requested, which could happen if telmove loses sidereal time synchronisation while the dialog is running).
+  // If dialog created for sidereal coordinates, use newest available sidereal time (i.e. if sidereal coordinates requested with sidt_h>=0, use that sidt, otherwise fallback to using the sidt stored when the dialog was created - this is may lead to deviations if a sidereal-type coordinates dialog is created and non-sidereal coordinates requested, which could happen if telmove loses sidereal time synchronisation while the dialog is running).
   if ((is_sidereal) && (sidt_h >= 0.0))
     objs->sidt_h = sidt_h;
   
@@ -118,7 +141,7 @@ GActTelcoord *telmove_coorddialog_get_coord(GtkWidget *coorddialog, gdouble sidt
 static void telmove_coorddialog_init(GtkWidget *coorddialog)
 {
   TelmoveCoorddialog *objs = TELMOVE_COORDDIALOG(coorddialog);
-  gtk_dialog_add_buttons (GTK_DIALOG(coorddialog), GTK_STOCK_OK, GTK_RESPONSE_ACCEPT, GTK_STOCK_CANCEL, GTK_RESPONSE_REJECT, NULL);
+  gtk_dialog_add_buttons (GTK_DIALOG(coorddialog), GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_REJECT, NULL);
   objs->box_content = gtk_table_new(2,8,FALSE);
   gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(coorddialog))), objs->box_content);
   
