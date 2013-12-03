@@ -411,6 +411,7 @@ static void process_complete(Domeshutter *objs, guchar status)
 
 static void send_start_open(Domeshutter *objs)
 {
+  act_log_debug(act_log_msg("Sending domeshutter open"));
   g_signal_emit(objs, domeshutter_signals[SEND_START_OPEN_SIGNAL], 0);
   if (objs->fail_to_id != 0)
     g_source_remove(objs->fail_to_id);

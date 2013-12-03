@@ -232,6 +232,7 @@ void dti_plc_send_domemove_azm(gpointer dti_plc, gfloat azm)
 
 void dti_plc_send_domeshutter_open(gpointer dti_plc)
 {
+  act_log_debug(act_log_msg("Sending domeshutter open"));
   plc_send(DTI_PLC(dti_plc)->plc_chan, IOCTL_DOMESHUTT_OPEN, 1);
 }
 

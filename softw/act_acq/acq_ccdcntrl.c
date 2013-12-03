@@ -269,44 +269,50 @@ char ccdcntrl_save_image(struct ccdcntrl_objects *ccdcntrl_objs)
     act_log_error(act_log_msg("Invalid input parameters."));
     return FALSE;
   }
-  MYSQL **conn = ccdcntrl_objs->mysql_conn;
-  mysql_query(*conn, "START TRANSACTION");
+  MYSQL *conn = *ccdcntrl_objs->mysql_conn;
+  mysql_query(conn, "START TRANSACTION");
   
-  char qrystr[200];
+  char qrystr[64+40*G_targ_img.img_params.img_width];
   
-  sprintf(qrystr, "INSERT INTO merlin_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, width, height, bits_per_pix VALUES (%d, %d, %d, %f, \"%hu-%hhu-%hhu\", %f, %u, %u, %hhu)", G_targ_info.targ_id, G_targ_info.user_id, G_targ_info.sky ? 2 : 1, G_targ_img.img_params.exp_t_msec/1000.0, G_targ_info.unidate.year, G_targ_info.unidate.month+1, G_targ_info.unidate.day+1, convert_HMSMS_H_time(&G_targ_info.unitime), G_targ_img.img_params.img_width, G_targ_img.img_params.img_height, sizeof(ccd_pixel_type)*8);
-  if (mysql_query(*conn, qrystr))
+  sprintf(qrystr, "INSERT INTO merlin_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, width, height, bits_per_pix, tel_ha_h, tel_dec_d) VALUES (%d, %d, %d, %f, \"%hu-%hhu-%hhu\", %f, %u, %u, %hhu, %f, %f)", G_targ_info.targ_id, G_targ_info.user_id, G_targ_info.sky ? 2 : 1, G_targ_img.img_params.exp_t_msec/1000.0, G_targ_info.unidate.year, G_targ_info.unidate.month+1, G_targ_info.unidate.day+1, convert_HMSMS_H_time(&G_targ_info.unitime), G_targ_img.img_params.img_width, G_targ_img.img_params.img_height, sizeof(ccd_pixel_type)*8, convert_HMSMS_H_ha(&G_targ_info.ha), convert_DMS_D_dec(&G_targ_info.dec));
+  if (mysql_query(conn, qrystr))
   {
-    act_log_error(act_log_msg("Failed to save CCD image header to database - %s.", mysql_error(*conn)));
-    mysql_query(*conn, "ROLLBACK");
+    act_log_error(act_log_msg("Failed to save CCD image header to database - %s.", mysql_error(conn)));
+    act_log_debug(act_log_msg("SQL query: %s", qrystr));
+    mysql_query(conn, "ROLLBACK");
     return FALSE;
   }
+  act_log_debug(act_log_msg("Inserted image header."));
   
-  unsigned long img_id = mysql_insert_id(*conn);
+  unsigned long img_id = mysql_insert_id(conn);
   if (img_id == 0)
   {
     act_log_error(act_log_msg("Could not retrieve unique ID for saved CCD photometry image."));
-    mysql_query(*conn, "ROLLBACK");
+    mysql_query(conn, "ROLLBACK");
     return FALSE;
   }
+  act_log_debug(act_log_msg("Imaged ID: %lu", img_id));
   
   /// TODO: Use prepared statements - much faster.
   int i, j;
   for (i=0; i < G_targ_img.img_params.img_width; i++)
   {
-    for (j=0; j < G_targ_img.img_params.img_width; j++)
+    int qrylen = sprintf(qrystr, "INSERT INTO merlin_img_data (merlin_img_id, x, y, value) VALUES ");
+    for (j=0; j < G_targ_img.img_params.img_height; j++)
     {
-      sprintf(qrystr, "INSERT INTO merlin_img_data (merlin_img_id, x, y, value) VALUES (%lu, %d, %d, %d)", img_id, i, j, G_targ_img.img_data[i*G_targ_img.img_params.img_width + j]);
+      qrylen += sprintf(&qrystr[qrylen], "(%lu, %d, %d, %d),", img_id, i, j, G_targ_img.img_data[i*G_targ_img.img_params.img_height + j]);
     }
-    if (mysql_query(*conn, qrystr))
+    qrystr[qrylen-1] = ';';
+    if (mysql_query(conn, qrystr))
     {
-      act_log_error(act_log_msg("Failed to save CCD pixel (%d %d) to database - %s.", i, j, mysql_error(*conn)));
-      mysql_query(*conn, "ROLLBACK");
+      act_log_error(act_log_msg("Failed to save CCD pixel (%d %d) to database - %s.", i, j, mysql_error(conn)));
+      act_log_debug(act_log_msg("SQL query: %s", qrystr));
+      mysql_query(conn, "ROLLBACK");
       return FALSE;
     }
   }
 
-  mysql_query(*conn, "COMMIT");
+  mysql_query(conn, "COMMIT");
   return TRUE;
 }
 

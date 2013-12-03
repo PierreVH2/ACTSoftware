@@ -17,7 +17,6 @@ dti workout - check all componets operating as expected
   - (Watchdog)
   - Trapdoor
   - Main power
-ENV - Change indicators if time/coord not received for some time
 DTI - Remove status from widget_new functions, rather set initial values with DTI initial signals
 DTI - Use finalise instead of destroy
 TIME - check frequency of time messages
@@ -25,6 +24,11 @@ ENV - Moon RA, Dec incorrect
 Change time, env, dti so set progstat_starting when time/env/coord messages not received for a while and update indicators accordingly
 Add speed selection to DTI goto
 ACQ - figure out why it segfaults when it exits
+act_environ - Wind speed incorrect
+act_dti/domeshutter - cannot open dome shutter
+act_dti/domeshutter,dropout - button sensitivity incorrect (dropout open+close goes insensitive when domshutter manually opened)
+motor_driver - move North/South in cardinal direction, tracking adjustment not done
+
 
 Changes revision 463
 
@@ -41,3 +45,5 @@ DTI/TELMOVE - Found and fixed bug, in check_button_sens, was checking for Southe
 ACQ - Removed unnecessary mysql.h include from act_imgdisp
 ACQ - Changed message reporting backup data directory
 ACQ - Fixed RA,dec display (RA East-West orientation was opposite to that of image)
+
+

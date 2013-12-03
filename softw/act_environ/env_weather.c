@@ -24,7 +24,7 @@
 #define SUN_ALT_LIMIT_DEG      -5.0
 /// Maximum permissible cloud levels
 #define CLOUD_COVER_WARN       40.0
-#define CLOUD_COVER_LIMIT      30.0
+#define CLOUD_COVER_LIMIT      60.0
 /// Maximum permissible proximity to Moon
 #define MOON_PROX_LIMIT_DEG     5.0
 #define MOON_PROX_WARN_DEG     10.0
@@ -475,9 +475,9 @@ static void update_indicators(EnvWeather *objs)
   snprintf(tmpstr, sizeof(tmpstr), "%5.1f%%", objs->all_env.humidity);
   gtk_label_set_text(GTK_LABEL(objs->lbl_humidity), tmpstr);
   
-  if (objs->all_env.clouds <= CLOUD_COVER_LIMIT)
+  if (objs->all_env.clouds >= CLOUD_COVER_LIMIT)
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colred);
-  else if (objs->all_env.clouds <= CLOUD_COVER_WARN)
+  else if (objs->all_env.clouds >= CLOUD_COVER_WARN)
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colyellow);
   else
     gtk_widget_modify_bg(objs->evb_cloud, GTK_STATE_NORMAL, &colgreen);
