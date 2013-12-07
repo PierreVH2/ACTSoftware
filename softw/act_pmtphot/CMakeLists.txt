@@ -1,0 +1,15 @@
+FIND_PACKAGE(GTK2 REQUIRED)
+FIND_PACKAGE(PkgConfig REQUIRED)
+
+PKG_CHECK_MODULES(ARGTABLE REQUIRED argtable2)
+LINK_DIRECTORIES(${ARGTABLE_LIBRARY_DIRS})
+INCLUDE_DIRECTORIES(${ARGTABLE_INCLUDE_DIRS})
+
+INCLUDE_DIRECTORIES(${ACT_DRV_SRC}/pmt_driver)
+INCLUDE_DIRECTORIES(${ACT_DRV_SRC}/time_driver)
+INCLUDE_DIRECTORIES(${ACT_LIB_SRC})
+INCLUDE_DIRECTORIES(${GTK2_INCLUDE_DIRS})
+SET(PMTPHOT_SOURCE_FILES act_pmtphot.c pmtfuncs.h pmtfuncs.c pmtphot_plot.h pmtphot_plot.c pmtphot_storeinteg.h pmtphot_storeinteg.c pmtphot_view.h pmtphot_view.c)
+ADD_EXECUTABLE(act_pmtphot ${PMTPHOT_SOURCE_FILES} ${ACT_DRV_SRC}/time_driver/time_driver.h ${ACT_DRV_SRC}/pmt_driver/pmt_driver.h ${ACT_LIB_SRC}/act_ipc.h ${ACT_LIB_SRC}/act_log.h)
+TARGET_LINK_LIBRARIES(act_pmtphot ${GTK2_LIBRARIES} ${GTKGL_LIBRARIES} ${ARGTABLE_LIBRARIES} m mysqlclient act_log act_timecoord act_positastro)
+INSTALL(TARGETS act_pmtphot RUNTIME DESTINATION bin)

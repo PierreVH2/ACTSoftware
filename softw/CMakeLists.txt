@@ -1,0 +1,7 @@
+ADD_SUBDIRECTORY(act_acq)
+ADD_SUBDIRECTORY(act_control)
+ADD_SUBDIRECTORY(act_dti)
+ADD_SUBDIRECTORY(act_environ)
+ADD_SUBDIRECTORY(act_timecoord_disp)
+ADD_SUBDIRECTORY(act_sched)
+ADD_SUBDIRECTORY(act_pmtphot)
