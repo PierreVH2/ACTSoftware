@@ -368,7 +368,6 @@ static void send_plc_cmd(struct work_struct *work)
     G_cmd_pending = 1;
     return;
   }
-  printk(KERN_DEBUG PRINTK_PREFIX "Sending PLC command.\n");
   sprintf(&G_cur_plc_cmd_str[CNTR_FCS_TERM_OFFS], CNTR_FCS_TERM_FMT, calc_fcs(G_cur_plc_cmd_str, CNTR_FCS_TERM_OFFS));
   ret = write_to_plc(G_cur_plc_cmd_str, PLC_CMD_LEN);
   if (ret < 0)
@@ -381,7 +380,6 @@ static void send_plc_cmd(struct work_struct *work)
     G_cmd_pending = 1;
     return;
   }
-  printk(KERN_DEBUG PRINTK_PREFIX "Sent PLC command (%hhd)\n", hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]) & CNTR_WATCHDOG_MASK);
   if ((G_status & PLC_COMM_OK) == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "PLC communications re-established (%d)\n", ret);
@@ -592,7 +590,6 @@ EXPORT_SYMBOL(set_handset_handler);
 static int actplc_open(struct inode *inode, struct file *filp)
 {
   G_num_open++;
-  printk(KERN_DEBUG PRINTK_PREFIX "Device opened: %d\n", G_num_open);
   if (G_num_open > 1)
     return 0;
 /*  #ifndef PLC_SIM
@@ -699,7 +696,6 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     /// Reset PLC watchdog
     case IOCTL_RESET_WATCHDOG:
     {
-      printk(KERN_DEBUG PRINTK_PREFIX "Watchdog reset IOCTL.\n");
       i = hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]);
       G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK | i);
       ret = 1;
@@ -741,7 +737,12 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     {
       get_user(value, (long*)ioctl_param);
       if (value > 0)
+      {
+        /// NOTE: Watchdog must be rest for dome shutter to open
         G_cur_plc_cmd_str[CNTR_SHUTTER_OFFS] = int2hexchar(CNTR_DSHUTT_OPEN_MASK);
+        i = hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]);
+        G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK | i);
+      }
       else if (value < 0)
         G_cur_plc_cmd_str[CNTR_SHUTTER_OFFS] = int2hexchar(CNTR_DSHUTT_CLOSE_MASK);
       else
@@ -754,7 +755,12 @@ static long actplc_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     {
       get_user(value, (unsigned long*)ioctl_param);
       if (value > 0)
+      {
+        /// NOTE: Watchdog must be rest for dropout to open
         G_cur_plc_cmd_str[CNTR_DROPOUT_OFFS] = int2hexchar(CNTR_DSHUTT_OPEN_MASK);
+        i = hexchar2int(G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS]);
+        G_cur_plc_cmd_str[CNTR_INSTR_SHUTT_OFFS] = int2hexchar(CNTR_WATCHDOG_MASK | i);
+      }
       else if (value < 0)
         G_cur_plc_cmd_str[CNTR_DROPOUT_OFFS] = int2hexchar(CNTR_DSHUTT_CLOSE_MASK);
       else

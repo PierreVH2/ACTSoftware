@@ -412,10 +412,10 @@ struct act_msg_targset
   struct decstruct targ_dec;
   //! Epoch of target in fractional years since 0 AD.
   float targ_epoch;
-  //! Adjustment in hour angle from ra
-  struct rastruct adj_ra;
+  //! Adjustment in ra
+  double adj_ra_h;
   //! Adjustment in declination from dec
-  struct decstruct adj_dec;
+  double adj_dec_d;
   //! TRUE if target is centred, 0 (FALSE) otherwise
   unsigned char targ_cent;
   //! Focus position - will be used for auto focus.

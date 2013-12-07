@@ -50,7 +50,7 @@ void ccdcntrl_set_coords(struct act_msg_coord *msg);
 void ccdcntrl_set_time(struct act_msg_time *msg);
 void ccdcntrl_get_ccdcaps(struct act_msg_ccdcap *msg_ccdcap);
 int ccdcntrl_start_targset_exp(struct ccdcntrl_objects *ccdcntrl_objs, struct act_msg_targset *msg);
-int ccdcntrl_check_targset_exp(struct ccdcntrl_objects *ccdcntrl_objs, struct rastruct *adj_ra, struct decstruct *adj_dec, unsigned char *targ_cent);
+int ccdcntrl_check_targset_exp(struct ccdcntrl_objects *ccdcntrl_objs, double *adj_ra, double *adj_dec, unsigned char *targ_cent);
 int ccdcntrl_start_phot_exp(struct ccdcntrl_objects *ccdcntrl_objs, struct act_msg_dataccd *msg);
 int ccdcntrl_check_phot_exp(struct ccdcntrl_objects *ccdcntrl_objs);
 void ccdcntrl_cancel_exp(struct ccdcntrl_objects *ccdcntrl_objs);

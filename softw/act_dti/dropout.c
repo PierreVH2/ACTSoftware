@@ -73,7 +73,7 @@ GtkWidget *dropout_new (guchar dropout_stat)
   GtkWidget *dropout = g_object_new (dropout_get_type (), NULL);
   Dropout *objs = DROPOUT(dropout);
   objs->weath_ok = objs->sun_alt_ok = FALSE;
-  objs->dropout_cur = -1;
+  objs->dropout_cur = 0;
 //   objs->dropout_goal = dropout_stat;
 //   objs->dropout_cur = dropout_stat;
 //   dropout_update (dropout, dropout_stat);
@@ -132,7 +132,7 @@ void dropout_update (GtkWidget *dropout, guchar new_dropout_stat)
 
   if (((new_dropout_stat & DSHUTT_CLOSED_MASK) != 0) && ((objs->dropout_cur & DSHUTT_CLOSED_MASK) == 0))
     g_signal_emit(dropout, dropout_signals[IS_CLOSED_SIGNAL], 0, TRUE);
-  else if (((new_dropout_stat & DSHUTT_CLOSED_MASK) == 0) && ((objs->dropout_cur & DSHUTT_CLOSED_MASK) != 0))
+  else if (((new_dropout_stat & DSHUTT_CLOSED_MASK) == 0) && (((objs->dropout_cur & DSHUTT_CLOSED_MASK) != 0) || (objs->dropout_cur==0)))
     g_signal_emit(dropout, dropout_signals[IS_CLOSED_SIGNAL], 0, FALSE);
   
   if (new_dropout_stat == objs->dropout_goal)
@@ -176,10 +176,11 @@ void dropout_process_msg(GtkWidget *dropout, DtiMsg *msg)
 
 void dropout_set_lock(GtkWidget *dropout, gboolean lock_on)
 {
+  act_log_debug(act_log_msg("Setting lock %hhu", lock_on));
   Dropout *objs = DROPOUT(dropout);
   objs->locked = lock_on;
-  gtk_widget_set_sensitive(objs->btn_open, lock_on && objs->weath_ok && objs->sun_alt_ok);
-  gtk_widget_set_sensitive(objs->btn_close, lock_on);
+  gtk_widget_set_sensitive(objs->btn_open, !lock_on && objs->weath_ok && objs->sun_alt_ok);
+  gtk_widget_set_sensitive(objs->btn_close, !lock_on);
 }
 
 static void dropout_class_init (DropoutClass *klass)
@@ -242,7 +243,7 @@ static void buttons_nand(GtkWidget *button1, gpointer button2)
 static void block_button_toggles(Dropout *objs)
 {
   g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
+  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_toggled), objs);
   g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_nand), objs->btn_close);
   g_signal_handlers_block_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_nand), objs->btn_open);
 }
@@ -250,7 +251,7 @@ static void block_button_toggles(Dropout *objs)
 static void unblock_button_toggles(Dropout *objs)
 {
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
+  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_toggled), objs);
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_nand), objs->btn_close);
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_nand), objs->btn_open);
 }

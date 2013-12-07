@@ -23,7 +23,8 @@
 #include "acq_imgdisp.h"
 #include "acq_ccdcntrl.h"
 
-#define TIMEOUT_PERIOD 3000
+#define CCDCHECK_TIMEOUT_PERIOD 1000
+#define GUICHECK_TIMEOUT_PERIOD 3000
 
 struct formobjects
 {
@@ -454,17 +455,6 @@ int request_guisock()
   return 1;
 }
 
-gboolean timeout(gpointer user_data)
-{
-  unsigned char main_embedded = gtk_widget_get_parent(GTK_WIDGET(user_data)) != NULL;
-  if (!main_embedded)
-  {
-    act_log_normal(act_log_msg("Requesting GUI socket"));
-    request_guisock();
-  }
-  return TRUE;
-}
-
 void pipe_signals(int signum)
 {
   if (signum != SIGIO)
@@ -488,7 +478,7 @@ char acq_check_targset(struct act_msg *obsn_msg, int status)
     return TRUE;
   }
   struct act_msg_targset *msg_targset = &obsn_msg->content.msg_targset;
-  int ret = ccdcntrl_check_targset_exp(G_formobjs.ccdcntrl_objs, &msg_targset->adj_ra, &msg_targset->adj_dec, &msg_targset->targ_cent);
+  int ret = ccdcntrl_check_targset_exp(G_formobjs.ccdcntrl_objs, &msg_targset->adj_ra_h, &msg_targset->adj_dec_d, &msg_targset->targ_cent);
   if (ret < 0)
   {
     act_log_error(act_log_msg("An error occurred while checking target set exposure status. Flagging error and returning target set message."));
@@ -499,7 +489,7 @@ char acq_check_targset(struct act_msg *obsn_msg, int status)
   }
   if (ret == 0)
   {
-    act_log_normal(act_log_msg("check_targset_exp return 0, this should never happen. It's probably best to wait."));
+    act_log_normal(act_log_msg("check_targset_exp return 0, image not ready yet."));
     return FALSE;
   }
   if (send(G_netsock_fd, obsn_msg, sizeof(struct act_msg), 0) == -1)
@@ -536,6 +526,41 @@ char acq_check_dataccd(struct act_msg *obsn_msg, int status)
   return TRUE;
 }
 
+gboolean guicheck_timeout(gpointer user_data)
+{
+  unsigned char main_embedded = gtk_widget_get_parent(GTK_WIDGET(user_data)) != NULL;
+  if (!main_embedded)
+  {
+    act_log_normal(act_log_msg("Requesting GUI socket"));
+    request_guisock();
+  }
+  return TRUE;
+}
+
+gboolean ccdcheck_timeout(gpointer user_data)
+{
+  if (G_obsn_msg != NULL)
+  {
+    int ret = 0;
+    if (G_obsn_msg->mtype == MT_TARG_SET)
+      ret = acq_check_targset(G_obsn_msg, 1);
+    else if (G_obsn_msg->mtype == MT_DATA_CCD)
+      ret = acq_check_dataccd(G_obsn_msg, 1);
+    else
+    {
+      act_log_error(act_log_msg("An observation message with an unknown/invalid type (%d) is buffered. Clearing buffer."));
+      ret = 1;
+    }
+    if (ret)
+    {
+      free(G_obsn_msg);
+      G_obsn_msg = NULL;
+    }
+  }
+
+  return TRUE;
+}
+
 gboolean process_signal(GIOChannel *source, GIOCondition cond, gpointer user_data)
 {
   (void)cond;
@@ -555,7 +580,7 @@ gboolean process_signal(GIOChannel *source, GIOCondition cond, gpointer user_dat
     if (error != NULL)
       break;
     int ret;
-    if (G_obsn_msg != NULL)
+/*    if (G_obsn_msg != NULL)
     {
       if (G_obsn_msg->mtype == MT_TARG_SET)
         ret = acq_check_targset(G_obsn_msg, ret);
@@ -571,7 +596,7 @@ gboolean process_signal(GIOChannel *source, GIOCondition cond, gpointer user_dat
         free(G_obsn_msg);
         G_obsn_msg = NULL;
       }
-    }
+    }*/
 
     ret = check_net_messages();
     if (ret < 0)
@@ -712,13 +737,11 @@ int main(int argc, char **argv)
   int iowatch_id = g_io_add_watch_full (gio_signal_in, G_PRIORITY_HIGH, G_IO_IN | G_IO_PRI, process_signal, NULL, NULL);
   
   act_log_normal(act_log_msg("Starting main loop."));
-  int to_id;
-  if (TIMEOUT_PERIOD % 1000 == 0)
-    to_id = g_timeout_add_seconds (TIMEOUT_PERIOD/1000, timeout, box_main);
-  else
-    to_id = g_timeout_add (TIMEOUT_PERIOD, timeout, box_main);
+  int ccdcheck_to_id = g_timeout_add_seconds (CCDCHECK_TIMEOUT_PERIOD/1000, ccdcheck_timeout, NULL);
+  int guicheck_to_id = g_timeout_add_seconds (GUICHECK_TIMEOUT_PERIOD/1000, guicheck_timeout, box_main);
   gtk_main();
-  g_source_remove(to_id);
+  g_source_remove(ccdcheck_to_id);
+  g_source_remove(guicheck_to_id);
   g_source_remove(iowatch_id);
   close(G_netsock_fd);
   ccdcntrl_finalise_objs(G_formobjs.ccdcntrl_objs);

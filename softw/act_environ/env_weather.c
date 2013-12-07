@@ -591,6 +591,9 @@ static void process_msg_coord(EnvWeather *objs, struct act_msg_coord *msg_coord)
 static void process_msg_environ(EnvWeather *objs, struct act_msg_environ *msg_environ)
 {
   memcpy(msg_environ, &objs->all_env, sizeof(struct act_msg_environ));
+  // Override weather warnings for now
+  msg_environ->weath_ok = TRUE;
+  msg_environ->status_active = ACTIVE_TIME_NIGHT;
 }
 
 static void process_msg_targset(EnvWeather *objs, struct act_msg_targset *msg_targset)

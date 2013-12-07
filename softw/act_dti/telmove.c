@@ -164,6 +164,7 @@ void telmove_process_msg (GtkWidget *telmove, DtiMsg *msg)
       break;
     case MT_TARG_SET:
       ret = process_targset(objs, dti_msg_get_targset(msg));
+      act_log_debug(act_log_msg("Processed target set: %hhd", ret));
       break;
   }
   if (ret != 0)
@@ -386,6 +387,7 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
   Telmove *objs = TELMOVE(telmove);
   if (g_object_is_floating(G_OBJECT(new_coord)))
     g_object_ref_sink(G_OBJECT(new_coord));
+  dti_motor_apply_pointing(new_coord);
   struct act_msg msg;
   memset(&msg, 0, sizeof(struct act_msg));
   msg.mtype = MT_COORD;
@@ -420,13 +422,18 @@ static void goto_finish(gpointer telmove, gboolean success)
 {
   Telmove *objs = TELMOVE(telmove);
   if (objs->pending_msg == NULL)
+  {
+    act_log_debug(act_log_msg("Goto finished, but no auto goto underway. Ignoring"));
     return;
+  }
   if (!success)
   {
+    act_log_debug(act_log_msg("Goto finished, unsuccessful."));
     process_complete(objs, OBSNSTAT_ERR_NEXT);
     return;
   }
   // ??? Check coordinates?
+  act_log_debug(act_log_msg("Goto finished, success!"));
   process_complete(objs, OBSNSTAT_GOOD);
 }
 
@@ -551,9 +558,16 @@ static guchar process_targset(Telmove *objs, struct act_msg_targset *msg_targset
     act_log_debug(act_log_msg("Target %s (%d, %s) centred.", msg_targset->targ_name, msg_targset->targ_id, msg_targset->sky ? "sky" : "object"));
     return OBSNSTAT_GOOD;
   }
-  act_log_debug(act_log_msg("Initiating automatic target set: %s (%d) %s - %s %s adjustment %s %s", msg_targset->targ_name, msg_targset->targ_id, msg_targset->sky ? "sky" : "object", ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), ra_to_str(&msg_targset->adj_ra), dec_to_str(&msg_targset->adj_dec)));
+  struct rastruct ra;
+  struct decstruct dec;
+  convert_H_HMSMS_ra(convert_HMSMS_H_ra(&msg_targset->targ_ra) + msg_targset->adj_ra_h, &ra);
+  convert_D_DMS_dec(convert_DMS_D_dec(&msg_targset->targ_dec) + msg_targset->adj_dec_d, &dec);
+  act_log_debug(act_log_msg("Initiating automatic target set: %s (%d) %s - %s %s adjustment %f %f (resultant %s %s)", msg_targset->targ_name, msg_targset->targ_id, msg_targset->sky ? "sky" : "object", ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->adj_ra_h, msg_targset->adj_dec_d, ra_to_str(&ra), dec_to_str(&dec)));
   
-  return start_goto_sid(objs, &msg_targset->targ_ra, &msg_targset->targ_dec);
+  guchar ret = start_goto_sid(objs, &ra, &dec);
+  act_log_debug(act_log_msg("Start goto result: %hhu", ret));
+  
+  return ret;
 }
 
 static void process_complete(Telmove *objs, guchar status)
@@ -691,7 +705,9 @@ static guchar start_goto_sid(Telmove *objs, struct rastruct *ra, struct decstruc
   sidtdelta_s += (double)sidtdelta_us/1e6;
   convert_H_HMSMS_time(objs->sidt_h + sidtdelta_s*SID_PER_MEAN_T/3600.0, &tmp_sidt);
   calc_HAngle(ra, &tmp_sidt, &tmp_ha);
-  return start_goto(objs, &tmp_ha, dec, TRUE);
+  guchar ret = start_goto(objs, &tmp_ha, dec, TRUE);
+  act_log_debug(act_log_msg("Start goto result: %hhu", ret));
+  return ret;
 }
 
 static guchar start_goto(Telmove *objs, struct hastruct *ha, struct decstruct *dec, gboolean is_sidereal)
@@ -702,7 +718,10 @@ static guchar start_goto(Telmove *objs, struct hastruct *ha, struct decstruct *d
   gint ret = dti_motor_goto (objs->dti_motor, gotocmd);
   g_object_unref(gotocmd);
   if (ret == 0)
-    return OBSNSTAT_GOOD;
+  {
+    act_log_debug(act_log_msg("Successfully started goto."));
+    return 0;
+  }
   if (ret == EINVAL)
   {
     act_log_error(act_log_msg("Goto coordinates fall beyond software limits."));

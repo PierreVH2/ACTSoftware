@@ -348,7 +348,7 @@ int start_card(struct motor_card_cmd *cmd)
   
   params->dir_req = dir;
   params->rate_req = rate;
-  if (((dir & DIR_HA_MASK) == 0) && (G_status | MOTOR_STAT_TRACKING))
+  if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
     params->start_ha = G_motor_steps_ha;
   else
     params->start_ha = 0;
@@ -554,7 +554,7 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   
   params->dir_req = dir;
   params->rate_req = rate;
-  if (((dir & DIR_HA_MASK) == 0) && (G_status | MOTOR_STAT_TRACKING))
+  if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
     params->start_ha = G_motor_steps_ha;
   else
     params->start_ha = 0;
@@ -721,7 +721,7 @@ unsigned char check_gotomove(void)
   unsigned char dir_new;
   struct gotomove_params *params = &G_move_params.gotomove;
   
-  printk(KERN_DEBUG PRINTK_PREFIX "Checking goto.\n");
+//   printk(KERN_DEBUG PRINTK_PREFIX "Checking goto.\n");
   if ((G_hard_limits | G_alt_limits) & params->dir_cur)
   {
     printk(KERN_INFO PRINTK_PREFIX "Limit reached in move direction. Cancelling goto.\n");
@@ -733,11 +733,11 @@ unsigned char check_gotomove(void)
   
   if (params->cancelled)
   {
-    printk(KERN_DEBUG PRINTK_PREFIX "Goto cancelled\n");
+//     printk(KERN_DEBUG PRINTK_PREFIX "Goto cancelled\n");
     if (params->rate_cur < RATE_MIN)
     {
       rate_new = calc_ramp_rate(params->rate_cur, RATE_MIN);
-      printk(KERN_DEBUG PRINTK_PREFIX "Ramping down: %u\n", rate_new);
+//       printk(KERN_DEBUG PRINTK_PREFIX "Ramping down: %u\n", rate_new);
       send_rate(rate_new);
       params->rate_cur = rate_new;
       return FALSE;
@@ -758,10 +758,10 @@ unsigned char check_gotomove(void)
     new_targ_ha = params->targ_ha - (params->timer_ms*HA_INCR_MOTOR_STEPS);
   
   dir_new = calc_direction(new_targ_ha, params->targ_dec, params->use_encod);
-  printk(KERN_DEBUG PRINTK_PREFIX "Goto track-adjusted coordinates,dir: %u %u 0x%x\n", new_targ_ha, params->targ_dec, dir_new);
+//   printk(KERN_DEBUG PRINTK_PREFIX "Goto track-adjusted coordinates,dir: %u %u 0x%x\n", new_targ_ha, params->targ_dec, dir_new);
   if ((dir_new == 0) && (params->rate_cur >= RATE_MIN))
   {
-    printk(KERN_DEBUG PRINTK_PREFIX "Goto complete (HA %d; Dec %d).\n", params->use_encod ? G_encod_pulses_ha : G_motor_steps_ha, params->use_encod ? G_encod_pulses_dec : G_motor_steps_dec);
+//     printk(KERN_DEBUG PRINTK_PREFIX "Goto complete (HA %d; Dec %d).\n", params->use_encod ? G_encod_pulses_ha : G_motor_steps_ha, params->use_encod ? G_encod_pulses_dec : G_motor_steps_dec);
     G_status &= ~MOTOR_STAT_GOTO;
     stop_move();
     if ((G_status & MOTOR_STAT_TRACKING) != 0)
@@ -802,7 +802,7 @@ unsigned char check_cardmove(void)
   }
 
   // If no motion in HA, increment timer so we can catch up later (if moving in HA, even if also moving in Dec, move rate will account for sidereal motion)
-  if ((params->start_ha == 0) && ((params->dir_cur & DIR_HA_MASK) == 0) && (G_status | MOTOR_STAT_TRACKING))
+/*  if ((params->start_ha == 0) && ((params->dir_cur & DIR_HA_MASK) == 0) && (G_status | MOTOR_STAT_TRACKING))
   {
 //     printk(KERN_DEBUG PRINTK_PREFIX "Setting card move start hour angle.\n");
     params->start_ha = G_motor_steps_ha;
@@ -811,7 +811,7 @@ unsigned char check_cardmove(void)
   {
 //     printk(KERN_DEBUG PRINTK_PREFIX "Unsetting card move start hour angle.\n");
     params->start_ha = 0;
-  }
+  }*/
   if (params->start_ha != 0)
     params->timer_ms += MON_PERIOD_MSEC;
   
@@ -844,7 +844,7 @@ unsigned char check_cardmove(void)
       dir_new = calc_direction(new_targ_ha, G_motor_steps_dec, FALSE) & DIR_WEST_MASK;
 //       printk(KERN_DEBUG PRINTK_PREFIX "Tracking adjusted ha: %d (%d %d %d)\n", new_targ_ha, G_motor_steps_ha, params->timer_ms*HA_INCR_MOTOR_STEPS, params->start_ha);
     }
-//     printk(KERN_DEBUG PRINTK_PREFIX "Slow enough to stop (new dir: 0x%x)\n", dir_new);
+//     printk(KERN_DEBUG PRINTK_PREFIX "Slow enough to stop (new dir: 0x%x 0x%x)\n", dir_new, params->dir_cur);
     if (dir_new == params->dir_cur)
       return FALSE;
     stop_move();

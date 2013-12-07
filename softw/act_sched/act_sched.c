@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <act_log.h>
 #include <act_ipc.h>
+#include <act_positastro.h>
 
 #define GUICHECK_TIMEOUT_PERIOD    3
 #define OBSN_WAIT_TIMEOUT          60
@@ -278,7 +279,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
       }
       if (msg_targset->targset_stage == TARGSET_SCHED_POST)
       {
-        act_log_debug(act_log_msg("Target set complete message received."));
+        act_log_debug(act_log_msg("Received TARGET_SET_POST message."));
         targset_finish(objs, msg_targset);
         break;
       }
@@ -396,14 +397,17 @@ void cancel_cur(gpointer user_data)
   struct act_msg msg;
   msg.mtype = MT_TARG_SET;
   msg.content.msg_targset.status = OBSNSTAT_CANCEL;
+  msg.content.msg_targset.targset_stage = TARGSET_SCHED_PRE;
   if (net_send(objs->net_chan, &msg) < 0)
     act_log_error(act_log_msg("Failed to send targset cancel mesaage."));
   msg.mtype = MT_DATA_PMT;
   msg.content.msg_datapmt.status = OBSNSTAT_CANCEL;
+  msg.content.msg_datapmt.datapmt_stage = DATAPMT_SCHED_PRE;
   if (net_send(objs->net_chan, &msg) < 0)
     act_log_error(act_log_msg("Failed to send datapmt cancel mesaage."));
   msg.mtype = MT_DATA_CCD;
   msg.content.msg_dataccd.status = OBSNSTAT_CANCEL;
+  msg.content.msg_dataccd.dataccd_stage = DATACCD_SCHED_PRE;
   if (net_send(objs->net_chan, &msg) < 0)
     act_log_error(act_log_msg("Failed to send dataccd cancel mesaage."));
   update_schedstat(objs, OBSNSTAT_CANCEL);
@@ -429,6 +433,7 @@ void targset_finish(struct formobjects *objs, struct act_msg_targset *msg_targse
   {
     act_log_debug(act_log_msg("Retrying last target set message."));
     msg_targset->status = OBSNSTAT_GOOD;
+    msg_targset->targset_stage = TARGSET_SCHED_PRE;
     // Copy message just in case - it should already be identical (besides the status)
     memcpy(&objs->cur_msg->content.msg_targset, msg_targset, sizeof(struct act_msg_targset));
     if (net_send(objs->net_chan, objs->cur_msg) < 0)
@@ -438,6 +443,7 @@ void targset_finish(struct formobjects *objs, struct act_msg_targset *msg_targse
   if (msg_targset->status == OBSNSTAT_ERR_WAIT)
   {
     msg_targset->status = OBSNSTAT_GOOD;
+    msg_targset->targset_stage = TARGSET_SCHED_PRE;
     // Copy message just in case - it should already be identical (besides the status)
     memcpy(&objs->cur_msg->content.msg_targset, msg_targset, sizeof(struct act_msg_targset));
     g_timeout_add_seconds(OBSN_WAIT_TIMEOUT, delayed_obsn_retry, objs);
@@ -446,6 +452,17 @@ void targset_finish(struct formobjects *objs, struct act_msg_targset *msg_targse
   if (msg_targset->status == OBSNSTAT_ERR_CRIT)
   {
     act_log_debug(act_log_msg("Received target set message with critical error."));
+    return;
+  }
+  if (!msg_targset->targ_cent)
+  {
+    act_log_debug(act_log_msg("Target not centred yet. Retrying."));
+    msg_targset->status = OBSNSTAT_GOOD;
+    msg_targset->targset_stage = TARGSET_SCHED_PRE;
+    // Copy message just in case - it should already be identical (besides the status)
+    memcpy(&objs->cur_msg->content.msg_targset, msg_targset, sizeof(struct act_msg_targset));
+    if (net_send(objs->net_chan, objs->cur_msg) < 0)
+      act_log_error(act_log_msg("Failed to send target set retry message."));
     return;
   }
   if (msg_targset->status != OBSNSTAT_COMPLETE)
@@ -482,6 +499,7 @@ void datapmt_finish(struct formobjects *objs, struct act_msg_datapmt *msg_datapm
   {
     act_log_debug(act_log_msg("Retrying last Data PMT message."));
     msg_datapmt->status = OBSNSTAT_GOOD;
+    msg_datapmt->datapmt_stage = DATAPMT_SCHED_PRE;
     // Copy message just in case - it should already be identical (besides the status)
     memcpy(&objs->cur_msg->content.msg_datapmt, msg_datapmt, sizeof(struct act_msg_datapmt));
     if (net_send(objs->net_chan, objs->cur_msg) < 0)
@@ -491,6 +509,7 @@ void datapmt_finish(struct formobjects *objs, struct act_msg_datapmt *msg_datapm
   if (msg_datapmt->status == OBSNSTAT_ERR_WAIT)
   {
     msg_datapmt->status = OBSNSTAT_GOOD;
+    msg_datapmt->datapmt_stage = DATAPMT_SCHED_PRE;
     // Copy message just in case - it should already be identical (besides the status)
     memcpy(&objs->cur_msg->content.msg_datapmt, msg_datapmt, sizeof(struct act_msg_datapmt));
     g_timeout_add_seconds(OBSN_WAIT_TIMEOUT, delayed_obsn_retry, objs);
@@ -676,7 +695,7 @@ unsigned char sched_next_obsn(struct formobjects *objs)
 {
   act_log_debug(act_log_msg("Selecting new observation."));  
   char qrystr[512];
-  sprintf(qrystr, "SELECT * FROM (SELECT id,block_seq_id,status,1 FROM sched_targset UNION SELECT id,block_seq_id,status,2 FROM sched_dataccd UNION SELECT id,block_seq_id,status,3 FROM sched_datapmt) AS obsn_queue INNER JOIN sched_block_seq ON sched_block_seq.id=obsn_queue.block_seq_id WHERE sched_block_seq.block_id=1 AND obsn_queue.status=%ld;", objs->cur_blockid);
+  sprintf(qrystr, "SELECT obsn_queue.id,obsn_queue.obsntype FROM (SELECT id,block_seq_id,status,1 AS obsntype FROM sched_targset UNION SELECT id,block_seq_id,status,2 AS obsntype FROM sched_dataccd UNION SELECT id,block_seq_id,status,3 AS obsntype FROM sched_datapmt) AS obsn_queue INNER JOIN sched_block_seq ON sched_block_seq.id=obsn_queue.block_seq_id WHERE sched_block_seq.block_id=%ld AND obsn_queue.status=0 ORDER BY sched_block_seq.seqnum LIMIT 1;", objs->cur_blockid);
   MYSQL_RES *result;
   mysql_query(objs->mysql_conn,qrystr);
   result = mysql_store_result(objs->mysql_conn);
@@ -697,7 +716,7 @@ unsigned char sched_next_obsn(struct formobjects *objs)
   
   MYSQL_ROW row = mysql_fetch_row(result);
   int obsntype, obsnid;
-  if (sscanf(row[2], "%d", &obsntype) != 1)
+  if (sscanf(row[1], "%d", &obsntype) != 1)
   {
     act_log_error(act_log_msg("Failed to parse observation type information for next schedule item (%s).", row[2]));
     mysql_free_result(result);
@@ -735,7 +754,7 @@ unsigned char sched_next_targset(struct formobjects *objs, int targset_id)
   act_log_debug(act_log_msg("Selecting next target set."));
   MYSQL_RES *result;
   char qrystr[512];
-  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, star_info.ra_h_fk5, star_info.dec_d_fk5, sky FROM sched_targset INNER JOIN sched_block_seq ON sched_block_seq.id=sched_targset.block_seq_id INNER JOIN sched_blocks ON sched_blocks.id=sched_block_seq.block_id INNER JOIN star_info ON star_info.id=sched_blocks.targ_id INNER JOIN star_names ON sched_blocks.targ_id=star_names.star_name WHERE sched_targset.id=%d", targset_id);
+  sprintf(qrystr, "SELECT mode_auto, sched_blocks.targ_id, star_names.star_name, star_info.ra_h_fk5, star_info.dec_d_fk5, sky FROM sched_targset INNER JOIN sched_block_seq ON sched_block_seq.id=sched_targset.block_seq_id INNER JOIN sched_blocks ON sched_blocks.id=sched_block_seq.block_id INNER JOIN star_info ON star_info.id=sched_blocks.targ_id INNER JOIN star_names ON sched_blocks.targ_id=star_names.star_id WHERE sched_targset.id=%d", targset_id);
   mysql_query(objs->mysql_conn,qrystr);
   result = mysql_store_result(objs->mysql_conn);
   if (result == NULL)
@@ -796,14 +815,19 @@ unsigned char sched_next_targset(struct formobjects *objs, int targset_id)
   msg_targset->targ_cent = FALSE;
   msg_targset->focus_pos = 0;
   msg_targset->autoguide= FALSE;
-  msg_targset->targ_epoch = 2000.0;
+  msg_targset->targ_epoch = 2013.9;
 
   msg_targset->mode_auto = mode_auto;
   msg_targset->targ_id = targ_id;
   memcpy(msg_targset->targ_name, targ_name, MAX_TARGID_LEN);
   msg_targset->sky = sky;
-  convert_H_HMSMS_ra(ra_h, &msg_targset->targ_ra);
-  convert_D_DMS_dec(dec_d, &msg_targset->targ_dec);
+  struct rastruct tmp_ra;
+  struct decstruct tmp_dec;
+  convert_H_HMSMS_ra(ra_h, &tmp_ra);
+  convert_D_DMS_dec(dec_d, &tmp_dec);
+  precess_coord(&tmp_ra, &tmp_dec, 2000.0, 2013.9, &msg_targset->targ_ra, &msg_targset->targ_dec);
+  msg_targset->adj_ra_h = 0.0;
+  msg_targset->adj_dec_d = 0.0;
   
   return 1;
 }
@@ -1122,7 +1146,7 @@ void update_schedline(struct formobjects *objs)
       if (msg_targset->targ_cent)
         sprintf(schedline, "SET TARGET:  %s %s (%d %s %s J%6.1f) %s CENTRED", msg_targset->mode_auto ? "AUTO" : "MANUAL", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->targ_epoch, msg_targset->sky ? "SKY" : "STAR");
       else
-        sprintf(schedline, "SET TARGET:  %s %s (%d %s %s J%6.1f) %s ADJUST RA %fs %f\"", msg_targset->mode_auto ? "AUTO" : "MANUAL", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->targ_epoch, msg_targset->sky ? "SKY" : "STAR", convert_HMSMS_H_ra(&msg_targset->adj_ra)*3600.0, convert_DMS_D_dec(&msg_targset->adj_dec)*3600.0);
+        sprintf(schedline, "SET TARGET:  %s %s (%d %s %s J%6.1f) %s ADJUST RA %fs %f\"", msg_targset->mode_auto ? "AUTO" : "MANUAL", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->targ_epoch, msg_targset->sky ? "SKY" : "STAR", msg_targset->adj_ra_h*3600.0, msg_targset->adj_dec_d*3600.0);
       break;
     }
     case MT_DATA_PMT:

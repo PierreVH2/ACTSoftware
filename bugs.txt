@@ -2,21 +2,6 @@ Current bugs/notes:
 
 Determine proper treatment of SuperWASP cloud data
 act_environ - status light must remain red when weather data outdated
-dti workout - check all componets operating as expected
-  - Filters work
-  - Apertures work
-  - PMT Shutter works
-  - Acqmir works
-  - Focus works
-  - EHT works
-  - Telmove works
-  - Domeshutter works (quick check), env lock works
-  - Dropout (quick check, lock works)
-  - Telmove (card, goto)
-  - Dome rotation works
-  - (Watchdog)
-  - Trapdoor
-  - Main power
 DTI - Remove status from widget_new functions, rather set initial values with DTI initial signals
 DTI - Use finalise instead of destroy
 TIME - check frequency of time messages
@@ -25,9 +10,33 @@ Change time, env, dti so set progstat_starting when time/env/coord messages not 
 Add speed selection to DTI goto
 ACQ - figure out why it segfaults when it exits
 act_environ - Wind speed incorrect
-act_dti/domeshutter - cannot open dome shutter
 act_dti/domeshutter,dropout - button sensitivity incorrect (dropout open+close goes insensitive when domshutter manually opened)
+motor_driver - does not stop tracking when act_dti disconnects
+act_dti - auto target set when already at coordinates fails
+
+
+
+Changes revision 464
+
+act_dti/domeshutter,dropout - fixed minor bug in blocking/unblocking button toggle event handlers (was (un)blocking open twice, instead of open once and close once)
 motor_driver - move North/South in cardinal direction, tracking adjustment not done
+act_dti/domeshutter - cannot open dome shutter
+dti workout - check all componets operating as expected
+  - Filters work
+  - Apertures work
+  - PMT Shutter works
+  - Acqmir works
+  - Focus works
+  - EHT works
+  - Telmove works
+  - Domeshutter works
+  - Dropout works
+  - Telmove works
+  - Dome rotation works
+  - (Watchdog)
+  - Trapdoor works
+  - Main power works
+
 
 
 Changes revision 463

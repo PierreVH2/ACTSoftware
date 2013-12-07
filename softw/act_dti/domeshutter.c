@@ -73,7 +73,7 @@ GtkWidget *domeshutter_new (guchar dshutt_stat)
   GtkWidget *domeshutter = g_object_new (domeshutter_get_type (), NULL);
   Domeshutter *objs = DOMESHUTTER(domeshutter);
   objs->weath_ok = objs->sun_alt_ok = FALSE;
-  objs->dshutt_cur = -1;
+  objs->dshutt_cur = 0;
 //   objs->dshutt_cur = ~dshutt_stat;
 //   domeshutter_update (domeshutter, dshutt_stat);
   // Button should actually be insensitive at start, in case of !weath_ok or !sun_alt_ok, but if it'll mess things up if it's already open
@@ -135,7 +135,7 @@ void domeshutter_update (GtkWidget *domeshutter, guchar new_dshutt_stat)
 
   if (((new_dshutt_stat & DSHUTT_OPEN_MASK) != 0) && ((objs->dshutt_cur & DSHUTT_OPEN_MASK) == 0))
     g_signal_emit(domeshutter, domeshutter_signals[IS_OPEN_SIGNAL], 0, TRUE);
-  else if (((new_dshutt_stat & DSHUTT_OPEN_MASK) == 0) && ((objs->dshutt_cur & DSHUTT_OPEN_MASK) != 0))
+  else if (((new_dshutt_stat & DSHUTT_OPEN_MASK) == 0) && (((objs->dshutt_cur & DSHUTT_OPEN_MASK) != 0) || (objs->dshutt_cur==0)))
     g_signal_emit(domeshutter, domeshutter_signals[IS_OPEN_SIGNAL], 0, FALSE);
 
   if (new_dshutt_stat == objs->dshutt_goal)
@@ -180,9 +180,10 @@ void domeshutter_process_msg (GtkWidget *domeshutter, DtiMsg *msg)
 void domeshutter_set_lock (GtkWidget *domeshutter, gboolean lock_on)
 {
   Domeshutter *objs = DOMESHUTTER(domeshutter);
+  act_log_debug(act_log_msg("Setting lock %hhu (%hhu %hhu)", lock_on, objs->weath_ok, objs->sun_alt_ok));
   objs->locked = lock_on;
-  gtk_widget_set_sensitive(objs->btn_open, lock_on && objs->weath_ok && objs->sun_alt_ok);
-  gtk_widget_set_sensitive(objs->btn_close, lock_on);
+  gtk_widget_set_sensitive(objs->btn_open, (!lock_on) && objs->weath_ok && objs->sun_alt_ok);
+  gtk_widget_set_sensitive(objs->btn_close, !lock_on);
 }
 
 static void domeshutter_class_init (DomeshutterClass *klass)
@@ -222,6 +223,7 @@ static void domeshutter_destroy(gpointer domeshutter)
 
 static void buttons_toggled(gpointer domeshutter)
 {
+  act_log_debug(act_log_msg("Buttons toggled."));
   Domeshutter *objs = DOMESHUTTER(domeshutter);
   if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_open)) && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_close)))
   {
@@ -245,7 +247,7 @@ static void buttons_nand(GtkWidget *button1, gpointer button2)
 static void block_button_toggles(Domeshutter *objs)
 {
   g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
+  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_toggled), objs);
   g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_nand), objs->btn_close);
   g_signal_handlers_block_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_nand), objs->btn_open);
 }
@@ -253,7 +255,7 @@ static void block_button_toggles(Domeshutter *objs)
 static void unblock_button_toggles(Domeshutter *objs)
 {
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
+  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_toggled), objs);
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_nand), objs->btn_close);
   g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_nand), objs->btn_open);
 }
@@ -422,6 +424,7 @@ static void send_start_open(Domeshutter *objs)
 
 static void send_start_close(Domeshutter *objs)
 {
+  act_log_debug(act_log_msg("Sending domeshutter close"));
   g_signal_emit(objs, domeshutter_signals[SEND_START_CLOSE_SIGNAL], 0);
   if (objs->fail_to_id != 0)
     g_source_remove(objs->fail_to_id);
@@ -432,6 +435,7 @@ static void send_start_close(Domeshutter *objs)
 
 static void send_stop(Domeshutter *objs)
 { 
+  act_log_debug(act_log_msg("Sending stop."));
   g_signal_emit(objs, domeshutter_signals[SEND_STOP_MOVE_SIGNAL], 0);
   if (objs->fail_to_id != 0)
     g_source_remove(objs->fail_to_id);

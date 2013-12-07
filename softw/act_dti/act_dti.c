@@ -643,6 +643,7 @@ void process_targset(gpointer form, gpointer msg, guchar ret)
   }
   dti_msg_inc_dtistage(msg);
   guint stage = dti_msg_get_dtistage(msg);
+  act_log_debug(act_log_msg("Processing response, stage %u", stage));
   switch(stage)
   {
     case STAGE_TARGSET_DOMESHUTT:
@@ -662,6 +663,7 @@ void process_targset(gpointer form, gpointer msg, guchar ret)
       break;
     case STAGE_TARGSET_DONE:
       act_log_debug(act_log_msg("Done processing target set message."));
+      dti_msg_get_targset(msg)->status = OBSNSTAT_COMPLETE;
       if (dti_net_send(objs->dti_net, msg) < 0)
         act_log_error(act_log_msg("Failed to send target set response message."));
       g_object_unref(G_OBJECT(msg));
