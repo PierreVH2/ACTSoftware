@@ -3,6 +3,8 @@
 
 #include <math.h>
 
-#define TRACK_MODEL_RATE(ha_h,dec_d) 57381
+#define TRACK_MODEL_ADJ(ha_h,dec_d) \
+  ha_h = 0;  \
+  dec_d = 0;
 
 #endif

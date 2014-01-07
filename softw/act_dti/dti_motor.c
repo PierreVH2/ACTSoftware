@@ -594,11 +594,15 @@ static gint send_motor_tracking(gint motor_fd, gboolean tracking_on)
   return 0;
 }
 
-static gint send_motor_track_adj(gint motor_fd, glong adj_ha_msec, glong adj_dec_sec)
+static gint send_motor_track_adj(gint motor_fd, gdouble adj_ha_h, gdouble adj_dec_d)
 {
-  (void) motor_fd;
-  (void) adj_ha_msec;
-  (void) adj_dec_sec;
+  struct motor_track_adj cmd;
+  cmd.adj_ha_steps = adj_ha_h * 3600000.0 * MOTOR_STEPS_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
+  cmd.adj_dec_steps = dec_d * 3600.0 * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
+  
+  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GOTO, &cmd);
+  if (ret < 0)
+    return errno;
   return 0;
 }
 
