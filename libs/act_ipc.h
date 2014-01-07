@@ -203,6 +203,15 @@ enum
 /// PMT photon tagging available
 #define IPC_PMT_MODE_PHOTTAG       0x02
 
+/// CCD frame type enumeration
+enum
+{
+  IPC_FRAME_TYPE_OBJECT = 1,
+  IPC_FRAME_TYPE_BIAS,
+  IPC_FRAME_TYPE_DARK,
+  IPC_FRAME_TYPE_FLAT
+};
+
 /// Maximum number of CCD window modes supported
 #define IPC_CCD_MAX_NUM_WINDOW_MODES  1
 /** \} */
@@ -506,6 +515,8 @@ struct act_msg_dataccd
   unsigned short dataccd_stage;
   //! Automatic/robotic mode
   unsigned char mode_auto;
+  //! Frame type - must be one of defined enum types
+  unsigned char frame_type;
   //! Internal identifier for user
   int user_id;
   //! Internal target identifier.
@@ -513,11 +524,11 @@ struct act_msg_dataccd
   //! Human-readable name for target
   char targ_name[MAX_TARGID_LEN];
   //! Right-ascension of target.
-  struct rastruct targ_ra;
+//   struct rastruct targ_ra;
   //! Declination of target.
-  struct decstruct targ_dec;
+//   struct decstruct targ_dec;
   //! Epoch of target coordinates in fractional years since 0 AD.
-  float targ_epoch;
+//   float targ_epoch;
   //! Integration time in milli-seconds.
   double exp_t_s;
   //! Number of repetitions in milli-seconds.
