@@ -34,7 +34,7 @@ static gint send_motor_goto(gint motor_fd, struct hastruct *ha, struct decstruct
 static void send_motor_stop(gint motor_fd);
 static void send_motor_emgny_stop(gint motor_fd, gboolean stop_on);
 static gint send_motor_tracking(gint motor_fd, gboolean tracking_on);
-static gint send_motor_track_adj(gint motor_fd, glong adj_ha_msec, glong adj_dec_sec);
+static gint send_motor_track_adj(gint motor_fd, gdouble adj_ha_h, gdouble adj_dec_d);
 
 static void gact_telcoord_init(GObject *gactmotortelcoord);
 static void gact_telgoto_init(GObject *gactmotortelgoto);
@@ -255,6 +255,14 @@ void dti_motor_apply_pointing(GActTelcoord *coord)
     act_log_error(act_log_msg("Invalid input parameters."));
 }
 
+void dti_motor_apply_pointing_forward(GActTelcoord *coord)
+{
+  if (IS_GACT_TELCOORD(coord))
+    pointing_model_forward(&coord->ha, &coord->dec);
+  else
+    act_log_error(act_log_msg("Invalid input parameters."));
+}
+
 gint dti_motor_move_card (Dtimotor *objs, guchar dir, guchar speed)
 {
   guchar motor_dir = motor_dir_tbl[dir];
@@ -295,6 +303,11 @@ gint dti_motor_init(Dtimotor *objs)
 gint dti_motor_set_tracking(Dtimotor *objs, gboolean tracking_on)
 {
   return send_motor_tracking(g_io_channel_unix_get_fd(objs->motor_chan), tracking_on);
+}
+
+gint dti_motor_track_adj(Dtimotor *objs, gdouble ha_adj_h, gdouble dec_adj_d)
+{
+  return send_motor_track_adj(g_io_channel_unix_get_fd(objs->motor_chan), ha_adj_h, dec_adj_d);
 }
 
 static void dti_motor_class_init (DtimotorClass *klass)
@@ -415,13 +428,13 @@ static gboolean coord_poll(gpointer dti_motor)
   
   if ((objs->cur_stat & MOTOR_STAT_TRACKING) && (MOTOR_LIM_W(objs->cur_limits) || (tmp_warn & DTI_MOTOR_WARN_W)))
     send_motor_stop(g_io_channel_unix_get_fd(objs->motor_chan));
-  else if (objs->cur_stat & MOTOR_STAT_TRACKING)
-  {
-    struct hastruct adj_ha;
-    struct decstruct adj_dec;
-    calc_track_adj(&tmp_ha, &tmp_dec, &adj_ha, &adj_dec);
-    send_motor_track_adj(motor_fd, convert_HMSMS_H_ha(&adj_ha), convert_DMS_D_dec(&adj_dec));
-  }
+//   else if (objs->cur_stat & MOTOR_STAT_TRACKING)
+//   {
+//     struct hastruct adj_ha;
+//     struct decstruct adj_dec;
+//     calc_track_adj(&tmp_ha, &tmp_dec, &adj_ha, &adj_dec);
+//     send_motor_track_adj(motor_fd, convert_HMSMS_H_ha(&adj_ha), convert_DMS_D_dec(&adj_dec));
+//   }
   GActTelcoord *tmp_coord = gact_telcoord_new(&tmp_ha, &tmp_dec);
   g_object_force_floating (G_OBJECT(tmp_coord));
   g_signal_emit(G_OBJECT(objs), dti_motor_signals[COORD_UPDATE], 0, tmp_coord);
@@ -598,7 +611,7 @@ static gint send_motor_track_adj(gint motor_fd, gdouble adj_ha_h, gdouble adj_de
 {
   struct motor_track_adj cmd;
   cmd.adj_ha_steps = adj_ha_h * 3600000.0 * MOTOR_STEPS_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
-  cmd.adj_dec_steps = dec_d * 3600.0 * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
+  cmd.adj_dec_steps = adj_dec_d * 3600.0 * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
   
   gint ret = ioctl(motor_fd, IOCTL_MOTOR_GOTO, &cmd);
   if (ret < 0)

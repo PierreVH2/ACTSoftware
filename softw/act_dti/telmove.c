@@ -38,6 +38,9 @@
 #define SOFT_LIM_ALT_MASK  0x10
 #define HARD_LIM_MASK      0x0F
 
+#define TRACK_ADJ_MIN_HA_H   5.555555555555556e-05
+#define TRACK_ADJ_MIN_DEC_D  8.333333333333334e-04
+
 static void telmove_class_init (TelmoveClass *klass);
 static void telmove_init(GtkWidget *telmove);
 static void telmove_destroy(gpointer telmove);
@@ -191,6 +194,10 @@ static void telmove_init(GtkWidget *telmove)
   objs->sidt_h = -1;
   objs->sidt_timer = g_timer_new();
   
+  objs->reset_targ_coord = FALSE;
+  memset(&objs->targ_ra, 0, sizeof(struct rastruct));
+  memset(&objs->targ_dec, 0, sizeof(struct decstruct));
+
   objs->box = gtk_table_new(6,7,FALSE);
   gtk_container_add(GTK_CONTAINER(telmove), objs->box);
   
@@ -267,6 +274,9 @@ static void telmove_destroy(gpointer telmove)
 static void stat_update(gpointer telmove, guchar stat)
 {
   Telmove *objs = TELMOVE(telmove);
+
+  if ((dti_motor_stat_tracking(stat)) && (dti_motor_stat_moving(objs->motor_stat)) && (!dti_motor_stat_tracking(objs->motor_stat)))
+    objs->reset_targ_coord = TRUE;
   
   if ((gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_track)) > 0) != (dti_motor_stat_tracking(stat)))
   {
@@ -387,7 +397,17 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
   Telmove *objs = TELMOVE(telmove);
   if (g_object_is_floating(G_OBJECT(new_coord)))
     g_object_ref_sink(G_OBJECT(new_coord));
+  GActTelcoord *raw_coord = gact_telcoord_new(&new_coord->ha, &new_coord->dec);
+  if (g_object_is_floating(G_OBJECT(raw_coord)))
+    g_object_ref_sink(G_OBJECT(raw_coord));
   dti_motor_apply_pointing(new_coord);
+  GActTelcoord *undone_coord = gact_telcoord_new(&new_coord->ha, &new_coord->dec);
+  if (g_object_is_floating(G_OBJECT(undone_coord)))
+    g_object_ref_sink(G_OBJECT(undone_coord));
+  dti_motor_apply_pointing_forward(undone_coord);
+  act_log_debug(act_log_msg("New coordinates %f %f\t%f %f\t%f %f\t%f %f", convert_HMSMS_H_ha(&raw_coord->ha), convert_DMS_D_dec(&raw_coord->dec), convert_HMSMS_H_ha(&new_coord->ha), convert_DMS_D_dec(&new_coord->dec),
+  convert_HMSMS_H_ha(&undone_coord->ha), convert_DMS_D_dec(&undone_coord->dec), convert_HMSMS_H_ha(&raw_coord->ha)-convert_HMSMS_H_ha(&undone_coord->ha), convert_DMS_D_dec(&raw_coord->dec)-convert_DMS_D_dec(&undone_coord->dec)));
+  
   struct act_msg msg;
   memset(&msg, 0, sizeof(struct act_msg));
   msg.mtype = MT_COORD;
@@ -405,17 +425,34 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
   else
   {
     struct timestruct sidt;
-    unsigned long sidtdelta_us;
-    double sidtdelta_s = g_timer_elapsed(objs->sidt_timer, &sidtdelta_us);
-    sidtdelta_s += (double)sidtdelta_us/1e6;
+    gulong sidtdelta_us;
+    gdouble sidtdelta_s = g_timer_elapsed(objs->sidt_timer, &sidtdelta_us);
+    sidtdelta_s += (gdouble)sidtdelta_us/1e6;
     convert_H_HMSMS_time(objs->sidt_h + sidtdelta_s*SID_PER_MEAN_T/3600.0, &sidt);
     calc_RA(&msg_coord->ha, &sidt, &msg_coord->ra);
+    if (objs->reset_targ_coord)
+    {
+      memcpy(&objs->targ_ra, &msg_coord->ra, sizeof(struct rastruct));
+      memcpy(&objs->targ_dec, &msg_coord->dec, sizeof(struct decstruct));
+      objs->reset_targ_coord = FALSE;
+    }
   }
   if ((gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_track))) && (objs->sidt_h >= 0.0))
     update_coorddisp_sid(objs, &msg_coord->ra, &msg_coord->dec);
   else
     update_coorddisp_nonsid(objs, &msg_coord->ha, &msg_coord->dec);
   g_signal_emit(G_OBJECT(telmove), telmove_signals[SEND_COORD_SIGNAL], 0, dti_msg_new (&msg, 0));
+  
+  if ((dti_motor_stat_tracking(objs->motor_stat)) && (!dti_motor_stat_moving(objs->motor_stat)))
+  {
+    gdouble hadiff_h = convert_HMSMS_H_ra(&msg_coord->ra) - convert_HMSMS_H_ra(&objs->targ_ra);
+    gdouble decdiff_d = convert_DMS_D_dec(&objs->targ_dec) - convert_DMS_D_dec(&msg_coord->dec);
+    if ((fabs(hadiff_h) > TRACK_ADJ_MIN_HA_H) || (fabs(decdiff_d) > TRACK_ADJ_MIN_DEC_D))
+    {
+      act_log_debug(act_log_msg("Sending adjustment %f h, %f d.", hadiff_h, decdiff_d));
+      dti_motor_track_adj(objs->dti_motor, hadiff_h, decdiff_d);
+    }
+  }
 }
 
 static void goto_finish(gpointer telmove, gboolean success)
