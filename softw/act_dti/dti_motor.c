@@ -247,7 +247,7 @@ GActTelcoord *dti_motor_get_coord(Dtimotor *objs)
   return gact_telcoord_new(&objs->cur_coord->ha, &objs->cur_coord->dec);
 }
 
-void dti_motor_apply_pointing(GActTelcoord *coord)
+void dti_motor_apply_pointing_tel_sky(GActTelcoord *coord)
 {
   if (IS_GACT_TELCOORD(coord))
     pointing_model_reverse(&coord->ha, &coord->dec);
@@ -276,11 +276,12 @@ gint dti_motor_goto(Dtimotor *objs, GActTelgoto *gotocmd)
   struct decstruct tmpdec;
   memcpy(&tmpha, &gotocmd->ha, sizeof(struct hastruct));
   memcpy(&tmpdec, &gotocmd->dec, sizeof(struct decstruct));
-  pointing_model_forward(&tmpha, &tmpdec);
+//  pointing_model_forward(&tmpha, &tmpdec);
   struct altstruct tmpalt;
   convert_EQUI_ALTAZ(&tmpha, &tmpdec, &tmpalt, NULL);
   if ((convert_HMSMS_H_ha(&tmpha) > objs->lim_W_h) || (convert_HMSMS_H_ha(&tmpha) < objs->lim_E_h) || (convert_DMS_D_dec(&tmpdec) > objs->lim_N_d) || (convert_DMS_D_dec(&tmpdec) < objs->lim_S_d) || (convert_DMS_D_alt(&tmpalt) < objs->lim_alt_d))
     return EINVAL;
+  act_log_debug(act_log_msg("Starting goto. Current coord: %f %f . Target coord: %f %f", convert_HMSMS_H_ha(&objs->cur_coord->ha), convert_DMS_D_dec(&objs->cur_coord->dec), convert_HMSMS_H_ha(&tmpha), convert_DMS_D_dec(&tmpdec)));
   guchar motor_speed = motor_speed_tbl[gotocmd->speed];
   return send_motor_goto(g_io_channel_unix_get_fd(objs->motor_chan), &tmpha, &tmpdec, motor_speed, gotocmd->is_sidereal);
 }
@@ -601,7 +602,7 @@ static gint send_motor_tracking(gint motor_fd, gboolean tracking_on)
   gint ret = ioctl(motor_fd, IOCTL_MOTOR_SET_TRACKING, tmp_on);
   if (ret < 0)
   {
-    act_log_error(act_log_msg("Failed to set telescope tracking rate - %s.", strerror(errno)));
+//    act_log_error(act_log_msg("Failed to set telescope tracking rate - %s.", strerror(errno)));
     return errno;
   }
   return 0;

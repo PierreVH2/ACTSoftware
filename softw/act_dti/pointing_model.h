@@ -96,6 +96,19 @@
   sprintf(str, "(CH : %.2f) => (NP : %.2f)", CH, NP);
 */
 
+/*
+#define POINTING_MODEL_FORWARD(ha_h,dec_d) \
+  POINTING_APPLY_CH(ha_h,dec_d,-CH); \
+  POINTING_APPLY_HDCD2(ha_h,dec_d,-HDCD2); \
+  POINTING_APPLY_HDSD5(ha_h,dec_d,-HDSD5);
+
+#define POINTING_MODEL_REVERSE(ha_h,dec_d) \
+  POINTING_APPLY_HDSD5(ha_h,dec_d,HDSD5); \
+  POINTING_APPLY_HDCD2(ha_h,dec_d,HDCD2); \
+  POINTING_APPLY_CH(ha_h,dec_d,CH); \
+*/
+
+
 #define POINTING_MODEL_FORWARD(ha_h,dec_d) \
   POINTING_APPLY_CH(ha_h,dec_d,-CH); \
   POINTING_APPLY_NP(ha_h,dec_d,-NP); \
@@ -107,8 +120,9 @@
   POINTING_APPLY_HDSD5(ha_h,dec_d,HDSD5); \
   POINTING_APPLY_HDCD2(ha_h,dec_d,HDCD2); \
   POINTING_APPLY_ID(ha_h,dec_d,ID); \
-  POINTING_APPLY_CH(ha_h,dec_d,NP); \
-  POINTING_APPLY_NP(ha_h,dec_d,CH);
+  POINTING_APPLY_NP(ha_h,dec_d,NP); \
+  POINTING_APPLY_CH(ha_h,dec_d,CH); \
+
 
 #define PRINT_MODEL(str) \
   sprintf(str, "(CH : %.2f) => (NP : %.2f) => (ID : %0.2f) => (HDCD2 : %0.2f) => (HDSD5 : %0.2f)", CH, NP, ID, HDCD2, HDSD5);
