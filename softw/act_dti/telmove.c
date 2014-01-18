@@ -278,10 +278,7 @@ static void stat_update(gpointer telmove, guchar stat)
 
   if (((dti_motor_stat_tracking(stat)) && (!dti_motor_stat_tracking(objs->motor_stat)) && (!dti_motor_stat_moving(stat)))
     ||((dti_motor_stat_tracking(stat)) && (dti_motor_stat_moving(objs->motor_stat)) && (!dti_motor_stat_moving(stat))))
-  {
-    act_log_debug(act_log_msg("Activating target coordinates reset flag."));
     objs->reset_targ_coord = TRUE;
-  }
 
   if ((gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_track)) > 0) != (dti_motor_stat_tracking(stat)))
   {
@@ -409,7 +406,7 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
 /*  GActTelcoord *undone_coord = gact_telcoord_new(&new_coord->ha, &new_coord->dec);
   if (g_object_is_floating(G_OBJECT(undone_coord)))
     g_object_ref_sink(G_OBJECT(undone_coord));
-  dti_motor_apply_pointing_forward(undone_coord);*/
+  dti_motor_apply_pointing_sky_tel(undone_coord);*/
 //  act_log_debug(act_log_msg("New coordinates %f %f   %f %f   %f %f   %f %f", convert_HMSMS_H_ha(&raw_coord->ha), convert_DMS_D_dec(&raw_coord->dec), convert_HMSMS_H_ha(&new_coord->ha), convert_DMS_D_dec(&new_coord->dec),
 //  convert_HMSMS_H_ha(&undone_coord->ha), convert_DMS_D_dec(&undone_coord->dec), convert_HMSMS_H_ha(&raw_coord->ha)-convert_HMSMS_H_ha(&undone_coord->ha), convert_DMS_D_dec(&raw_coord->dec)-convert_DMS_D_dec(&undone_coord->dec)));
 //  g_object_unref(raw_coord);
@@ -439,7 +436,6 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
     calc_RA(&msg_coord->ha, &sidt, &msg_coord->ra);
     if (objs->reset_targ_coord)
     {
-      act_log_debug(act_log_msg("Setting target coordinates %f %f", convert_HMSMS_H_ra(&msg_coord->ra), convert_DMS_D_dec(&msg_coord->dec)));
       memcpy(&objs->targ_ra, &msg_coord->ra, sizeof(struct rastruct));
       memcpy(&objs->targ_dec, &msg_coord->dec, sizeof(struct decstruct));
       objs->reset_targ_coord = FALSE;
@@ -457,10 +453,9 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
     gdouble decdiff_d = convert_DMS_D_dec(&objs->targ_dec) - convert_DMS_D_dec(&msg_coord->dec);
     if ((fabs(hadiff_h) > TRACK_ADJ_MIN_HA_H) || (fabs(decdiff_d) > TRACK_ADJ_MIN_DEC_D))
     {
-/*      act_log_debug(act_log_msg("Sending adjustment %f h, %f d.", hadiff_h, decdiff_d));
       gint ret = dti_motor_track_adj(objs->dti_motor, hadiff_h, decdiff_d);
       if (ret != 0)
-        act_log_error(act_log_msg("Failed to send tracking adjustment (%f h, %f d) - %s", hadiff_h, decdiff_d, strerror(ret)));*/
+        act_log_error(act_log_msg("Failed to send tracking adjustment (%f h, %f d) - %s", hadiff_h, decdiff_d, strerror(ret)));
     }
   }
 }
@@ -469,10 +464,7 @@ static void goto_finish(gpointer telmove, gboolean success)
 {
   Telmove *objs = TELMOVE(telmove);
   if (objs->pending_msg == NULL)
-  {
-    act_log_debug(act_log_msg("Goto finished, but no auto goto underway. Ignoring"));
     return;
-  }
   if (!success)
   {
     act_log_debug(act_log_msg("Goto finished, unsuccessful."));
@@ -480,7 +472,6 @@ static void goto_finish(gpointer telmove, gboolean success)
     return;
   }
   // ??? Check coordinates?
-  act_log_debug(act_log_msg("Goto finished, success!"));
   process_complete(objs, OBSNSTAT_GOOD);
 }
 
@@ -778,7 +769,7 @@ static guchar start_goto_sid(Telmove *objs, struct rastruct *ra, struct decstruc
   GActTelcoord *tmp_coord = gact_telcoord_new(ha, dec);
   if (g_object_is_floating(G_OBJECT(tmp_coord)))
     g_object_ref_sink(G_OBJECT(tmp_coord));
-  dti_motor_apply_pointing_forward(tmp_coord);
+  dti_motor_apply_pointing_sky_tel(tmp_coord);
   act_log_debug(act_log_msg("Starting goto: Raw coordinates: %f %f . Corrected coordinates: %f %f", convert_HMSMS_H_ha(ha), convert_DMS_D_dec(dec), convert_HMSMS_H_ha(&tmp_coord->ha), convert_DMS_D_dec(&tmp_coord->dec)));
   GActTelgoto *gotocmd = gact_telgoto_new (&tmp_coord->ha, &tmp_coord->dec, DTI_MOTOR_SPEED_SLEW, is_sidereal);
   g_object_unref(tmp_coord);
@@ -907,7 +898,7 @@ static gint start_goto(Dtimotor *dti_motor, struct hastruct *ha, struct decstruc
   GActTelcoord *tmp_coord = gact_telcoord_new(ha, dec);
   if (g_object_is_floating(G_OBJECT(tmp_coord)))
     g_object_ref_sink(G_OBJECT(tmp_coord));
-  dti_motor_apply_pointing_forward(tmp_coord);
+  dti_motor_apply_pointing_sky_tel(tmp_coord);
   act_log_debug(act_log_msg("Starting goto: Raw coordinates: %f %f . Corrected coordinates: %f %f", convert_HMSMS_H_ha(ha), convert_DMS_D_dec(dec), convert_HMSMS_H_ha(&tmp_coord->ha), convert_DMS_D_dec(&tmp_coord->dec)));
   GActTelgoto *gotocmd = gact_telgoto_new (&tmp_coord->ha, &tmp_coord->dec, DTI_MOTOR_SPEED_SLEW, is_sidereal);
   g_object_unref(tmp_coord);

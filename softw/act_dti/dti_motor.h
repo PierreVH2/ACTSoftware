@@ -126,7 +126,7 @@ gboolean dti_motor_warn_E (guchar warn);
 gboolean dti_motor_warn_W (guchar warn);
 GActTelcoord *dti_motor_get_coord (Dtimotor *objs);
 void dti_motor_apply_pointing_tel_sky(GActTelcoord *coord);
-void dti_motor_apply_pointing_forward(GActTelcoord *coord);
+void dti_motor_apply_pointing_sky_tel(GActTelcoord *coord);
 gint dti_motor_move_card (Dtimotor *objs, guchar dir, guchar speed);
 gint dti_motor_goto (Dtimotor *objs, GActTelgoto *gotocmd);
 void dti_motor_stop (Dtimotor *objs);

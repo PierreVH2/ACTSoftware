@@ -22,7 +22,7 @@ static void dti_motor_instance_dispose(GObject *dti_motor);
 static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpointer dti_motor);
 static void check_coord_poll(Dtimotor *objs);
 static gboolean coord_poll(gpointer dti_motor);
-static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec);
+//static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec);
 static guchar check_warn(Dtimotor *objs);
 static void pointing_model_forward(struct hastruct *ha, struct decstruct *dec);
 static void pointing_model_reverse(struct hastruct *ha, struct decstruct *dec);
@@ -255,7 +255,7 @@ void dti_motor_apply_pointing_tel_sky(GActTelcoord *coord)
     act_log_error(act_log_msg("Invalid input parameters."));
 }
 
-void dti_motor_apply_pointing_forward(GActTelcoord *coord)
+void dti_motor_apply_pointing_sky_tel(GActTelcoord *coord)
 {
   if (IS_GACT_TELCOORD(coord))
     pointing_model_forward(&coord->ha, &coord->dec);
@@ -442,6 +442,7 @@ static gboolean coord_poll(gpointer dti_motor)
   return TRUE;
 }
 
+/*
 static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec)
 {
 //   act_log_debug(act_log_msg("Not implemented yet."));
@@ -450,6 +451,7 @@ static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct ha
   (void) adj_ha;
   (void) adj_dec;
 }
+*/
 
 static guchar check_warn(Dtimotor *objs)
 {
@@ -614,7 +616,7 @@ static gint send_motor_track_adj(gint motor_fd, gdouble adj_ha_h, gdouble adj_de
   cmd.adj_ha_steps = adj_ha_h * 3600000.0 * MOTOR_STEPS_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
   cmd.adj_dec_steps = adj_dec_d * 3600.0 * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
   
-  gint ret = ioctl(motor_fd, IOCTL_MOTOR_GOTO, &cmd);
+  gint ret = ioctl(motor_fd, IOCTL_MOTOR_TRACKING_ADJ, &cmd);
   if (ret < 0)
     return errno;
   return 0;
