@@ -4,19 +4,22 @@
 #include <math.h>
 #include <act_site.h>
 
+/*
 #define CH      -720.84
 #define NP     -1241.37
 #define ID        53.12
 #define HDCD2   -132.10
 #define HDSD5    -93.92
+*/
 
-// #define CH      -720.72
-// #define NP     -1241.18
-
+#define ID      -112.9411
+#define IH      +737.8942
+#define NP      +816.6950
+#define PDD     -199.4697
 
 #define POINTING_APPLY_IH(ha_h,dec_d,coeff) \
   ha_h += coeff/54000.0;
-  
+
 #define POINTING_APPLY_ID(ha_h,dec_d,coeff) \
   dec_d += coeff/3600.0;
 
@@ -84,18 +87,8 @@
 #define POINTING_APPLY_HHCH7(ha_h,dec_d,coeff) \
   ha_h += coeff*cos(7*(ha_h*ONEPI/12.0)) / 54000.0;
 
-/*#define POINTING_MODEL_FORWARD(ha_h,dec_d) \
-  POINTING_APPLY_CH(ha_h,dec_d,-CH); \
-  POINTING_APPLY_NP(ha_h,dec_d,-NP); \
 
-#define POINTING_MODEL_REVERSE(ha_h,dec_d) \
-  POINTING_APPLY_CH(ha_h,dec_d,NP); \
-  POINTING_APPLY_NP(ha_h,dec_d,CH);
-
-#define PRINT_MODEL(str) \
-  sprintf(str, "(CH : %.2f) => (NP : %.2f)", CH, NP);
-*/
-
+/*
 #define POINTING_MODEL_FORWARD(ha_h,dec_d) \
   POINTING_APPLY_CH(ha_h,dec_d,-CH); \
   POINTING_APPLY_NP(ha_h,dec_d,-NP); \
@@ -107,10 +100,26 @@
   POINTING_APPLY_HDSD5(ha_h,dec_d,HDSD5); \
   POINTING_APPLY_HDCD2(ha_h,dec_d,HDCD2); \
   POINTING_APPLY_ID(ha_h,dec_d,ID); \
-  POINTING_APPLY_CH(ha_h,dec_d,NP); \
-  POINTING_APPLY_NP(ha_h,dec_d,CH);
+  POINTING_APPLY_NP(ha_h,dec_d,NP); \
+  POINTING_APPLY_CH(ha_h,dec_d,CH); \
 
 #define PRINT_MODEL(str) \
   sprintf(str, "(CH : %.2f) => (NP : %.2f) => (ID : %0.2f) => (HDCD2 : %0.2f) => (HDSD5 : %0.2f)", CH, NP, ID, HDCD2, HDSD5);
+*/
+
+#define POINTING_MODEL_FORWARD(ha_h, dec_d) \
+  POINTING_APPLY_ID(ha_h,dec_d,ID); \
+  POINTING_APPLY_IH(ha_h,dec_d,IH); \
+  POINTING_APPLY_NP(ha_h,dec_d,NP); \
+  POINTING_APPLY_PDD(ha_h,dec_d,PDD);
+
+#define POINTING_MODEL_REVERSE(ha_h, dec_d) \
+  POINTING_APPLY_PDD(ha_h,dec_d,-PDD); \
+  POINTING_APPLY_NP(ha_h,dec_d,-NP); \
+  POINTING_APPLY_IH(ha_h,dec_d,-IH); \
+  POINTING_APPLY_ID(ha_h,dec_d,-ID);
+
+#define PRINT_MODEL(str) \
+  sprintf(str, "(ID : %.2f) => (IH : %.2f) => (NP : %0.2f) => (PDD : %0.2f)", ID, IH, NP, PDD);
 
 #endif

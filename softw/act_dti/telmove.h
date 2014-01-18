@@ -38,6 +38,9 @@ struct _Telmove
   GTimer *sidt_timer;
   gint fail_to_id;
   DtiMsg *pending_msg;
+  gboolean reset_targ_coord;
+  struct rastruct targ_ra;
+  struct decstruct targ_dec;
 };
 
 struct _TelmoveClass

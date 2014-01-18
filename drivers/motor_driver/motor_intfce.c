@@ -202,6 +202,7 @@ void motordrv_init(void (*stat_update)(void))
 
 void motordrv_finalise(void)
 {
+  end_all();
   set_handset_handler(NULL);
   cancel_delayed_work(&G_motor_work);
   G_status_update = NULL;
@@ -444,6 +445,8 @@ void adjust_tracking(int adj_ha, int adj_dec)
 {
   if ((G_status & MOTOR_STAT_MOVING) || ((G_status & MOTOR_STAT_TRACKING) == 0))
     return;
+  if ((abs(adj_ha) < TOLERANCE_MOTOR_HA_STEPS) && (abs(adj_dec) < TOLERANCE_MOTOR_DEC_STEPS))
+    return;
   G_move_params.tracking.adj_ha_steps = adj_ha;
   G_move_params.tracking.adj_dec_steps = adj_dec;
 }
@@ -504,6 +507,7 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   // Check if tracking toggled
   if (((old_hs & HS_DIR_HA_MASK) != HS_DIR_HA_MASK) && ((new_hs & HS_DIR_HA_MASK) == HS_DIR_HA_MASK))
   {
+    printk(KERN_DEBUG PRINTK_PREFIX "Toggling tracking handset (%hhu %hhu)\n", old_hs, new_hs);
     if (G_status & MOTOR_STAT_TRACKING)
     {
       printk(KERN_DEBUG PRINTK_PREFIX "Disabling tracking (by handset).\n");
@@ -566,7 +570,6 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
   params->timer_ms = 0;
   params->handset_move = TRUE;
-  params->start_ha = G_motor_steps_ha;
   
   if (dir != 0)
   {
@@ -651,7 +654,8 @@ void check_motors(struct work_struct *work)
   new_limits = read_limits();
   if (G_hard_limits != new_limits)
   {
-    printk(KERN_INFO PRINTK_PREFIX "Hard telescope limit reached (0x%x).\n", new_limits);
+    if (new_limits != 0)
+      printk(KERN_INFO PRINTK_PREFIX "Hard telescope limit reached (0x%x).\n", new_limits);
     if (new_limits & DIR_SOUTH_MASK)
     {
       printk(KERN_DEBUG PRINTK_PREFIX "Setting declination zero point at Southern limit.\n");
@@ -886,22 +890,28 @@ unsigned char check_tracking(void)
 
   ha_steps = params->last_steps_ha - G_motor_steps_ha - MON_PERIOD_MSEC*HA_INCR_MOTOR_STEPS;
   dec_steps = G_motor_steps_dec - params->last_steps_dec;
-  if (((params->dir_cur & DIR_WEST_MASK) && (ha_steps >= 0)) || ((params->dir_cur & DIR_EAST_MASK) && (ha_steps <= 0)))
+  if ((params->dir_cur & DIR_HA_MASK) != 0)
+    params->adj_ha_steps += ha_steps;
+/*  if (((params->dir_cur & DIR_WEST_MASK) && (ha_steps <= 0)) || ((params->dir_cur & DIR_EAST_MASK) && (ha_steps >= 0)))
     params->adj_ha_steps -= ha_steps;
   else if (params->dir_cur & DIR_HA_MASK)
-    printk(KERN_INFO PRINTK_PREFIX "HA tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", (params->dir_cur & DIR_HA_MASK), ha_steps);
-  if (((params->dir_cur & DIR_NORTH_MASK) && (dec_steps >= 0)) || ((params->dir_cur & DIR_SOUTH_MASK) && (dec_steps <= 0)))
+    printk(KERN_INFO PRINTK_PREFIX "HA tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", (params->dir_cur & DIR_HA_MASK), ha_steps);*/
+  if ((params->dir_cur & DIR_DEC_MASK) != 0)
+    params->adj_dec_steps += dec_steps;
+/*  if (((params->dir_cur & DIR_NORTH_MASK) && (dec_steps >= 0)) || ((params->dir_cur & DIR_SOUTH_MASK) && (dec_steps <= 0)))
     params->adj_dec_steps -= dec_steps;
   else if (params->dir_cur & DIR_DEC_MASK)
-    printk(KERN_INFO PRINTK_PREFIX "Dec tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", (params->dir_cur & DIR_DEC_MASK), dec_steps);
+    printk(KERN_INFO PRINTK_PREFIX "Dec tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", params->dir_cur & DIR_DEC_MASK), dec_steps);*/
   
   // Update steps stored in tracking parameters
   params->last_steps_ha = G_motor_steps_ha;
   params->last_steps_dec = G_motor_steps_dec;
+  if ((params->adj_ha_steps == 0) && (params->adj_dec_steps == 0) && (params->dir_cur == 0))
+    return FALSE;
   // In order to prevent cumulative errors in the adjustments, zero them when we're close to 0
-  if (abs(params->adj_ha_steps) < FLOP_MOTOR_HA_STEPS)
+  if (abs(params->adj_ha_steps) <= TOLERANCE_MOTOR_HA_STEPS)
     params->adj_ha_steps = 0;
-  if (abs(params->adj_dec_steps) < FLOP_MOTOR_DEC_STEPS)
+  if (abs(params->adj_dec_steps) <= TOLERANCE_MOTOR_DEC_STEPS)
     params->adj_dec_steps = 0;
   
   ha_steps = G_motor_steps_ha + params->adj_ha_steps;
@@ -915,7 +925,13 @@ unsigned char check_tracking(void)
     start_move(DIR_WEST_MASK, RATE_SID);
     return FALSE;
   }
-  rate_new = calc_rate(dir_new, MOTOR_SPEED_GUIDE, TRUE);
+  if ((dir_new & DIR_HA_MASK) == 0)
+  {
+    dir_new |= DIR_WEST_MASK;
+    rate_new = RATE_SID;
+  }
+  else
+    rate_new = calc_rate(dir_new, MOTOR_SPEED_GUIDE, TRUE);
   start_move(dir_new, rate_new);
   return FALSE;
 }
@@ -1122,6 +1138,7 @@ static unsigned char check_soft_lims(void)
 
 static void send_direction(unsigned char dir)
 {
+  printk(KERN_DEBUG PRINTK_PREFIX "Sending direction %hhu\n", dir);
   #ifndef MOTOR_SIM
    if (dir == 0)
      outb_p(POWER_OFF_MASK | TRK_OFF_MASK, DIR_CONTROL);

@@ -22,7 +22,7 @@ static void dti_motor_instance_dispose(GObject *dti_motor);
 static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpointer dti_motor);
 static void check_coord_poll(Dtimotor *objs);
 static gboolean coord_poll(gpointer dti_motor);
-static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec);
+//static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec);
 static guchar check_warn(Dtimotor *objs);
 static void pointing_model_forward(struct hastruct *ha, struct decstruct *dec);
 static void pointing_model_reverse(struct hastruct *ha, struct decstruct *dec);
@@ -34,7 +34,7 @@ static gint send_motor_goto(gint motor_fd, struct hastruct *ha, struct decstruct
 static void send_motor_stop(gint motor_fd);
 static void send_motor_emgny_stop(gint motor_fd, gboolean stop_on);
 static gint send_motor_tracking(gint motor_fd, gboolean tracking_on);
-static gint send_motor_track_adj(gint motor_fd, glong adj_ha_msec, glong adj_dec_sec);
+static gint send_motor_track_adj(gint motor_fd, gdouble adj_ha_h, gdouble adj_dec_d);
 
 static void gact_telcoord_init(GObject *gactmotortelcoord);
 static void gact_telgoto_init(GObject *gactmotortelgoto);
@@ -247,10 +247,18 @@ GActTelcoord *dti_motor_get_coord(Dtimotor *objs)
   return gact_telcoord_new(&objs->cur_coord->ha, &objs->cur_coord->dec);
 }
 
-void dti_motor_apply_pointing(GActTelcoord *coord)
+void dti_motor_apply_pointing_tel_sky(GActTelcoord *coord)
 {
   if (IS_GACT_TELCOORD(coord))
     pointing_model_reverse(&coord->ha, &coord->dec);
+  else
+    act_log_error(act_log_msg("Invalid input parameters."));
+}
+
+void dti_motor_apply_pointing_sky_tel(GActTelcoord *coord)
+{
+  if (IS_GACT_TELCOORD(coord))
+    pointing_model_forward(&coord->ha, &coord->dec);
   else
     act_log_error(act_log_msg("Invalid input parameters."));
 }
@@ -268,11 +276,12 @@ gint dti_motor_goto(Dtimotor *objs, GActTelgoto *gotocmd)
   struct decstruct tmpdec;
   memcpy(&tmpha, &gotocmd->ha, sizeof(struct hastruct));
   memcpy(&tmpdec, &gotocmd->dec, sizeof(struct decstruct));
-  pointing_model_forward(&tmpha, &tmpdec);
+//  pointing_model_forward(&tmpha, &tmpdec);
   struct altstruct tmpalt;
   convert_EQUI_ALTAZ(&tmpha, &tmpdec, &tmpalt, NULL);
   if ((convert_HMSMS_H_ha(&tmpha) > objs->lim_W_h) || (convert_HMSMS_H_ha(&tmpha) < objs->lim_E_h) || (convert_DMS_D_dec(&tmpdec) > objs->lim_N_d) || (convert_DMS_D_dec(&tmpdec) < objs->lim_S_d) || (convert_DMS_D_alt(&tmpalt) < objs->lim_alt_d))
     return EINVAL;
+  act_log_debug(act_log_msg("Starting goto. Current coord: %f %f . Target coord: %f %f", convert_HMSMS_H_ha(&objs->cur_coord->ha), convert_DMS_D_dec(&objs->cur_coord->dec), convert_HMSMS_H_ha(&tmpha), convert_DMS_D_dec(&tmpdec)));
   guchar motor_speed = motor_speed_tbl[gotocmd->speed];
   return send_motor_goto(g_io_channel_unix_get_fd(objs->motor_chan), &tmpha, &tmpdec, motor_speed, gotocmd->is_sidereal);
 }
@@ -295,6 +304,11 @@ gint dti_motor_init(Dtimotor *objs)
 gint dti_motor_set_tracking(Dtimotor *objs, gboolean tracking_on)
 {
   return send_motor_tracking(g_io_channel_unix_get_fd(objs->motor_chan), tracking_on);
+}
+
+gint dti_motor_track_adj(Dtimotor *objs, gdouble ha_adj_h, gdouble dec_adj_d)
+{
+  return send_motor_track_adj(g_io_channel_unix_get_fd(objs->motor_chan), ha_adj_h, dec_adj_d);
 }
 
 static void dti_motor_class_init (DtimotorClass *klass)
@@ -415,19 +429,20 @@ static gboolean coord_poll(gpointer dti_motor)
   
   if ((objs->cur_stat & MOTOR_STAT_TRACKING) && (MOTOR_LIM_W(objs->cur_limits) || (tmp_warn & DTI_MOTOR_WARN_W)))
     send_motor_stop(g_io_channel_unix_get_fd(objs->motor_chan));
-  else if (objs->cur_stat & MOTOR_STAT_TRACKING)
-  {
-    struct hastruct adj_ha;
-    struct decstruct adj_dec;
-    calc_track_adj(&tmp_ha, &tmp_dec, &adj_ha, &adj_dec);
-    send_motor_track_adj(motor_fd, convert_HMSMS_H_ha(&adj_ha), convert_DMS_D_dec(&adj_dec));
-  }
+//   else if (objs->cur_stat & MOTOR_STAT_TRACKING)
+//   {
+//     struct hastruct adj_ha;
+//     struct decstruct adj_dec;
+//     calc_track_adj(&tmp_ha, &tmp_dec, &adj_ha, &adj_dec);
+//     send_motor_track_adj(motor_fd, convert_HMSMS_H_ha(&adj_ha), convert_DMS_D_dec(&adj_dec));
+//   }
   GActTelcoord *tmp_coord = gact_telcoord_new(&tmp_ha, &tmp_dec);
   g_object_force_floating (G_OBJECT(tmp_coord));
   g_signal_emit(G_OBJECT(objs), dti_motor_signals[COORD_UPDATE], 0, tmp_coord);
   return TRUE;
 }
 
+/*
 static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec)
 {
 //   act_log_debug(act_log_msg("Not implemented yet."));
@@ -436,6 +451,7 @@ static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct ha
   (void) adj_ha;
   (void) adj_dec;
 }
+*/
 
 static guchar check_warn(Dtimotor *objs)
 {
@@ -588,17 +604,21 @@ static gint send_motor_tracking(gint motor_fd, gboolean tracking_on)
   gint ret = ioctl(motor_fd, IOCTL_MOTOR_SET_TRACKING, tmp_on);
   if (ret < 0)
   {
-    act_log_error(act_log_msg("Failed to set telescope tracking rate - %s.", strerror(errno)));
+//    act_log_error(act_log_msg("Failed to set telescope tracking rate - %s.", strerror(errno)));
     return errno;
   }
   return 0;
 }
 
-static gint send_motor_track_adj(gint motor_fd, glong adj_ha_msec, glong adj_dec_sec)
+static gint send_motor_track_adj(gint motor_fd, gdouble adj_ha_h, gdouble adj_dec_d)
 {
-  (void) motor_fd;
-  (void) adj_ha_msec;
-  (void) adj_dec_sec;
+  struct motor_track_adj cmd;
+  cmd.adj_ha_steps = adj_ha_h * 3600000.0 * MOTOR_STEPS_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
+  cmd.adj_dec_steps = adj_dec_d * 3600.0 * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
+  
+  gint ret = ioctl(motor_fd, IOCTL_MOTOR_TRACKING_ADJ, &cmd);
+  if (ret < 0)
+    return errno;
   return 0;
 }
 
