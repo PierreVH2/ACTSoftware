@@ -13,6 +13,7 @@ act_environ - Wind speed incorrect
 act_dti/domeshutter,dropout - button sensitivity incorrect (dropout open+close goes insensitive when domshutter manually opened)
 motor_driver - does not stop tracking when act_dti disconnects
 act_dti - auto target set when already at coordinates fails
+Pointing model goes berserk at zenith
 
 
 
