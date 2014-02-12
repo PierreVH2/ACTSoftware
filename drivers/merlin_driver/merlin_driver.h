@@ -43,40 +43,58 @@ struct merlin_img
  * \{
  */
 /// Status update available
-#define   CCD_STAT_UPDATE  0x01
-/// An internal error on the CCD occurred
-#define   CCD_ERROR        0x02
-/// An exposure of the CCD has been ordered
-#define   EXP_ORDERED      0x04
+#define CCD_STAT_UPDATE  0x01
 /// The CCD is being exposed
-#define   CCD_INTEGRATING  0x08
+#define CCD_INTEGRATING  0x02
 /// The CCD is being read out
-#define   CCD_READING_OUT  0x10
+#define CCD_READING_OUT  0x04
 /// An image is ready to be read
-#define   IMG_READY        0x20
+#define CCD_IMG_READY    0x08
+/// An internal error on the CCD occurred
+#define CCD_ERR_RETRY    0x10
+/// An unrecoverable error has occurred
+#define CCD_ERR_NO_RECOV 0x20
+/// An error has occurred
+#define CCD_ERROR        (CCD_ERR_RETRY|CCD_ERR_NO_RECOV)
 /// The driver is about to exit - for internal use only
-#define   MERLIN_EXIT      0x40
+#define MERLIN_EXIT      0x80
 /** \} */
 
-/// IOCTL to read CCD image from driver
-#define IOCTL_GET_IMAGE _IOR(MERLIN_IOCTL_NUM, 0, unsigned long*)
-
-///IOCTL to start a new exposure
-#define IOCTL_ORDER_EXP _IOW(MERLIN_IOCTL_NUM, 1, unsigned long *)
+enum
+{
+  IOCTL_NUM_GET_MODES = 0,
+  IOCTL_NUM_ORDER_EXP,
+  IOCTL_NUM_GET_IMAGE,
+  IOCTL_NUM_ACQ_RESET,
+  #ifdef ACQSIM
+  IOCTL_NUM_SET_MODES,
+  IOCTL_NUM_GET_CMD,
+  IOCTL_NUM_SET_IMAGE,
+  #endif  
+  IOCTL_NUM_LAST
+};
 
 ///IOCTL to read modes supported by CCD
-#define IOCTL_GET_MODES _IOR(MERLIN_IOCTL_NUM, 2, unsigned long *)
+#define IOCTL_GET_MODES _IOR(MERLIN_IOCTL_NUM, IOCTL_NUM_GET_MODES, unsigned long *)
+
+///IOCTL to start a new exposure
+#define IOCTL_ORDER_EXP _IOW(MERLIN_IOCTL_NUM, IOCTL_NUM_ORDER_EXP, unsigned long *)
+
+/// IOCTL to read CCD image from driver
+#define IOCTL_GET_IMAGE _IOR(MERLIN_IOCTL_NUM, IOCTL_NUM_GET_IMAGE, unsigned long*)
+
+/// IOCTL to reset camera driver (should be paired with manual reset of merlin crate)
+#define IOCTL_ACQ_RESET _IOR(MERLIN_IOCTL_NUM, IOCTL_NUM_ACQ_RESET, unsigned long*)
 
 #ifdef ACQSIM
- /// IOCTL to write simulated CCD image to driver
- #define IOCTL_SET_IMAGE _IOW(MERLIN_IOCTL_NUM, 3, unsigned long*)
- 
- /// IOCTL to read parameters of ordered exposer from driver
- #define IOCTL_GET_CMD _IOR(MERLIN_IOCTL_NUM, 4, unsigned long*)
+  /// IOCTL to write simulated CCD available modes to driver
+  #define IOCTL_SET_MODES _IOW(MERLIN_IOCTL_NUM, IOCTL_NUM_SET_MODES, unsigned long*)
 
- /// IOCTL to write simulated CCD available modes to driver
- #define IOCTL_SET_MODES _IOW(MERLIN_IOCTL_NUM, 5, unsigned long*)
+  /// IOCTL to read parameters of ordered exposer from driver
+  #define IOCTL_GET_CMD _IOR(MERLIN_IOCTL_NUM, IOCTL_NUM_GET_CMD, unsigned long*)
+
+  /// IOCTL to write simulated CCD image to driver
+  #define IOCTL_SET_IMAGE _IOW(MERLIN_IOCTL_NUM, IOCTL_NUM_SET_IMAGE, unsigned long*)
 #endif
-
 
 #endif

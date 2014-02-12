@@ -8,6 +8,7 @@ INCLUDE_DIRECTORIES(${ACT_DRV_SRC}/time_driver)
 INCLUDE_DIRECTORIES(${ACT_LIB_SRC})
 
 ADD_EXECUTABLE(merlin_driver_test merlin_driver_test.c ${ACT_DRV_SRC}/merlin_driver/merlin_driver.h ${ACT_DRV_SRC}/merlin_driver/ccd_defs.h)
+TARGET_LINK_LIBRARIES(merlin_driver_test m)
 
 # This programme is for the MERLIN acquisition system simulator, but it's very outdated and needs to be updated to conform to the new merlin driver interface and the new IPC spec
 # IF (DEFINED MERLIN_SIM)

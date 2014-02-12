@@ -17,6 +17,8 @@
  *
  * \todo User proper kernel log levels
  * \todo Implement the window modes supported by the MERLIN CCD.
+ * \todo Clean up get_ccd_id function
+ * \todo When ordering exp, let readout function start a bit sooner and try reading out for a while longer
  */
 
 /// Simulator compile flag
@@ -72,14 +74,15 @@
 /// Low divisor of integration time as understood by the CCD, in milli-seconds
 #define   EXPT_LO_DIV   40
 /// High divisor of integration time as understood by the CCD, in milli-seconds
-#define   EXPT_HI_DIV   10260
+#define   EXPT_HI_DIV   10240
+// #define   EXPT_HI_DIV   10260
 /// Highest possible multiplier.
 #define   EXPT_MAX_MULT 255
 
 /// Minimum possible exposure time.
-#define   MIN_EXP_TIME EXPT_LO_DIV
+#define   MIN_EXP_TIME_MS EXPT_LO_DIV
 /// Maximum possible exposure time.
-#define   MAX_EXP_TIME (EXPT_HI_DIV*EXPT_MAX_MULT)+(EXPT_LO_DIV*EXPT_MAX_MULT)
+#define   MAX_EXP_TIME_MS (EXPT_HI_DIV*EXPT_MAX_MULT)+(EXPT_LO_DIV*EXPT_MAX_MULT)
 
 /// Width of CCD in pixels in full-frame mode (no prebinning, no windowing)
 #define   WIDTH_PX     407
@@ -90,6 +93,11 @@
 /// On-sky height of CCD in full-frame mode (no prebinning, no windowing), in arcminutes
 #define   DEC_HEIGHT   656
 /** \} */
+
+/// Convenience definition for converting from seconds+nanoseconds to milliseconds
+#define SECNSEC_MSEC(sec,nsec)         sec*1000 + nsec/1000000
+/// Convenience definition for converting from milliseconds to seconds+nanoseconds
+#define MSEC_SECNSEC(msec,sec,nsec)    sec = msec/1000 ; nsec = (msec%1000)/1000000
 
 /** \name Gloval variables
  * \{ */
@@ -103,12 +111,11 @@ static struct class *G_class_merlin;
 static struct device *G_dev_merlin;
 /// Modes suppored by CCD/driver
 static struct ccd_modes G_modes;
-/// Last command sent to driver
+/// Last command sent to driver - this is only useful in ACQSIM mode, where the camera simulator programme needs to read the commands sent
 static struct ccd_cmd G_cmd;
 /// Last image retrieved by driver
 static struct merlin_img G_img;
 /// Queue for asynchronous communication with user-space programmes
-static struct fasync_struct *G_async_queue;
 static wait_queue_head_t inq;
 #ifndef ACQSIM
  /// Driver work queue
@@ -116,7 +123,7 @@ static wait_queue_head_t inq;
  /// Work structure for reading out the CCD.
  struct delayed_work readout_work;
  /// Work structure for checking that the turn-of-a-second handler is being received.
- struct delayed_work sec_handler_check_work;
+ struct delayed_work acq_reset_check_work;
  /// Task structure for sending exposure commands to CCD.
  struct task_struct *G_send_exp_ts = NULL;
 #endif
@@ -135,12 +142,14 @@ static wait_queue_head_t inq;
  static void ccd_readout(struct work_struct *work);
  /// Send exposure command to CCD (runs in a parallel thread).
  static int start_exp(void *data);
+ /// Error handler function for start_exp
+ static void start_exp_error(const char *err_str);
  /// Starts an exposure immediately
  static void start_exp_now(void);
- /// Starts an exposure at the turn of a second.
- static void sec_turn_handler(const unsigned long loct, const unsigned short loct_msec);
  /// Checks whether the driver is receiving notifications at the turn of a second.
- static void sec_handler_check(struct work_struct *work);
+ static void acq_reset_check(struct work_struct *work);
+ static void check_exp_time_valid(unsigned long *exp_t_sec, unsigned long *exp_t_nanosec);
+ static void calc_exp_time_div(unsigned long exp_t_sec, unsigned long exp_t_nanosec, unsigned char *hi_div, unsigned char *lo_div);
 #endif
 /// Module initialisation function
 int init_module(void);
@@ -157,7 +166,6 @@ static ssize_t device_read(struct file *, char *, size_t, loff_t *);
 /// Write to character device
 static ssize_t device_write(struct file *, const char *, size_t, loff_t *);
 /// Register asynchronous notification
-static int device_fasync(int fd, struct file *filp, int mode);
 static unsigned int device_poll(struct file *filp, poll_table *wait);
 /** \} */
 
@@ -171,7 +179,6 @@ static struct file_operations fops =
   .unlocked_ioctl = device_ioctl,
   .open = device_open,
   .release = device_release,
-  .fasync = device_fasync,
   .poll = device_poll
 };
 /** \} */
@@ -232,12 +239,8 @@ int init_module(void)
       return 1;
     }
   #endif
-  G_modes.prebin_x = G_modes.prebin_y = CCD_PREBIN_1;
-  memset(G_modes.windows, 0, sizeof(G_modes.windows));
-  G_modes.windows[0].width_px = WIDTH_PX;
-  G_modes.windows[0].height_px = HEIGHT_PX;
-  G_modes.min_exp_t_msec = MIN_EXP_TIME;
-  G_modes.max_exp_t_msec = MAX_EXP_TIME;
+  MSEC_SECNSEC(MIN_EXP_TIME_MS, G_modes.min_exp_t_sec, G_modes.min_exp_t_nanosec);
+  MSEC_SECNSEC(MAX_EXP_TIME_MS, G_modes.max_exp_t_sec, G_modes.max_exp_t_nanosec);
   G_modes.max_width_px = WIDTH_PX;
   G_modes.max_height_px = HEIGHT_PX;
   G_modes.ra_width_asec = RA_WIDTH;
@@ -245,13 +248,11 @@ int init_module(void)
   #ifndef ACQSIM
     ccd_workq = create_singlethread_workqueue("MERLIN_workq");
     INIT_DELAYED_WORK(&readout_work, ccd_readout);
-    INIT_DELAYED_WORK(&sec_handler_check_work, sec_handler_check);
-    register_second_handler(&sec_turn_handler);
+    INIT_DELAYED_WORK(&acq_reset_check_work, acq_reset_check);
   #endif
 
   init_waitqueue_head(&inq);
 
-  G_cmd.exp_t_msec = 0;
   memset(&G_img.img_data, 0, sizeof(G_img.img_data));
 
   return 0;
@@ -272,8 +273,9 @@ void cleanup_module(void)
 {
   G_status |= MERLIN_EXIT;
   #ifndef ACQSIM
-  unregister_second_handler(&sec_turn_handler);
   if (cancel_delayed_work(&readout_work) == 0)
+    flush_workqueue(ccd_workq);
+  if (cancel_delayed_work(&acq_reset_check_work) == 0)
     flush_workqueue(ccd_workq);
   if (G_status & (CCD_INTEGRATING | CCD_READING_OUT))
     printk(KERN_INFO PRINTK_PREFIX "CCD is currently integrating/reading out. It may be necessary to restart the MERLIN crate after module is unloaded\n");
@@ -335,14 +337,10 @@ static short ccd_send_char(unsigned char c)
 static short ccd_recv_char(void)
 {
   unsigned int i;
-//   for (i=0; i<COMM_NUM_RETRIES*COMM_RETRY_DELAY_uS/5; i++)
   for (i=0; i<COMM_NUM_RETRIES*COMM_RETRY_DELAY_uS/2; i++)
   {
     if (inb(INPUT_STATUS))
-    {
-//       udelay(COMM_RETRY_DELAY_uS);
       return inb_p(READ_DATA);
-    }
     yield();
   }
   return -1;
@@ -366,8 +364,7 @@ static char get_ccd_id(void)
   if (ccd_send_char('Y') < 0)
   {
     printk(KERN_INFO PRINTK_PREFIX "Error: Could not get status information from CCD.\n");
-    G_status |= CCD_ERROR;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
+    G_status |= CCD_ERR_RETRY;
     wake_up_interruptible(&inq);
     return 0;
   }
@@ -469,18 +466,15 @@ static void ccd_readout(struct work_struct *work)
   if (tmpchar < 0)
   {
     printk(KERN_INFO PRINTK_PREFIX "Error: No pixels received from CCD.\n");
-    G_status |= CCD_ERROR | CCD_STAT_UPDATE;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
+    G_status |= CCD_ERR_RETRY | CCD_STAT_UPDATE;
     wake_up_interruptible(&inq);
     printk(KERN_INFO PRINTK_PREFIX "Requesting camera reset.\n");
     reset_acq_merlin();
     return;
   }
   lastchar = (ccd_pixel_type)tmpchar;
-  printk(KERN_DEBUG PRINTK_PREFIX "Reading out CCD\n");
   G_status &= ~CCD_INTEGRATING;
   G_status |= CCD_READING_OUT | CCD_STAT_UPDATE;
-  kill_fasync(&G_async_queue, SIGIO, POLL_IN);
   wake_up_interruptible(&inq);
   for (i=1; i<MERLIN_MAX_IMG_LEN*2; i++)
   {
@@ -498,21 +492,18 @@ static void ccd_readout(struct work_struct *work)
   if (lastchar != 0)
   {
     printk(KERN_ERR PRINTK_PREFIX "CCD reported error %hhu while reading out.\n", lastchar);
-    G_status |= CCD_ERROR | CCD_STAT_UPDATE;
+    G_status |= CCD_ERR_RETRY | CCD_STAT_UPDATE;
     printk(KERN_INFO PRINTK_PREFIX "Requesting camera reset.\n");
     reset_acq_merlin();
   }
   else
   {
-    if (i != MERLIN_MAX_IMG_LEN)
-      printk(KERN_DEBUG PRINTK_PREFIX "Read %u pixels (should be %d)\n", i, MERLIN_MAX_IMG_LEN);
-    G_status |= IMG_READY | CCD_STAT_UPDATE;
+    if (i != MERLIN_MAX_IMG_LEN+1)
+      printk(KERN_DEBUG PRINTK_PREFIX "Read %u pixels (should be %d)\n", i, MERLIN_MAX_IMG_LEN+1);
+    G_status |= CCD_IMG_READY | CCD_STAT_UPDATE;
   }
-  kill_fasync(&G_async_queue, SIGIO, POLL_IN);
   wake_up_interruptible(&inq);
   G_img.img_params.img_len = MERLIN_MAX_IMG_LEN;
-  G_img.img_params.img_width = WIDTH_PX;
-  G_img.img_params.img_height = HEIGHT_PX;
 }
 
 /** \brief Send CCD expose command to CCD.
@@ -545,63 +536,54 @@ static void ccd_readout(struct work_struct *work)
 static int start_exp(void *data)
 {
   struct timespec tmpts;
-  if (G_status & (CCD_ERROR | EXP_ORDERED | CCD_INTEGRATING | CCD_READING_OUT))
+  unsigned char hi_div, lo_div;
+  if (G_status & (CCD_ERROR | CCD_INTEGRATING | CCD_READING_OUT))
   {
     printk(KERN_INFO PRINTK_PREFIX "Driver status indicates that CCD is currently busy (%hu).\n", G_status);
     return 0;
   }
-  if (G_cmd.exp_t_msec < MIN_EXP_TIME)
-  {
-    printk(KERN_INFO PRINTK_PREFIX "Strange, start_exp was called, but exposure time is 0. Ignoring\n");
-    G_send_exp_ts = NULL;
-    return 0;
-  }
-  G_img.img_params.exp_t_msec = ((G_cmd.exp_t_msec%EXPT_HI_DIV)/EXPT_LO_DIV)*EXPT_LO_DIV + (G_cmd.exp_t_msec/EXPT_HI_DIV)*EXPT_HI_DIV;
-  G_img.img_params.prebin_x = G_img.img_params.prebin_y = CCD_PREBIN_1;
-  G_img.img_params.window = 0;
+  calc_exp_time_div(G_img.img_params.exp_t_sec, G_img.img_params.exp_t_nanosec, &hi_div, &lo_div);
+  G_img.img_params.prebin_x = G_img.img_params.prebin_y = 1;
+  G_img.img_params.win_start_x = G_img.img_params.win_start_y = 0;
+  G_img.img_params.win_width = WIDTH_PX;
+  G_img.img_params.win_height = HEIGHT_PX;
   
-  G_cmd.exp_t_msec = 0;
   if (!ccd_send_char('R'))
   {
-    printk (KERN_ERR PRINTK_PREFIX "Error sending exposure command to CCD. Maximum number of retries reached.\n");
-    G_send_exp_ts = NULL;
-    G_status |= CCD_ERROR | CCD_STAT_UPDATE;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
-    wake_up_interruptible(&inq);
-    printk(KERN_ERR PRINTK_PREFIX "Requesting ACQ reset.\n");
-    reset_acq_merlin();
+    start_exp_error ("Error sending exposure command to CCD. Maximum number of retries reached.");
     return 0;
   }
-  if (!ccd_send_char((G_img.img_params.exp_t_msec%EXPT_HI_DIV)/EXPT_LO_DIV))
+  if (!ccd_send_char(lo_div))
   {
-    printk (KERN_ERR PRINTK_PREFIX "Error sending exposure command to CCD. Maximum number of retries reached.\n");
-    G_send_exp_ts = NULL;
-    G_status |= CCD_ERROR | CCD_STAT_UPDATE;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
-    wake_up_interruptible(&inq);
-    printk(KERN_ERR PRINTK_PREFIX "Requesting ACQ reset.\n");
-    reset_acq_merlin();
+    start_exp_error("Error sending exposure command to CCD. Maximum number of retries reached.");
     return 0;
   }
-  if (!ccd_send_char(G_img.img_params.exp_t_msec/EXPT_HI_DIV))
+  if (!ccd_send_char(hi_div))
   {
-    printk (KERN_ERR PRINTK_PREFIX "Error sending exposure command to CCD. Maximum number of retries reached.\n");
-    G_send_exp_ts = NULL;
-    G_status |= CCD_ERROR | CCD_STAT_UPDATE;
-    kill_fasync(&G_async_queue, SIGIO, POLL_IN);
-    wake_up_interruptible(&inq);
-    printk(KERN_ERR PRINTK_PREFIX "Requesting ACQ reset.\n");
-    reset_acq_merlin();
+    start_exp_error("Error sending exposure command to CCD. Maximum number of retries reached.");
     return 0;
   }
-  tmpts.tv_sec = G_img.img_params.exp_t_msec / 1000;
-  tmpts.tv_nsec = (G_img.img_params.exp_t_msec % 1000) * 1000000;
+  // Start trying to read out a little sooner than necessary
+  tmpts.tv_sec = G_img.img_params.exp_t_sec*9/10;
+  tmpts.tv_nsec = G_img.img_params.exp_t_nanosec*9/10;
   queue_delayed_work(ccd_workq, &readout_work, timespec_to_jiffies(&tmpts));
   G_status |= CCD_INTEGRATING | CCD_STAT_UPDATE;
-  kill_fasync(&G_async_queue, SIGIO, POLL_IN);
   wake_up_interruptible(&inq);
   G_send_exp_ts = NULL;
   return 0;
+}
+
+/** \brief Error reporting and handler function for start_exp function.
+ * \param err_str Error string.
+ */
+static void start_exp_error(const char *err_str)
+{
+  printk (KERN_ERR PRINTK_PREFIX "%s\n", err_str);
+  G_send_exp_ts = NULL;
+  G_status |= CCD_ERR_RETRY | CCD_STAT_UPDATE;
+  wake_up_interruptible(&inq);
+  printk(KERN_INFO PRINTK_PREFIX "Requesting ACQ reset.\n");
+  reset_acq_merlin();
 }
 
 /** \brief Start an exposure immediately.
@@ -614,115 +596,75 @@ static int start_exp(void *data)
  */
 static void start_exp_now(void)
 {
-  unsigned long loct;
-  unsigned short loct_msec;
+  unsigned long unit;
+  unsigned short unit_msec;
   if (G_send_exp_ts != NULL)
   {
     printk(KERN_INFO PRINTK_PREFIX "Error: Start of exposure has already been scheduled, cannot schedule a second.\n");
     return;
   }
-  get_unitime(&loct, &loct_msec);
-  G_img.img_params.start_hrs = loct / 3600;
-  G_img.img_params.start_min = (loct / 60) % 60;
-  G_img.img_params.start_sec = loct % 60;
-  G_img.img_params.start_msec = loct_msec;
+  get_unitime(&unit, &unit_msec);
+  G_img.img_params.start_sec = unit;
+  G_img.img_params.start_nanosec = unit_msec*1000000;
   kthread_run(start_exp,NULL,"start_exp_thread");
 }
 
-/** \brief Turn-of-the-second handler function.
- * \param loct Local time in integer seconds.
- * \param loct_msec Fractional seconds as integer milli-seconds.
- * \return (void)
- *
- * For science exposures, one would expect that the exposure be started at the turn of a second. However,
- * this driver does not have the ability to accurately determine when is the turn of a second. It
- * therefore requires a signal from another kernel module that can "tell" it when is the turn of a
- * second. This is why this driver registers this function as a turn-of-the-second handler function
- * with the time_driver. When the time_driver detects the turn of a second, it calls this function. So,
- * when a science exposure is requested by a programme (which can be identified by the start_at_sec field
- * of the given ccd_cmd structure), this driver knows that an exposure should be started the next time
- * this function is called.
- * 
- * The start_at_sec field of the G_cmd structure is 0 when no new exposure has been ordered by a programme
- * in the last second or when a new exposure had been ordered, but it was started immediately (i.e. a
- * non-science exposure). 
- * 
- * It is also possible (however unlikely) that the external timing providor is suffering from an internal
- * error, which prevents it from calling this function. In this case, there is a function
- * (sec_handler_check) that is called to take appropriate action 2 seconds on the system clock after
- * the exposure was ordered by the user-space programme.
- *
- * Algorithm:
- * - If an exposure should not be started at the turn of a second, return.
- * - Remove the sec_handler_check function from the driver's work queue.
- * - Check that the start_exp function is not already running in a separate thread.
- * - Unset the start_at_sec field (i.e. don't start a new exposure at the next turn of a second).
- * - Use the time from the external timing providor (via this function's parameters) and set the
- *   integration start time in G_img.
- * - Call the start_exp function (in a separate thread).
- */
-static void sec_turn_handler(const unsigned long loct, const unsigned short loct_msec)
+static void acq_reset_check(struct work_struct *work)
 {
-  if (G_status & CCD_ERROR)
+  if ((G_status & CCD_ERROR) == 0)
   {
-    if (reset_acq_pending() == 0)
-    {
-      G_status &= (~CCD_ERROR);
-      kill_fasync(&G_async_queue, SIGIO, POLL_IN);
-      wake_up_interruptible(&inq);
-    }
-  }
-  if (!G_cmd.start_at_sec)
-    return;
-  cancel_delayed_work(&sec_handler_check_work);
-  if (G_send_exp_ts != NULL)
-  {
-    printk(KERN_INFO PRINTK_PREFIX "Error: Start of exposure has already been scheduled, cannot schedule a second.\n");
+    printk(KERN_DEBUG PRINTK_PREFIX "ACQ Reset Check called, but no error reported. Ignoring.\n");
     return;
   }
-  G_cmd.start_at_sec = FALSE;
-  G_img.img_params.start_hrs = loct / 3600;
-  G_img.img_params.start_min = (loct / 60) % 60;
-  G_img.img_params.start_sec = loct % 60;
-  G_img.img_params.start_msec = loct_msec;
-  kthread_run(start_exp,NULL,"start_exp_thread");
+  if (reset_acq_pending())
+  {
+    printk(KERN_DEBUG PRINTK_PREFIX "Still waiting for ACQ reset.\n");
+    return;
+  }
+  G_status &= (~CCD_ERROR);
+  wake_up_interruptible(&inq);
+  printk(KERN_INFO PRINTK_PREFIX "Acquisition camera reset complete. Checking by requesting CCD ID.\n");
+  if (!get_ccd_id())
+  {
+    printk(KERN_ERR PRINTK_PREFIX "Failed to re-establish communications with acquisition camera. A hard reset is required.\n");
+    G_status |= CCD_ERR_NO_RECOV;
+  }
 }
 
-/** \brief Check that an exposure was started at the last turn of a second.
- * \param work Details of work item on driver's work queue - unused.
- *
- * When an exposure is ordered that needs to be started at the turn of a second, this function is put
- * on the driver's work queue to be executed about 2 seconds after the exposure is ordered. So, if the
- * driver is waiting for the turn-of-the-second signal, but it doesn't come in a reasonable length of
- * time, this function starts the exposure anyway.
- * 
- * This function should ideally never be executed, however it was implemented to keep the driver from
- * endlessly waiting for a timing signal that never comes.
- * 
- * Algorithm:
- * - Report the error.
- * - Get the system time and set the exposure start time fields.
- *   - Make sure the start_msec field is non-zero, to indicate to the programme that will read the image
- *     that the exposure was not necessarily started at the turn of a second.
- * - Call the start_exp function (in a separate thread).
- */
-static void sec_handler_check(struct work_struct *work)
+static void check_exp_time_valid(unsigned long *exp_t_sec, unsigned long *exp_t_nanosec)
 {
-  struct timeval tv;
-  extern struct timezone sys_tz;
-  unsigned long loct_ms;
+  unsigned char lo_div, hi_div;
+  unsigned long exp_t_msec = SECNSEC_MSEC(*exp_t_sec, *exp_t_nanosec);
+  if (exp_t_msec > MAX_EXP_TIME_MS)
+  {
+    printk(KERN_DEBUG KERN_INFO "Requested exposure time exceeds camera maximum: %lu ms, max %d ms.\n", exp_t_msec, MAX_EXP_TIME_MS);
+    MSEC_SECNSEC(MAX_EXP_TIME_MS, *exp_t_sec, *exp_t_nanosec);
+    return;
+  }
+  calc_exp_time_div(*exp_t_sec, *exp_t_nanosec, &hi_div, &lo_div);
+  if (exp_t_msec != hi_div*EXPT_HI_DIV + lo_div*EXPT_LO_DIV)
+  {
+    printk(KERN_DEBUG PRINTK_PREFIX "Invalid exposure time requested, choosing best valid: requested %lu ms, selecting %d ms.\n", exp_t_msec, hi_div*EXPT_HI_DIV + lo_div*EXPT_LO_DIV);
+    exp_t_msec = hi_div*EXPT_HI_DIV + lo_div*EXPT_LO_DIV;
+    MSEC_SECNSEC(exp_t_msec, *exp_t_sec, *exp_t_nanosec);
+  }
+}
 
-  printk(KERN_ERR PRINTK_PREFIX "Error: No signal from time driver. Starting exposure now.\n");
-  do_gettimeofday(&tv);
-  loct_ms = ((tv.tv_sec - sys_tz.tz_minuteswest*60) % 86400)*1000 + tv.tv_usec / 1000;
-  G_cmd.start_at_sec = FALSE;
-  G_img.img_params.start_hrs = loct_ms / 3600000;
-  G_img.img_params.start_min = (loct_ms / 60000) % 60;
-  G_img.img_params.start_sec = (loct_ms / 1000) % 60;
-  G_img.img_params.start_msec = loct_ms % 1000;
-  if (G_img.img_params.start_msec == 0)
-    G_img.img_params.start_msec = 1;
-  kthread_run(start_exp,NULL,"start_exp_thread");
+static void calc_exp_time_div(unsigned long exp_t_sec, unsigned long exp_t_nanosec, unsigned char *hi_div, unsigned char *lo_div)
+{
+  unsigned long exp_t_msec = SECNSEC_MSEC(exp_t_sec, exp_t_nanosec), tmp_hi, tmp_lo;
+  tmp_hi = exp_t_msec/EXPT_HI_DIV;
+  if (tmp_hi > EXPT_MAX_MULT)
+  {
+    *hi_div = EXPT_MAX_MULT;
+    *lo_div = EXPT_MAX_MULT;
+    return;
+  }
+  tmp_lo = (exp_t_msec - tmp_hi*EXPT_HI_DIV)/EXPT_LO_DIV;
+  if (tmp_lo > EXPT_MAX_MULT)
+    tmp_lo = EXPT_MAX_MULT;
+  *hi_div = tmp_hi;
+  *lo_div = tmp_lo;
 }
 #endif
 
@@ -741,7 +683,6 @@ static int device_open(struct inode *inode, struct file *file)
  */
 static int device_release(struct inode *inode, struct file *file)
 {
-  device_fasync(-1, file, 0);
   return 0;
 }
 
@@ -755,18 +696,15 @@ static int device_release(struct inode *inode, struct file *file)
  * 
  * IOCTL_GET_IMAGE:
  * - Send the image to the calling programme
- * - Unset the IMG_READY status flag.
+ * - Unset the CCD_IMG_READY status flag.
  * IOCTL_ORDER_EXP:
  * - Check that the CCD is ready for an expose command.
  * - Copy the exposure parameters (ccd_cmd struct) from the calling programme.
  * - Check that the requested mode and integration time are supported by the driver and CCD.
  * - If the ACQSIM compiler flag was enabled at compile-time, only set the driver status.
- * - If the ACQSIM compiler flag was disable at compile-time:
- *   - If the exposure needs to be started immediately (G_cmd.start_at_sec is disabled), order the
- *     immediately.
- *   - If the exposure needs to be started at the next turn of a second, the sec_turn_handler function
- *     will take care of starting the exposure. Only enqueue the function that checks that the 
- *     sec_turn_handler function was called to be executed approximately 2 seconds in the future.
+ * - If the ACQSIM compiler flag was disable at compile-time, order exposure immediately
+ * IOCTL_ACQ_RESET:
+ * - Request acquisition system reset using PLC 
  * IOCTL_GET_MODES:
  * - Copy the G_modes structure (which describes all the modes supported by the CCD and driver to the
  *   calling programme.
@@ -783,11 +721,10 @@ long device_ioctl(struct file *file, unsigned int ioctl_num, unsigned long ioctl
 
   switch (ioctl_num)
   {
-    case IOCTL_GET_IMAGE:
-      ret_val = copy_to_user((void *)ioctl_param, &G_img, sizeof(struct merlin_img));
+    case IOCTL_GET_MODES:
+      ret_val = copy_to_user((void *)ioctl_param, &G_modes, sizeof(struct ccd_modes));
       if (ret_val < 0)
-        printk(KERN_DEBUG PRINTK_PREFIX "Error writing image data to user-space\n");
-      G_status &= ~IMG_READY;
+        printk(KERN_INFO PRINTK_PREFIX "Could not copy MERLIN CCD modes to user (%d)\n", ret_val);
       break;
     case IOCTL_ORDER_EXP:
       if ((G_status & CCD_ERROR) != 0)
@@ -808,53 +745,33 @@ long device_ioctl(struct file *file, unsigned int ioctl_num, unsigned long ioctl
         printk(KERN_INFO PRINTK_PREFIX "Could not copy exposure parameters from user (%d)\n", ret_val);
         break;
       }
-      if (((G_cmd.prebin_x & G_modes.prebin_x) == 0) || ((G_cmd.prebin_y & G_modes.prebin_y) == 0))
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Invalid prebinning mode selected: %llu %llu\n", G_cmd.prebin_x, G_cmd.prebin_y);
-        ret_val = -EINVAL;
-        break;
-      }
-      if (G_cmd.window >= CCD_MAX_NUM_WINDOW_MODES)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Inavlid window mode specified: %hhu\n", G_cmd.window);
-        ret_val = -EINVAL;
-        break;
-      }
-      if ((G_modes.windows[G_cmd.window].width_px == 0) || (G_modes.windows[G_cmd.window].height_px == 0))
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Inavlid window mode specified: %hhu\n", G_cmd.window);
-        ret_val = -EINVAL;
-        break;
-      }
-      if ((G_cmd.exp_t_msec < G_modes.min_exp_t_msec) || (G_cmd.exp_t_msec > G_modes.max_exp_t_msec))
-      {
-        printk(KERN_NOTICE PRINTK_PREFIX "Invalid exposure time given: %lu ms\n", G_cmd.exp_t_msec);
-        ret_val = -EINVAL;
-        break;
-      }
-      printk(KERN_DEBUG PRINTK_PREFIX "Exposure ordered (%lu ms).\n", G_cmd.exp_t_msec);
+      G_img.img_params.exp_t_sec = G_cmd.exp_t_sec;
+      G_img.img_params.exp_t_nanosec = G_cmd.exp_t_nanosec;
+      check_exp_time_valid(&G_img.img_params.exp_t_sec, &G_img.img_params.exp_t_nanosec);
       #ifdef ACQSIM
        G_status |= CCD_INTEGRATING;
       #else
-      if (!G_cmd.start_at_sec)
-        start_exp_now();
-      else
-        queue_delayed_work(ccd_workq, &sec_handler_check_work, HZ*2);
+       start_exp_now();
       #endif
       ret_val = 0;
       break;
-    case IOCTL_GET_MODES:
-      ret_val = copy_to_user((void *)ioctl_param, &G_modes, sizeof(struct ccd_modes));
+    case IOCTL_GET_IMAGE:
+      ret_val = copy_to_user((void *)ioctl_param, &G_img, sizeof(struct merlin_img));
       if (ret_val < 0)
-        printk(KERN_INFO PRINTK_PREFIX "Could not copy MERLIN CCD modes to user (%d)\n", ret_val);
+        printk(KERN_DEBUG PRINTK_PREFIX "Error writing image data to user-space\n");
+      G_status &= ~CCD_IMG_READY;
+      break;
+    case IOCTL_ACQ_RESET:
+      G_status |= CCD_ERR_RETRY;
+      reset_acq_merlin();
+      ret_val = 0;
       break;
 #ifdef ACQSIM
     case IOCTL_SET_IMAGE:
       ret_val = copy_from_user(&G_img, (void *)ioctl_param, sizeof(struct merlin_img));
       if (ret_val < 0)
         printk(KERN_DEBUG PRINTK_PREFIX "Error reading image data from user-space\n");
-      G_status = IMG_READY | CCD_STAT_UPDATE;
-      kill_fasync(&G_async_queue, SIGIO, POLL_IN);
+      G_status = CCD_IMG_READY | CCD_STAT_UPDATE;
       wake_up_interruptible(&inq);
       ret_val = 0;
       break;
@@ -907,18 +824,6 @@ static ssize_t device_read(struct file *filp, char *buffer, size_t length, loff_
 static ssize_t device_write(struct file *filp, const char *buff, size_t len, loff_t * off)
 {
   return -ENOTTY;
-}
-
-/** \brief Called when a programme registers for asynchronous notifications.
- * \return (check documentation for fasync_helper, should be >= 0 on success).
- *
- * A programme can register for asynchronous notifications, which means that whenever
- * kill_fasync(&G_async_queue, SIGIO, POLL_IN) is called from within the driver, the programme will
- * receive a SIGIO signal.
- */
-static int device_fasync(int fd, struct file *filp, int mode)
-{
-  return fasync_helper(fd, filp, mode, &G_async_queue);
 }
 
 static unsigned int device_poll(struct file *filp, poll_table *wait)

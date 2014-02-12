@@ -11,19 +11,20 @@ G_BEGIN_DECLS
 /// Image type enum
 enum
 {
-  CCDIMGT_ACQ_OBJ = 1,
-  CCDIMGT_ACQ_SKY,
-  CCDIMGT_OBJECT,
-  CCDIMGT_BIAS,
-  CCDIMGT_DARK,
-  CCDIMGT_FLAT
+  IMGT_NONE = 0,
+  IMGT_ACQ_OBJ,
+  IMGT_ACQ_SKY,
+  IMGT_OBJECT,
+  IMGT_BIAS,
+  IMGT_DARK,
+  IMGT_FLAT
 };
 
-#define CCDCMD_TYPE                (ccdcmd_get_type())
-#define CCDCMD(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCDCMD_TYPE, CcdCmd))
-#define CCDCMD_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCDCMD_TYPE, CcdCmdClass))
-#define IS_CCDCMD(objs)            (G_TYPE_CHECK_INSTANCE_TYPE ((objs), CCDCMD_TYPE))
-#define IS_CCDCMD_CLASS(klass)     (G_TYPE_CHECK_CLASS_TYPE ((klass), CCDCMD_TYPE))
+#define CCD_CMD_TYPE                (ccd_cmd_get_type())
+#define CCD_CMD(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCD_CMD_TYPE, CcdCmd))
+#define CCD_CMD_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCD_CMD_TYPE, CcdCmdClass))
+#define IS_CCD_CMD(objs)            (G_TYPE_CHECK_INSTANCE_TYPE ((objs), CCD_CMD_TYPE))
+#define IS_CCD_CMD_CLASS(klass)     (G_TYPE_CHECK_CLASS_TYPE ((klass), CCD_CMD_TYPE))
 
 typedef struct _CcdCmd       CcdCmd;
 typedef struct _CcdCmdClass  CcdCmdClass;
@@ -32,18 +33,20 @@ struct _CcdCmd
 {
   GObject parent;
   /// Image type
-  unsigned char img_type;
+  guchar img_type;
   /// Start x,y of window
-  unsigned short win_start_x, win_start_y;
+  gushort win_start_x, win_start_y;
   /// Width and height of window
-  unsigned short win_width, win_height;
+  gushort win_width, win_height;
   /// Prebinning mode
-  unsigned short prebin_x, prebin_y;
-  /// The length of the exposure (in seconds)
-  float exp_t_sec;
+  gushort prebin_x, prebin_y;
+  /// The length of the exposure
+  gfloat exp_t_s;
+  /// Number of repetitions
+  gulong repetitions;
   /// Target name and DB id
-  char targ_name[MAX_TARGID_LEN];
-  unsigned long targ_id;
+  gchar *targ_name;
+  gulong targ_id;
 };
 
 struct _CcdCmdClass
@@ -51,12 +54,36 @@ struct _CcdCmdClass
   GObjectClass parent_class;
 };
 
+GType ccd_cmd_get_type(void);
+CcdCmd *ccd_cmd_new(guchar img_type, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y, gfloat exp_t_s, gulong repetitions, gulong targ_id, gchar const *targ_name);
+guchar ccd_cmd_get_img_type(CcdCmd *objs);
+void ccd_cmd_set_img_type(CcdCmd *objs, guchar img_type);
+gushort ccd_cmd_get_win_start_x(CcdCmd *objs);
+void ccd_cmd_set_win_start_x(CcdCmd *objs, gushort win_start_x);
+gushort ccd_cmd_get_win_start_y(CcdCmd *objs);
+void ccd_cmd_set_win_start_y(CcdCmd *objs, gushort win_start_y);
+gushort ccd_cmd_get_win_width(CcdCmd *objs);
+void ccd_cmd_set_win_width(CcdCmd *objs, gushort win_width);
+gushort ccd_cmd_get_win_height(CcdCmd *objs);
+void ccd_cmd_set_win_height(CcdCmd *objs, gushort win_height);
+gushort ccd_cmd_get_prebin_x(CcdCmd *objs);
+void ccd_cmd_set_prebin_x(CcdCmd *objs, gushort prebin_x);
+gushort ccd_cmd_get_prebin_y(CcdCmd *objs);
+void ccd_cmd_set_prebin_y(CcdCmd *objs, gushort prebin_y);
+gfloat ccd_cmd_get_exp_t(CcdCmd *objs);
+void ccd_cmd_set_exp_t(CcdCmd *objs, gfloat exp_t_s);
+gulong ccd_cmd_get_rpt(CcdCmd *objs);
+void ccd_cmd_set_rpt(CcdCmd *objs, gulong repetitions);
+gulong ccd_cmd_get_targ_id(CcdCmd *objs);
+gchar * ccd_cmd_get_targ_name(CcdCmd *objs);
+void ccd_cmd_set_target(CcdCmd *objs, gulong targ_id, gchar const *targ_name);
 
-#define CCDIMG_TYPE                (ccdimg_get_type())
-#define CCDIMG(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCDIMG_TYPE, CcdImg))
-#define CCDIMG_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCDIMG_TYPE, CcdImgClass))
-#define IS_CCDIMG(objs)            (G_TYPE_CHECK_INSTANCE_TYPE ((objs), CCDIMG_TYPE))
-#define IS_CCDIMG_CLASS(klass)     (G_TYPE_CHECK_CLASS_TYPE ((klass), CCDIMG_TYPE))
+
+#define CCD_IMG_TYPE                (ccd_img_get_type())
+#define CCD_IMG(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCD_IMG_TYPE, CcdImg))
+#define CCD_IMG_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCD_IMG_TYPE, CcdImgClass))
+#define IS_CCD_IMG(objs)            (G_TYPE_CHECK_INSTANCE_TYPE ((objs), CCD_IMG_TYPE))
+#define IS_CCD_IMG_CLASS(klass)     (G_TYPE_CHECK_CLASS_TYPE ((klass), CCD_IMG_TYPE))
 
 /// TODO: Implement CCD windowing and prebinning
 
@@ -75,12 +102,12 @@ struct _CcdImg
   /// Prebinning mode
   gushort prebin_x, prebin_y;
   /// The length of the exposure
-  gfloat exp_t_sec;
+  gfloat exp_t_s;
   /// Starting date and time of exposure
-  struct datestruct start_date;
-  struct timestruct start_time;
+  struct datestruct start_unid;
+  struct timestruct start_unit;
   /// Target name and DB id
-  gchar targ_name[MAX_TARGID_LEN];
+  gchar *targ_name;
   gulong targ_id;
   /// Starting telescope coordinates
   struct rastruct tel_ra;
@@ -96,42 +123,28 @@ struct _CcdImgClass
   GObjectClass parent_class;
 };
 
-GType ccdimg_get_type(void);
-CcdImg *ccdimg_new(void);
-CcdImg *ccdimg_copy(CcdImg *orig);
-void ccdimg_set_img_t(CcdImg *img, guchar new_img_t);
-guchar ccdimg_get_img_t(CcdImg *img);
-void ccdimg_set_window(CcdImg *img,  gushort new_win_width, gushort new_win_height, gushort new_win_start_x, gushort new_win_start_y);
-void ccdimg_get_window(CcdImg *img,  gushort *new_win_width, gushort *new_win_height, gushort *new_win_start_x, gushort *new_win_start_y);
+GType ccd_img_get_type(void);
+guchar ccd_img_get_img_type(CcdImg *objs);
+gfloat ccd_img_get_exp_t(CcdImg *objs);
+gushort ccd_img_get_win_start_x(CcdImg *objs);
+gushort ccd_img_get_win_start_y(CcdImg *objs);
+gushort ccd_img_get_win_width(CcdImg *objs);
+gushort ccd_img_get_win_height(CcdImg *objs);
+gushort ccd_img_get_prebin_x(CcdImg *objs);
+gushort ccd_img_get_prebin_y(CcdImg *objs);
+void ccd_img_get_start_datetime(CcdImg *objs, struct datestruct *start_unid, struct timestruct *start_unit);
+gchar *ccd_img_get_targ_name(CcdImg *objs);
+gulong ccd_img_get_targ_id(CcdImg *objs);
+void ccd_img_get_tel_pos(CcdImg *objs, struct rastruct *tel_ra, struct decstruct *tel_dec);
+gulong ccd_img_get_img_len(CcdImg *objs);
+gfloat const *ccd_img_get_img_data(CcdImg *objs);
 
 
-void ccdimg_set_win_width(CcdImg *img, gushort new_win_width);
-guchar ccdimg_get_win_width(CcdImg *img);
-void ccdimg_set_win_height(CcdImg *img, gushort new_win_height);
-guchar ccdimg_get_win_height(CcdImg*img);
-void ccdimg_set_win_start
-void ccdimg_set_exp_t(CcdImg *img, gfloat new_exp_t_sec);
-gfloat ccdimg_get_exp_t(CcdImg *img);
-void ccdimg_set_start_date(CcdImg *img, const struct datestruct *new_date);
-void ccdimg_get_start_date(CcdImg *img, struct datestruct *cur_date);
-void ccdimg_set_start_time(CcdImg *img, const struct timestruct *new_time);
-void ccdimg_get_start_time(CcdImg *img, struct timesturct *cur_time);
-void ccdimg_set_targ_name(CcdImg *img, const gchar *new_targ_name);
-const gchar *ccdimg_get_targ_name(CcdImg *img);
-void ccdimg_set_targ_id(CcdImg *img, gulong new_targ_id);
-gulong ccdimg_get_targ_id(CcdImg *img);
-void ccdimg_set_tel_ra(CcdImg *img, const struct rastruct *new_ra);
-const struct rastruct *ccdimg_get_tel_ra(CcdImg *img);
-void ccdimg_set_tel_dec(CcdImg *img, const struct decstruct *new_dec);
-const struct decstruct *ccdimg_get_tel_dec(CcdImg *img);
-void ccdimg_set_image(CcdImg *img, gulong new_img_len, const gfloat *new_image);
-
-
-#define CCDCNTRL_TYPE                (ccdcntrl_get_type())
-#define CCDCNTRL(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCDCNTRL_TYPE, CcdCntrl))
-#define CCDCNTRL_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCDCNTRL_TYPE, CcdCntrlClass))
-#define IS_CCDCNTRL(objs)            (G_TYPE_CHECK_INSTANCE_TYPE ((objs), CCDCNTRL_TYPE))
-#define IS_CCDCNTRL_CLASS(klass)     (G_TYPE_CHECK_CLASS_TYPE ((klass), CCDCNTRL_TYPE))
+#define CCD_CNTRL_TYPE                (ccd_cntrl_get_type())
+#define CCD_CNTRL(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCD_CNTRL_TYPE, CcdCntrl))
+#define CCD_CNTRL_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCD_CNTRL_TYPE, CcdCntrlClass))
+#define IS_CCD_CNTRL(objs)            (G_TYPE_CHECK_INSTANCE_TYPE ((objs), CCD_CNTRL_TYPE))
+#define IS_CCD_CNTRL_CLASS(klass)     (G_TYPE_CHECK_CLASS_TYPE ((klass), CCD_CNTRL_TYPE))
 
 typedef struct _CcdCntrl       CcdCntrl;
 typedef struct _CcdCntrlClass  CcdCntrlClass;
@@ -139,11 +152,30 @@ typedef struct _CcdCntrlClass  CcdCntrlClass;
 struct _CcdCntrl
 {
   GObject parent;
-  GIOChannel *merlin_chan;
-  gint merlin_watch_id;
+  GIOChannel *drv_chan;
+  gint drv_watch_id;
   struct ccd_modes modes;
+  guchar drv_stat;
+
+  struct datestruct unid;
+  struct timestruct unit;
+  gint datetime_to_id;
+  
+  struct rastruct tel_ra;
+  struct decstruct tel_dec;
+  gint tel_pos_to_id;
+  
+  CcdImg *cur_img;
   gulong rpt_rem;
   GTimer *exp_timer;
+  gint exp_trem_to_id;
+  
+  /// Start x,y of window
+  gushort win_start_x, win_start_y;
+  /// Width and height of window
+  gushort win_width, win_height;
+  /// Prebinning mode
+  gushort prebin_x, prebin_y;
 };
 
 struct _CcdCntrlClass
@@ -151,15 +183,19 @@ struct _CcdCntrlClass
   GObjectClass parent_class;
 };
 
-GType ccdcntrl_get_type (void);
-CcdCntrl *ccdcntrl_new (void);
-gint ccdcntrl_start_exp(CcdCntrl *objs, guchar img_type, gfloat exp_t_sec, gulong repetitions, const guchar *targ_name, gulong targ_id);
-void ccdcntrl_cancel_exp(CcdCntrl *objs);
-guchar ccdcntrl_get_stat(CcdCntrl *objs);
-gboolean ccdcntrl_stat_error(guchar status);
-gboolean ccdcntrl_stat_exp_ordered(guchar status);
-gboolean ccdcntrl_stat_integrating(guchar status);
-gboolean ccdcntrl_stat_readout(guchar status);
+GType ccd_cntrl_get_type (void);
+CcdCntrl *ccd_cntrl_new (void);
+// gint ccd_cntrl_set_window(CcdCntrl *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y);
+gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd);
+void ccd_cntrl_cancel_exp(CcdCntrl *objs);
+gfloat ccd_cntrl_get_integ_trem(CcdCntrl *objs);
+gulong ccd_cntrl_get_rpt_rem(CcdCntrl *objs);
+guchar ccd_cntrl_get_stat(CcdCntrl *objs);
+gboolean ccd_cntrl_stat_err_retry(guchar status);
+gboolean ccd_cntrl_stat_err_no_recov(guchar status);
+gboolean ccd_cntrl_stat_integrating(guchar status);
+gboolean ccd_cntrl_stat_readout(guchar status);
+void ccd_cntrl_set_datetime(CcdCntrl *objs, struct datestruct const *unid, struct timestruct const *unit);
 
 G_END_DECLS
 
