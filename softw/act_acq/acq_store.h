@@ -25,7 +25,7 @@ struct _AcqStore
   pthread_t store_thr;
   gchar *sqlhost;
   MYSQL *store_conn;
-  MYSQL *alt_conn;
+  MYSQL *genl_conn;
   GSList *img_pend;
   pthread_mutex_t img_list_mutex;
 };

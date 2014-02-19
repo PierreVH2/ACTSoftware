@@ -77,14 +77,140 @@ GType acq_store_get_type (void)
 
 AcqStore *acq_store_new(gchar const *sqlhost)
 {
+  // check connections
+  act_log_debug(act_log_msg("Creating MySQL image storage connection."));
+  MYSQL *store_conn;
+  store_conn = mysql_init(NULL);
+  if (store_conn == NULL)
+  {
+    act_log_error(act_log_msg("Error initialising MySQL image storage connection handler - %s.", mysql_error(store_conn)));
+    return NULL;
+  }
+  if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  {
+    act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
+    mysql_close(store_conn);
+    return NULL;
+  }
+  
+  act_log_debug(act_log_msg("Creating general MySQL connection."));
+  MYSQL *genl_conn;
+  genl_conn = mysql_init(NULL);
+  if (genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("Error initialising general MySQL connection handler - %s.", mysql_error(store_conn)));
+    mysql_close(store_conn);
+    return NULL;
+  }
+  if (mysql_real_connect(genl_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  {
+    act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(genl_conn)));
+    mysql_close(store_conn);
+    mysql_close(genl_conn);
+    return NULL;
+  }
+  
+  // create object
+  AcqStore *objs = g_object_new (acq_store_get_type(), NULL);
+  objs->sqlhost = sqlhost;
+  objs->store_conn = store_conn;
+  objs->genl_conn = genl_conn;
+  pthread_mutex_init (&objs->img_list_mutex, NULL);
+  return objs; 
 }
 
+/** \brief Search database for given target name pattern
+ * \param objs AcqStore object, must have been initialised
+ * \param targ_name_pat Target name pattern to search for - SQL rules regarding search strings (with the 'LIKE' key word) apply
+ * \return Internal database target identifier on success, <0 if an error occurred and ==0 if no match was found.
+ */
 glong acq_store_search_targ_name(AcqStore *objs, gchar const *targ_name_pat)
 {
+  if (objs->genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("MySQL connection not available."));
+    return -1;
+  }
+  gchar qrystr[256];
+  sprintf(qrystr, "SELECT star_id FROM star_names WHERE star_name LIKE \"%s\";", targ_name_pat);
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(objs->genl_conn,qrystr);
+  result = mysql_store_result(objs->genl_conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Could not retrieve internal database identifier for target names matching \"%s\" - %s.", targ_name_pat, mysql_error(objs->formobjs->mysql_conn)));
+    return -1;
+  }
+  
+  int rowcount = mysql_num_rows(result);
+  if ((rowcount < 0) || (mysql_num_fields(result) != 1))
+  {
+    act_log_error(act_log_msg("Could not retrieve internal database identifier for targets names matching \"%s\" - Invalid number of rows/columns returned (%d rows, %d columns).", targ_name_pat, rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return -1;
+  }
+  if (rowcount == 0)
+  {
+    act_log_debug(act_log_msg("No target found matching search pattern \"%s\"", targ_name_pat));
+    return 0;
+  }
+  if (rowcount > 1)
+    act_log_debug(act_log_msg("Multiple targets found matching search pattern \"%s\". Choosing first returned result.", targ_name_pat));
+  
+  row = mysql_fetch_row(result);
+  glong tmp_targ_id;
+  if (sscanf(row[0], "%d", &tmp_targ_id) != 1)
+  {
+    act_log_error(act_log_msg("Error parsing internal database target identifier (%s).", row[0]));
+    return -1;
+  }
+  mysql_free_result(result);
+  return tmp_targ_id;
 }
 
-gchar const *acq_store_get_targ_name(AcqStore *objs, gulong targ_id)
+/** \brief Search database for name of target matching given DB ID
+ * \param objs AcqStore object, must have been initialised
+ * \param targ_id Internal database target identifier
+ * \return Name of target matching given identifier, or NULL in case of failure
+ */
+gchar *acq_store_get_targ_name(AcqStore *objs, gulong targ_id)
 {
+  if (objs->genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("MySQL connection not available."));
+    return NULL;
+  }
+  gchar qrystr[256];
+  sprintf(qrystr, "SELECT star_name FROM star_prim_names WHERE star_id=%lu;", targ_id);
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(objs->genl_conn,qrystr);
+  result = mysql_store_result(objs->genl_conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Could not retrieve name for target with internal database identifier %lu - %s.", targ_id, mysql_error(objs->formobjs->mysql_conn)));
+    return NULL;
+  }
+  
+  int rowcount = mysql_num_rows(result);
+  if ((rowcount < 0) || (mysql_num_fields(result) != 1))
+  {
+    act_log_error(act_log_msg("Could not retrieve name for target with internal database identifier %lu - Invalid number of rows/columns returned (%d rows, %d columns).", targ_id, rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return NULL;
+  }
+  if (rowcount == 0)
+  {
+    act_log_debug(act_log_msg("No target found with idenfitier \"%lu\"", targ_id));
+    return NULL;
+  }
+  
+  row = mysql_fetch_row(result);
+  gchar *ret = malloc(strlen(row[0]+1));
+  sprintf(ret, "%s", row[0]);
+  mysql_free_result(result);
+  return ret;
 }
 
 guint acq_store_get_filt_list(AcqStore *objs, struct filtaper **filters)
@@ -121,8 +247,9 @@ static void acq_store_instance_init(GObject *acq_store)
   objs->status = 0;
   objs->sqlhost = NULL;
   objs->store_conn = NULL;
-  objs->alt_conn = NULL;
+  objs->genl_conn = NULL;
   objs->img_pend = NULL;
+  objs->img_list_mutex = NULL;
 }
 
 static void acq_store_class_init(CcdImgClass *klass)
@@ -143,7 +270,33 @@ static void acq_store_instance_dispose(GObject *acq_store)
       objs->status &= ~STAT_STORING;
     }
   }
-  
+  if (objs->sqlhost != NULL)
+  {
+    g_free(objs->sqlhost);
+    objs->sqlhost = NULL;
+  }
+  if (objs->store_conn != NULL)
+  {
+    if ((objs->status & STAT_STORING) > 0)
+      act_log_error(act_log_msg("Need to close MySQL store connection, but images are still being store. Not closing connection."));
+    else
+    {
+      mysql_close(objs->store_conn);
+      objs->store_conn = NULL;
+    }
+  }
+  if (objs->genl_conn != NULL)
+  {
+    mysql_close(objs->genl_conn);
+    objs->genl_conn = NULL;
+  }
+  if (objs->img_pend != NULL)
+    act_log_error(act_log_msg("There are images waiting to be stored."));
+  if (objs->img_list_mutex != NULL)
+  {
+    pthread_mutex_destroy(objs->img_list_mutex);
+    objs->img_list_mutex = NULL;
+  }
 }
 
 
