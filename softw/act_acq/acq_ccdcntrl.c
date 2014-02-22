@@ -297,55 +297,79 @@ char ccdcntrl_save_image(struct ccdcntrl_objects *ccdcntrl_objs)
     return FALSE;
   }
   act_log_debug(act_log_msg("Image ID: %lu", img_id));
-
-/*  sprintf(qrystr, "CREATE TEMPORARY TABLE act_tmp_img.img_%lu (id INT NOT NULL AUTO_INCREMENT, value TINYINT UNSIGNED NOT NULL, PRIMARY KEY(id)) ENGINE=MyISAM AUTO_INCREMENT=0;", img_id);
-  if (mysql_query(conn, qrystr))
+  
+  MYSQL_STMT  *stmt;
+  stmt = mysql_stmt_init(conn);
+  if (!stmt)
   {
-    act_log_error(act_log_msg("Failed to create image data temporary table - %s", mysql_error(conn)));
+    act_log_error(act_log_msg("Failed to initialise MySQL prepared statement object - out of memory."));
     mysql_query(conn, "ROLLBACK;");
     return FALSE;
-  }*/
+  }
+  sprintf(qrystr, "INSERT INTO merlin_img_data (ccd_img_id, x, y, value) VALUES (%lu, ?, ?, ?);", img_id);
+  if (mysql_stmt_prepare(stmt, qrystr, strlen(qrystr)))
+  {
+    act_log_error(act_log_msg("Failed to prepare statement for inserting image pixel data - %s", mysql_stmt_error(stmt)));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  if (mysql_stmt_param_count(stmt) != 3)
+  {
+    act_log_error(act_log_msg("Invalid number of parameters in prepared statement - %d",  mysql_stmt_param_count(stmt)));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
   
-  /// TODO: Use prepared statements - much faster.
-  int i, j;
-//   int qrylen = sprintf(qrystr, "INSERT INTO act_tmp_img.img_%lu (value) VALUES ", img_id);
+  gushort cur_x, cur_y;
+  guchar cur_val;
+  MYSQL_BIND  bind[3];
+  memset(bind, 0, sizeof(bind));
+  bind[0].buffer_type = MYSQL_TYPE_SHORT;
+  bind[0].buffer = (char *)&cur_x;
+  bind[0].is_null = 0;
+  bind[0].length = 0;
+  bind[0].is_unsigned = TRUE;
+  bind[1].buffer_type = MYSQL_TYPE_SHORT;
+  bind[1].buffer = (char *)&cur_y;
+  bind[1].is_null = 0;
+  bind[1].length = 0;
+  bind[1].is_unsigned = TRUE;
+  bind[2].buffer_type = MYSQL_TYPE_TINY;
+  bind[2].buffer = (char *)&cur_val;
+  bind[2].is_null = 0;
+  bind[2].length = 0;
+  bind[2].is_unsigned = TRUE;
+  if (mysql_stmt_bind_param(stmt, bind))
+  {
+    act_log_error(act_log_msg("Failed to bind parameters for prepared statement - %s", mysql_stmt_error(stmt)));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  
+  int i,j;
   for (i=0; i < G_targ_img.img_params.img_width; i++)
   {
-    int qrylen = sprintf(qrystr, "INSERT INTO merlin_img_data (merlin_img_id, x, y, value) VALUES ");
     for (j=0; j < G_targ_img.img_params.img_height; j++)
-      qrylen += sprintf(&qrystr[qrylen], "(%lu,%hu,%hu,%hhu),", img_id, (unsigned short)i, (unsigned short)j, G_targ_img.img_data[i*G_targ_img.img_params.img_height + j]);
-    qrystr[qrylen-1] = ';';
-    if (mysql_query(conn, qrystr))
     {
-      act_log_error(act_log_msg("Failed to save CCD row %d to database - %s.", i, mysql_error(conn)));
-      act_log_debug(act_log_msg("SQL query: %s", qrystr));
-      mysql_query(conn, "ROLLBACK;");
-      return FALSE;
+      cur_x = i;
+      cur_y = j;
+      cur_val = G_targ_img.img_data[i*G_targ_img.img_params.img_height + j];
+      if (mysql_stmt_execute(stmt))
+      {
+        act_log_error(act_log_msg("Failed to execute prepared statement to insert pixel datum into database - %s", mysql_stmt_error(stmt)));
+        ret = FALSE;
+        break;
+      }
     }
   }
-/*  qrystr[qrylen-1] = ';';
-  if (mysql_query(conn, qrystr))
+  if (!ret)
   {
-    act_log_error(act_log_msg("Failed to save CCD pixel data to database - %s", mysql_error(conn)));
-    act_log_debug(act_log_msg("SQL query: %s", qrystr));
-    mysql_query(conn, "ROLLBACK");
-    return FALSE;
-  }*/
-
-/*  sprintf(qrystr, "INSERT INTO merlin_img_data (merlin_img_id, x, y, value) SELECT %lu, id DIV %d, id MOD %d, value FROM act_tmp_img.img_%lu;", img_id, G_targ_img.img_params.img_height, G_targ_img.img_params.img_height, img_id);
-  if (mysql_query(conn, qrystr))
-  {
-    act_log_error(act_log_msg("Failed to copy image data from temporary table - %s", mysql_error(conn)));
-    mysql_query(conn, "ROLLBACK");
+    act_log_error(act_log_msg("Entire image not saved. Rolling back database transactions."));
+    mysql_query(conn, "ROLLBACK;");
     return FALSE;
   }
-  
-  sprintf(qrystr, "DROP TEMPORARY TABLE act_tmp_img.img_%lu", img_id);
-  if (mysql_query(conn, qrystr))
-    act_log_error(act_log_msg("Failed to delete temporary image data table - %s", mysql_error(conn)));*/
-
   mysql_query(conn, "COMMIT;");
-  return TRUE;
+  return TRUE;  
 }
 
 char ccdcntrl_write_fits(const char *filename)
