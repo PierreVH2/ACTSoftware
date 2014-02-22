@@ -326,7 +326,7 @@ void maninteg_search_user(gpointer user_data)
   struct maninteg_objects *objs = (struct maninteg_objects *)user_data;
   const gchar *username = gtk_entry_get_text(GTK_ENTRY(objs->ent_username));
   char qrystr[256];
-  sprintf(qrystr, "SELECT user_id FROM act_users WHERE username LIKE \"%s\";", username);
+  sprintf(qrystr, "SELECT user_id FROM users WHERE name LIKE \"%s\";", username);
   
   MYSQL_RES *result;
   MYSQL_ROW row;
