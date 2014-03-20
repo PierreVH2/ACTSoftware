@@ -211,46 +211,8 @@ enum
   IPC_FRAME_TYPE_DARK,
   IPC_FRAME_TYPE_FLAT
 };
-
-/// Maximum number of CCD window modes supported
-#define IPC_CCD_MAX_NUM_WINDOW_MODES  1
 /** \} */
 
-/** \brief Prebinning modes supported by the CCD/driver
- * \{ */
-#define IPC_IMG_PREBIN_1   0x00000001
-#define IPC_IMG_PREBIN_2   0x00000002
-#define IPC_IMG_PREBIN_3   0x00000004
-#define IPC_IMG_PREBIN_4   0x00000008
-#define IPC_IMG_PREBIN_5   0x00000010
-#define IPC_IMG_PREBIN_6   0x00000020
-#define IPC_IMG_PREBIN_7   0x00000040
-#define IPC_IMG_PREBIN_8   0x00000080
-#define IPC_IMG_PREBIN_9   0x00000100
-#define IPC_IMG_PREBIN_10  0x00000200
-#define IPC_IMG_PREBIN_11  0x00000400
-#define IPC_IMG_PREBIN_12  0x00000800
-#define IPC_IMG_PREBIN_13  0x00001000
-#define IPC_IMG_PREBIN_14  0x00002000
-#define IPC_IMG_PREBIN_15  0x00004000
-#define IPC_IMG_PREBIN_16  0x00008000
-#define IPC_IMG_PREBIN_17  0x00010000
-#define IPC_IMG_PREBIN_18  0x00020000
-#define IPC_IMG_PREBIN_19  0x00040000
-#define IPC_IMG_PREBIN_20  0x00080000
-#define IPC_IMG_PREBIN_21  0x00100000
-#define IPC_IMG_PREBIN_22  0x00200000
-#define IPC_IMG_PREBIN_23  0x00400000
-#define IPC_IMG_PREBIN_24  0x00800000
-#define IPC_IMG_PREBIN_25  0x01000000
-#define IPC_IMG_PREBIN_26  0x02000000
-#define IPC_IMG_PREBIN_27  0x04000000
-#define IPC_IMG_PREBIN_28  0x08000000
-#define IPC_IMG_PREBIN_29  0x10000000
-#define IPC_IMG_PREBIN_30  0x20000000
-#define IPC_IMG_PREBIN_31  0x40000000
-#define IPC_IMG_PREBIN_32  0x80000000
-/** \} */
 
 /*! \name Filter/Aperture info struct
  */
@@ -473,7 +435,7 @@ struct act_msg_datapmt
   struct decstruct targ_dec;
   //! Epoch of target coordinates in fractional years since 0 AD.
   float targ_epoch;
-  //! Desired PMT mode (must have been defined in pmt_mode in pmtcap message).
+  //! PMT mode (must have been defined in pmt_mode in pmtcap message).
   unsigned char pmt_mode;
   //! Sample period in nanoseconds.
   float sample_period_s;
@@ -491,17 +453,13 @@ struct act_msg_datapmt
 struct act_msg_ccdcap
 {
   //! Minimum and maximum exposure time supported in milli-seconds.
-  unsigned long min_exp_t_msec, max_exp_t_msec;
+  float min_exp_t_s, max_exp_t_s;
   //! CCD data collection stage.
   unsigned short dataccd_stage;
   //! CCD identifier
   char ccd_id[IPC_MAX_INSTRID_LEN];
   //! Names of supported filters
   struct filtaper filters[IPC_MAX_NUM_FILTAPERS];
-  //! Prebinning modes supported by the CCD - must be a bitwise OR'd list of IPC_IMG_PREBIN_* modes
-  unsigned int prebin_x, prebin_y;
-  //! Windowing modes supported by the CCD
-  struct ipc_ccd_window_mode windows[IPC_CCD_MAX_NUM_WINDOW_MODES];
 };
 
 /// TODO: Include supported frame transfer modes in CCD caps
@@ -523,24 +481,20 @@ struct act_msg_dataccd
   int targ_id;
   //! Human-readable name for target
   char targ_name[MAX_TARGID_LEN];
-  //! Right-ascension of target.
-//   struct rastruct targ_ra;
-  //! Declination of target.
-//   struct decstruct targ_dec;
-  //! Epoch of target coordinates in fractional years since 0 AD.
-//   float targ_epoch;
   //! Integration time in milli-seconds.
   double exp_t_s;
   //! Number of repetitions in milli-seconds.
   unsigned long repetitions;
   //! Filter info structure
   struct filtaper filter;
-  //! The desired frame transfer mode (must have been defined in frame_transfer of ccdcap message)
+  //! Frame transfer mode (must have been defined in frame_transfer of ccdcap message)
   unsigned char frame_transfer;
-  //! The desired prebinning mode (must be one of the bits specified in ccdcap)
-  unsigned int prebin_x, prebin_y;
-  //! Desired CCD window mode number (element in windows array supplied in ccdcap message)
-  unsigned char window_mode_num;
+  //! Window start x,y
+  unsigned short win_start_x, win_start_y;
+  //! Window width and height
+  unsigned short win_width, win_height;
+  //! Prebinning mode (must be one of the bits specified in ccdcap)
+  unsigned short prebin_x, prebin_y;
 };
 
 /** \} */

@@ -47,6 +47,9 @@ struct _CcdCmd
   /// Target name and DB id
   gchar *targ_name;
   gulong targ_id;
+  /// User name and DB id
+  gchar *user_name;
+  gulong user_id;
 };
 
 struct _CcdCmdClass
@@ -75,8 +78,11 @@ void ccd_cmd_set_exp_t(CcdCmd *objs, gfloat exp_t_s);
 gulong ccd_cmd_get_rpt(CcdCmd *objs);
 void ccd_cmd_set_rpt(CcdCmd *objs, gulong repetitions);
 gulong ccd_cmd_get_targ_id(CcdCmd *objs);
-gchar * ccd_cmd_get_targ_name(CcdCmd *objs);
+gchar const * ccd_cmd_get_targ_name(CcdCmd *objs);
 void ccd_cmd_set_target(CcdCmd *objs, gulong targ_id, gchar const *targ_name);
+gulong ccd_cmd_get_user_id(CcdCmd *objs);
+gchar const * ccd_cmd_get_user_name(CcdCmd *objs);
+void ccd_cmd_set_user(CcdCmd *objs, gulong user_id, gchar const *user_name);
 
 
 #define CCD_IMG_TYPE                (ccd_img_get_type())
@@ -109,6 +115,9 @@ struct _CcdImg
   /// Target name and DB id
   gchar *targ_name;
   gulong targ_id;
+  /// User name and DB id
+  gchar *user_name;
+  gulong user_id;
   /// Starting telescope coordinates
   struct rastruct tel_ra;
   struct decstruct tel_dec;
@@ -133,8 +142,10 @@ gushort ccd_img_get_win_height(CcdImg *objs);
 gushort ccd_img_get_prebin_x(CcdImg *objs);
 gushort ccd_img_get_prebin_y(CcdImg *objs);
 void ccd_img_get_start_datetime(CcdImg *objs, struct datestruct *start_unid, struct timestruct *start_unit);
-gchar *ccd_img_get_targ_name(CcdImg *objs);
+gchar const *ccd_img_get_targ_name(CcdImg *objs);
 gulong ccd_img_get_targ_id(CcdImg *objs);
+gchar const *ccd_img_get_user_name(CcdImg *objs);
+gulong ccd_img_get_user_id(CcdImg *objs);
 void ccd_img_get_tel_pos(CcdImg *objs, struct rastruct *tel_ra, struct decstruct *tel_dec);
 gulong ccd_img_get_img_len(CcdImg *objs);
 gfloat const *ccd_img_get_img_data(CcdImg *objs);
@@ -154,8 +165,12 @@ struct _CcdCntrl
   GObject parent;
   GIOChannel *drv_chan;
   gint drv_watch_id;
-  struct ccd_modes modes;
   guchar drv_stat;
+  
+  gchar *ccd_id;
+  gfloat min_exp_t_s, max_exp_t_s;
+  gushort max_width_px, max_height_px;
+  gushort ra_width_asec, dec_height_asec;
 
   struct datestruct unid;
   struct timestruct unit;

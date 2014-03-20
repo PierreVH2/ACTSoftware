@@ -4,6 +4,7 @@
 #include <glib.h>
 #include <glib-object.h>
 #include <pthread.h>
+#include <mysql/mysql.h>
 #include "acq_ccdcntrl.h"
 
 G_BEGIN_DECLS
@@ -37,10 +38,12 @@ struct _AcqStoreClass
 
 GType acq_store_get_type (void);
 AcqStore *acq_store_new(gchar const *sqlhost);
-glong acq_store_search_targ_name(AcqStore *objs, gchar const *targ_name_pat);
-gchar const *acq_store_get_targ_name(AcqStore *objs, gulong targ_id);
-guint acq_store_get_filt_list(AcqStore *objs, struct filtaper **filters);
-void acq_store_append_image(AcqStore *objs, AcqImg *new_img);
+glong acq_store_search_targ_id(AcqStore *objs, gchar const *targ_name_pat);
+gchar *acq_store_get_targ_name(AcqStore *objs, gulong targ_id);
+glong acq_store_search_user_id(AcqStore *objs, gchar const *user_name_pat);
+gchar *acq_store_get_user_name(AcqStore *objs, gulong user_id);
+gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdcap);
+void acq_store_append_image(AcqStore *objs, CcdImg *new_img);
 gboolean acq_store_idle(AcqStore *objs);
 gboolean acq_store_storing(AcqStore *objs);
 gboolean acq_store_error_retry(AcqStore *objs);

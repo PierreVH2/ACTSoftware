@@ -26,6 +26,7 @@ static void ccd_img_set_exp_t(CcdImg *objs, gfloat exp_t_s);
 static void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y);
 static void ccd_img_set_start_datetime(CcdImg *objs, struct datestruct const *start_unid, struct timestruct const *start_unit);
 static void ccd_img_set_target(CcdImg *objs, gulong targ_id, gchar const *targ_name);
+static void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name);
 static void ccd_img_set_tel_pos(CcdImg *objs, struct rastruct const *tel_ra, struct decstruct const *tel_dec);
 static void ccd_img_set_img(CcdImg *objs, gulong img_len, gfloat const *img_data);
 static void ccd_img_set_img_ccd(CcdImg *objs, struct merlin_img *new_img);
@@ -190,9 +191,9 @@ gulong ccd_cmd_get_targ_id(CcdCmd *objs)
   return objs->targ_id;
 }
 
-gchar * ccd_cmd_get_targ_name(CcdCmd *objs)
+gchar const * ccd_cmd_get_targ_name(CcdCmd *objs)
 {
-  return g_strdup(objs->targ_name);
+  return objs->targ_name;
 }
 
 void ccd_cmd_set_target(CcdCmd *objs, gulong targ_id, gchar const *targ_name)
@@ -201,6 +202,24 @@ void ccd_cmd_set_target(CcdCmd *objs, gulong targ_id, gchar const *targ_name)
   if (objs->targ_name != NULL)
     g_free(objs->targ_name);
   objs->targ_name = g_strdup(targ_name);
+}
+
+gulong ccd_cmd_get_user_id(CcdCmd *objs)
+{
+  return objs->user_id;
+}
+
+gchar const * ccd_cmd_get_user_name(CcdCmd *objs)
+{
+  return objs->user_name;
+}
+
+void ccd_cmd_set_user(CcdCmd *objs, gulong user_id, gchar const *user_name)
+{
+  objs->user_id = user_id;
+  if (objs->user_name != NULL)
+    g_free(objs->user_name);
+  objs->user_name = g_strdup(user_name);
 }
 
 static void ccd_cmd_instance_init(GObject *ccd_cmd)
@@ -306,14 +325,24 @@ void ccd_img_get_start_datetime(CcdImg *objs, struct datestruct *start_unid, str
     memcpy(start_unit, &objs->start_unit, sizeof(struct timestruct));
 }
 
-gchar *ccd_img_get_targ_name(CcdImg *objs)
+gchar const *ccd_img_get_targ_name(CcdImg *objs)
 {
-  return g_strdup(objs->targ_name);
+  return objs->targ_name;
 }
 
 gulong ccd_img_get_targ_id(CcdImg *objs)
 {
   return objs->targ_id;
+}
+
+gchar const *ccd_img_get_user_name(CcdImg *objs)
+{
+  return objs->user_name;
+}
+
+gulong ccd_img_get_user_id(CcdImg *objs)
+{
+  return objs->user_id;
 }
 
 void ccd_img_get_tel_pos(CcdImg *objs, struct rastruct *tel_ra, struct decstruct *tel_dec)
@@ -400,6 +429,14 @@ static void ccd_img_set_target(CcdImg *objs, gulong targ_id, gchar const *targ_n
   objs->targ_name = g_strdup(targ_name);
 }
 
+static void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name)
+{
+  objs->user_id = user_id;
+  if (objs->user_name != NULL)
+    g_free(objs->user_name);
+  objs->user_name = g_strdup(user_name);
+}
+
 static void ccd_img_set_tel_pos(CcdImg *objs, struct rastruct const *tel_ra, struct decstruct const *tel_dec)
 {
   memcpy(&objs->tel_ra, tel_ra, sizeof(struct rastruct));
@@ -481,7 +518,16 @@ CcdCntrl *ccd_cntrl_new (void)
   objs->drv_chan = g_io_channel_unix_new(drv_fd);
   g_io_channel_set_close_on_unref(objs->drv_chan, TRUE);
   objs->drv_watch_id = g_io_add_watch(objs->drv_chan, G_IO_IN|G_IO_PRI, drv_watch, objs);
-  memcpy(&objs->modes, &tmp_modes, sizeof(struct ccd_modes));
+  if (objs->ccd_id != NULL)
+    g_free(objs->ccd_id);
+  objs->ccd_id = malloc(strlen(tmp_modes.ccd_id+1));
+  sprintf(objs->ccd_id, "%s", tmp_modes.ccd_id);
+  objs->min_exp_t_s = tmp_modes.min_exp_t_sec + tmp_modes.min_exp_t_nanosec/1000000000.0;
+  objs->max_exp_t_s = tmp_modes.max_exp_t_sec + tmp_modes.max_exp_t_nanosec/1000000000.0;
+  objs->max_width_px = tmp_modes.max_width_px;
+  objs->max_height_px = tmp_modes.max_height_px;
+  objs->ra_width_asec = tmp_modes.ra_width_asec;
+  objs->dec_height_asec = tmp_modes.dec_height_asec;
   /// TODO: When windowing implemented, implement proper treatment of initial window - i.e. either select a default starting window mode and send that to the driver here or read the last used window from the driver and set it in the cntrl structure here.
   objs->win_start_x = 0;
   objs->win_start_y = 0;
@@ -495,7 +541,7 @@ CcdCntrl *ccd_cntrl_new (void)
 
 gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
 {
-  if ((objs->modes.max_exp_t_sec == 0) && (objs->modes.max_exp_t_nanosec == 0))
+  if (objs->max_exp_t_s == objs->min_exp_t_s)
   {
     act_log_error(act_log_msg("CCD parameters not yet established, cannot start integration."));
     return EAGAIN;
@@ -554,6 +600,7 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
   ccd_img_set_exp_t(new_img, cmd->exp_t_s);
   ccd_img_set_window(new_img, cmd->win_start_x, cmd->win_start_y, cmd->win_width, cmd->win_height, cmd->prebin_x, cmd->prebin_y);
   ccd_img_set_target(new_img, cmd->targ_id, cmd->targ_name);
+  ccd_img_set_user(new_img, cmd->user_id, cmd->user_name);
   
   objs->rpt_rem = cmd->repetitions;
   if (objs->exp_trem_to_id)
@@ -670,10 +717,10 @@ static void ccd_cntrl_instance_init(GObject *ccd_cntrl)
   memset(&objs->tel_dec, 0, sizeof(struct decstruct));
   objs->tel_pos_to_id = 0;
   
-  objs->modes.ccd_id[0] = '\0';
-  objs->modes.min_exp_t_sec = objs->modes.min_exp_t_nanosec = objs->modes.max_exp_t_sec = objs->modes.max_exp_t_nanosec = 0;
-  objs->modes.max_width_px = objs->modes.max_height_px = 0;
-  objs->modes.ra_width_asec = objs->modes.dec_height_asec = 0;
+  objs->ccd_id = NULL;
+  objs->min_exp_t_s = objs->max_exp_t_s = 0.0;
+  objs->max_width_px = objs->max_height_px = 0;
+  objs->ra_width_asec = objs->dec_height_asec = 0;
   
   objs->cur_img = NULL;
   objs->rpt_rem = 0;
@@ -700,6 +747,11 @@ static void ccd_cntrl_instance_dispose(GObject *ccd_cntrl)
   {
     g_object_unref(objs->drv_chan);
     objs->drv_chan = NULL;
+  }
+  if (objs->ccd_id != NULL)
+  {
+    g_free(objs->ccd_id);
+    objs->ccd_id = NULL;
   }
   if (objs->cur_img != NULL)
   {

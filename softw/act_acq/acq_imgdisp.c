@@ -5,13 +5,105 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
-#include <merlin_driver.h>
-#include <ccd_defs.h>
 #include <act_log.h>
 #include <act_site.h>
 #include <act_timecoord.h>
-#include "acq_ccdcntrl.h"
 #include "acq_imgdisp.h"
+
+enum
+{
+  MOUSE_XY_COORD,
+  MOUSE_EQUAT_COORD,
+  LAST_SIGNAL
+};
+
+static guint imgdisp_signals[LAST_SIGNAL] = { 0 };
+
+GType acq_imgdisp_get_type (void)
+{
+  static GType imgdisp_type = 0;
+  
+  if (!imgdisp_type)
+  {
+    const GTypeInfo imgdisp_info =
+    {
+      sizeof (AcqImgdispClass),
+      NULL, /* base_init */
+      NULL, /* base_finalize */
+      (GClassInitFunc) imgdisp_class_init,
+      NULL, /* class_finalize */
+      NULL, /* class_data */
+      sizeof (AcqImgdisp),
+      0,
+      (GInstanceInitFunc) imgdisp_instance_init,
+      NULL
+    };
+    
+    imgdisp_type = g_type_register_static (GTK_TYPE_EVENT_BOX, "AcqImgdisp", &imgdisp_info, 0);
+  }
+  
+  return imgdisp_type;
+}
+
+GtkWidget *acq_imgdisp_new (void)
+{
+}
+
+void acq_imgdisp_set_flip_ns(GtkWidget *acq_imgdisp, gboolean flip_ns)
+{
+}
+
+void acq_imgdisp_set_flip_ew(GtkWidget *acq_imgdisp, gboolean flip_ew)
+{
+}
+
+void acq_imgdisp_set_bright_lim(GtkWidget *acq_imgdisp, gfloat lim)
+{
+}
+
+void acq_imgdisp_set_feint_lim(GtkWidget *acq_imgdisp, gfloat lim)
+{
+}
+
+void acq_imgdisp_set_lut(GtkWidget *acq_imgdisp, AcqImgLut *lut)
+{
+}
+
+void acq_imgdisp_set_img(GtkWidget *acq_imgdisp, AcqImg *img)
+{
+}
+
+void imgdisp_instance_init(GObject *imgdisp)
+{
+
+  
+  GtkWidget *dra_ccdimg = gtk_drawing_area_new();
+  G_dra_ccdimg = dra_ccdimg;
+  gtk_container_add(GTK_CONTAINER(evb_ccdimg), dra_ccdimg);
+  gtk_widget_set_size_request (dra_ccdimg, ccdcntrl_get_max_width(), ccdcntrl_get_max_height());
+  gtk_widget_add_events (dra_ccdimg, GDK_EXPOSURE_MASK);
+  GdkGLConfig *glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGBA | GDK_GL_MODE_DOUBLE);
+  if (!glconfig)
+    act_log_error(act_log_msg("Could not find suitable OpenGL configuration."));
+  else if (!gtk_widget_set_gl_capability (dra_ccdimg, glconfig, FALSE, TRUE, GDK_GL_RGBA_TYPE))
+    act_log_error(act_log_msg("Could not find suitable OpenGL capability."));
+  else
+  {
+    g_signal_connect (dra_ccdimg, "configure-event", G_CALLBACK (dra_configure), NULL);
+    g_signal_connect (dra_ccdimg, "expose-event", G_CALLBACK (dra_expose), NULL);
+  }
+  
+}
+
+void imgdisp_class_init(ImgdispClass *klass)
+{
+}
+
+
+
+
+
+
 
 // ??? Try embedded PNG images for brightness and contrast icons
 
@@ -343,7 +435,7 @@ gboolean dra_configure(GtkWidget *dra_ccdimg)
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
     log = malloc(length);
     glGetShaderInfoLog(shader, length, &result, log);
-    fprintf(stderr, "Unable to compile vertex shader: %s\n", log);
+    fprintf(stderr, "Unable to compile fragment shader: %s\n", log);
     free(log);
     glDeleteShader(shader);
   }

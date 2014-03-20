@@ -1,39 +1,19 @@
 #include <gtk/gtk.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <stdlib.h>
+#include <pwd.h>
 #include <errno.h>
 #include <string.h>
-#include <act_plc.h>
 #include <act_log.h>
 #include <act_ipc.h>
 #include "acq_store.h"
 
-/*
-#define DOMESHUTTER_FAIL_TIME_S   300
-#define DOMESHUTTER_ENV_TIME_S    600
-
-static void domeshutter_class_init (DomeshutterClass *klass);
-static void domeshutter_init(GtkWidget *domeshutter);
-static void domeshutter_destroy(gpointer domeshutter);
-static void buttons_toggled(gpointer domeshutter);
-static void buttons_nand(GtkWidget *button1, gpointer button2);
-static void block_button_toggles(Domeshutter *objs);
-static void unblock_button_toggles(Domeshutter *objs);
-static guchar process_quit(Domeshutter *objs, struct act_msg_quit *msg_quit);
-static guchar process_environ(Domeshutter *objs, struct act_msg_environ *msg_environ);
-static guchar process_targset(Domeshutter *objs, struct act_msg_targset *msg_targset);
-static gboolean fail_timeout(gpointer domeshutter);
-static gboolean env_timeout(gpointer domeshutter);
-static guchar environ_change(Domeshutter *objs, gboolean weath_ok, gboolean sun_alt_ok);
-static void process_complete(Domeshutter *objs, guchar status);
-static void send_start_open(Domeshutter *objs);
-static void send_start_close(Domeshutter *objs);
-static void send_stop(Domeshutter *objs);
-*/
-
 #define STAT_STORING      0x01
 #define STAT_ERR_RETRY    0x02
 #define STAT_ERR_NO_RECOV 0x04
+
+#define STORE_MAX_RETRIES 3
 
 enum
 {
@@ -41,12 +21,36 @@ enum
   LAST_SIGNAL
 };
 
+enum
+{
+  DB_TYPE_ANY = 1,
+  DB_TYPE_ACQ_OBJ,
+  DB_TYPE_ACQ_SKY,
+  DB_TYPE_OBJECT,
+  DB_TYPE_BIAS,
+  DB_TYPE_DARK,
+  DB_TYPE_FLAT,
+  DB_TYPE_MASTER_BIAS,
+  DB_TYPE_MASTER_DARK,
+  DB_TYPE_MASTER_FLAT
+};
+
+
 static guint acq_store_signals[LAST_SIGNAL] = { 0 };
 
 
 static void acq_store_instance_init(GObject *acq_store);
 static void acq_store_class_init(CcdImgClass *klass);
 static void acq_store_instance_dispose(GObject *acq_store);
+static void acq_store_instance_init(GObject *acq_store);
+static void acq_store_class_init(CcdImgClass *klass);
+static void acq_store_instance_dispose(GObject *acq_store);
+static void *store_pending_img(void *acq_store);
+static void store_next_img(AcqStore *objs);
+static gboolean store_img(MYSQL *conn, CcdImg *img);
+static void store_img_fallback(CcdImg *img);
+static gboolean store_reconnect(AcqStore *objs);
+static guchar img_type_acq_to_db(guchar acq_img_type);
 
 
 GType acq_store_get_type (void)
@@ -65,7 +69,7 @@ GType acq_store_get_type (void)
       NULL, /* class_data */
       sizeof (AcqStore),
       0,
-      (GInstanceInitFunc) acq_store_init,
+      (GInstanceInitFunc) acq_store_instance_init,
       NULL
     };
     
@@ -112,7 +116,8 @@ AcqStore *acq_store_new(gchar const *sqlhost)
   
   // create object
   AcqStore *objs = g_object_new (acq_store_get_type(), NULL);
-  objs->sqlhost = sqlhost;
+  objs->sqlhost = malloc(strlen(sqlhost)+1);
+  sprintf(objs->sqlhost, "%s", sqlhost);
   objs->store_conn = store_conn;
   objs->genl_conn = genl_conn;
   pthread_mutex_init (&objs->img_list_mutex, NULL);
@@ -124,7 +129,7 @@ AcqStore *acq_store_new(gchar const *sqlhost)
  * \param targ_name_pat Target name pattern to search for - SQL rules regarding search strings (with the 'LIKE' key word) apply
  * \return Internal database target identifier on success, <0 if an error occurred and ==0 if no match was found.
  */
-glong acq_store_search_targ_name(AcqStore *objs, gchar const *targ_name_pat)
+glong acq_store_search_targ_id(AcqStore *objs, gchar const *targ_name_pat)
 {
   if (objs->genl_conn == NULL)
   {
@@ -139,7 +144,7 @@ glong acq_store_search_targ_name(AcqStore *objs, gchar const *targ_name_pat)
   result = mysql_store_result(objs->genl_conn);
   if (result == NULL)
   {
-    act_log_error(act_log_msg("Could not retrieve internal database identifier for target names matching \"%s\" - %s.", targ_name_pat, mysql_error(objs->formobjs->mysql_conn)));
+    act_log_error(act_log_msg("Could not retrieve internal database identifier for target names matching \"%s\" - %s.", targ_name_pat, mysql_error(objs->genl_conn)));
     return -1;
   }
   
@@ -160,7 +165,7 @@ glong acq_store_search_targ_name(AcqStore *objs, gchar const *targ_name_pat)
   
   row = mysql_fetch_row(result);
   glong tmp_targ_id;
-  if (sscanf(row[0], "%d", &tmp_targ_id) != 1)
+  if (sscanf(row[0], "%ld", &tmp_targ_id) != 1)
   {
     act_log_error(act_log_msg("Error parsing internal database target identifier (%s).", row[0]));
     return -1;
@@ -189,7 +194,7 @@ gchar *acq_store_get_targ_name(AcqStore *objs, gulong targ_id)
   result = mysql_store_result(objs->genl_conn);
   if (result == NULL)
   {
-    act_log_error(act_log_msg("Could not retrieve name for target with internal database identifier %lu - %s.", targ_id, mysql_error(objs->formobjs->mysql_conn)));
+    act_log_error(act_log_msg("Could not retrieve name for target with internal database identifier %lu - %s.", targ_id, mysql_error(objs->genl_conn)));
     return NULL;
   }
   
@@ -207,18 +212,182 @@ gchar *acq_store_get_targ_name(AcqStore *objs, gulong targ_id)
   }
   
   row = mysql_fetch_row(result);
-  gchar *ret = malloc(strlen(row[0]+1));
-  sprintf(ret, "%s", row[0]);
+  gchar *targ_name = malloc(strlen(row[0]+1));
+  sprintf(targ_name, "%s", row[0]);
   mysql_free_result(result);
-  return ret;
+  return targ_name;
 }
 
-guint acq_store_get_filt_list(AcqStore *objs, struct filtaper **filters)
+glong acq_store_search_user_id(AcqStore *objs, gchar const *user_name_pat)
 {
+  if (objs->genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("MySQL connection not available."));
+    return -1;
+  }
+  gchar qrystr[256];
+  sprintf(qrystr, "SELECT id FROM users WHERE name LIKE \"%s\";", user_name_pat);
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(objs->genl_conn,qrystr);
+  result = mysql_store_result(objs->genl_conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Could not retrieve internal database identifier for user names matching \"%s\" - %s.", user_name_pat, mysql_error(objs->genl_conn)));
+    return -1;
+  }
+  
+  int rowcount = mysql_num_rows(result);
+  if ((rowcount < 0) || (mysql_num_fields(result) != 1))
+  {
+    act_log_error(act_log_msg("Could not retrieve internal database identifier for user names matching \"%s\" - Invalid number of rows/columns returned (%d rows, %d columns).", user_name_pat, rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return -1;
+  }
+  if (rowcount == 0)
+  {
+    act_log_debug(act_log_msg("No user found matching search pattern \"%s\"", user_name_pat));
+    return 0;
+  }
+  if (rowcount > 1)
+    act_log_debug(act_log_msg("Multiple users found matching search pattern \"%s\". Choosing first returned result.", user_name_pat));
+  
+  row = mysql_fetch_row(result);
+  glong tmp_user_id;
+  if (sscanf(row[0], "%ld", &tmp_user_id) != 1)
+  {
+    act_log_error(act_log_msg("Error parsing internal database user identifier (%s).", row[0]));
+    return -1;
+  }
+  mysql_free_result(result);
+  return tmp_user_id;
 }
 
-void acq_store_append_image(AcqStore *objs, AcqImg *new_img)
+gchar *acq_store_get_user_name(AcqStore *objs, gulong user_id)
 {
+  if (objs->genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("MySQL connection not available."));
+    return NULL;
+  }
+  gchar qrystr[256];
+  sprintf(qrystr, "SELECT name FROM users WHERE id=%lu;", user_id);
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(objs->genl_conn,qrystr);
+  result = mysql_store_result(objs->genl_conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Could not retrieve name for user with internal database identifier %lu - %s.", user_id, mysql_error(objs->genl_conn)));
+    return NULL;
+  }
+  
+  int rowcount = mysql_num_rows(result);
+  if ((rowcount < 0) || (mysql_num_fields(result) != 1))
+  {
+    act_log_error(act_log_msg("Could not retrieve name for user with internal database identifier %lu - Invalid number of rows/columns returned (%d rows, %d columns).", user_id, rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return NULL;
+  }
+  if (rowcount == 0)
+  {
+    act_log_debug(act_log_msg("No user found with idenfitier \"%lu\"", user_id));
+    return NULL;
+  }
+  
+  row = mysql_fetch_row(result);
+  gchar *user_name = malloc(strlen(row[0]+1));
+  sprintf(user_name, "%s", row[0]);
+  mysql_free_result(result);
+  return user_name;
+}
+
+gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdcap)
+{
+  if (objs->genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("MySQL connection not available."));
+    return FALSE;
+  }
+  gchar qrystr[256];
+  sprintf(qrystr, "SELECT ccd_filters.id, ccd_filters.slot, filter_types.name FROM ccd_filters INNER JOIN filter_types ON filter_types.id=ccd_filters.type WHERE ccd_filters.slot>=0 ORDER BY ccd_filters.slot;");
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(objs->genl_conn,qrystr);
+  result = mysql_store_result(objs->genl_conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Could not retrieve filters list - %s.", mysql_error(objs->genl_conn)));
+    return FALSE;
+  }
+  
+  int rowcount = mysql_num_rows(result);
+  if ((rowcount < 0) || (mysql_num_fields(result) != 3))
+  {
+    act_log_error(act_log_msg("Could not retrieve filters list - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return FALSE;
+  }
+  if (rowcount == 0)
+  {
+    act_log_debug(act_log_msg("No filters found."));
+    return FALSE;
+  }
+  
+  int i;
+  for (i=0; i<IPC_MAX_NUM_FILTAPERS; i++)
+  {
+    row = mysql_fetch_row(result);
+    if (row == NULL)
+    {
+      msg_ccdcap->filters[i].db_id = 0;
+      continue;
+    }
+    gint tmp_slot, tmp_db_id, tmp_name_len;
+    if (sscanf(row[0], "%d", &tmp_db_id) != 1)
+    {
+      act_log_error(act_log_msg("Failed to extract database identifier for CCD filter."));
+      continue;
+    }
+    if (sscanf(row[1], "%d", &tmp_slot) != 1)
+    {
+      act_log_error(act_log_msg("Failed to extract slot number for CCD filter with ID %d.", tmp_db_id));
+      continue;
+    }
+    if (tmp_slot <= 0)
+    {
+      act_log_error(act_log_msg("Invalid slot number extracted for CCD filter with ID %d.", tmp_db_id));
+      continue;
+    }
+    tmp_name_len = strlen(row[2]);
+    if (tmp_name_len >= IPC_MAX_FILTAPER_NAME_LEN)
+    {
+      act_log_error(act_log_msg("Name for CCD filter with ID %d (%s) is too long (%d). Trimming to %d characters.", tmp_db_id, row[2], tmp_name_len, IPC_MAX_FILTAPER_NAME_LEN));
+      tmp_name_len = IPC_MAX_FILTAPER_NAME_LEN-1;
+    }
+    msg_ccdcap->filters[i].db_id = tmp_db_id;
+    msg_ccdcap->filters[i].slot = tmp_slot;
+    snprintf(msg_ccdcap->filters[i].name, tmp_name_len, "%s", row[2]);
+  }
+  return TRUE;
+}
+
+void acq_store_append_image(AcqStore *objs, CcdImg *new_img)
+{
+  int ret = pthread_mutex_lock(&objs->img_list_mutex);
+  if (ret != 0)
+    /// TODO: Error message
+    act_log_error(act_log_msg("Failed to obtain mutex lock on pending images list - %d", ret));
+  objs->img_pend = g_slist_append(objs->img_pend, G_OBJECT(new_img));
+  g_object_ref(G_OBJECT(new_img));
+  ret = pthread_mutex_unlock(&objs->img_list_mutex);
+  if (ret != 0)
+    act_log_error(act_log_msg("Failed to release mutex lock on pending images list - %d", ret));
+  if ((objs->status & STAT_STORING) != 0)
+    return;
+  ret = pthread_create(&objs->store_thr, NULL, store_pending_img, (void *)objs);
+  if (ret != 0)
+    act_log_error(act_log_msg("Failed to create image store thread - %d", ret));
 }
 
 gboolean acq_store_idle(AcqStore *objs)
@@ -249,7 +418,6 @@ static void acq_store_instance_init(GObject *acq_store)
   objs->store_conn = NULL;
   objs->genl_conn = NULL;
   objs->img_pend = NULL;
-  objs->img_list_mutex = NULL;
 }
 
 static void acq_store_class_init(CcdImgClass *klass)
@@ -292,415 +460,322 @@ static void acq_store_instance_dispose(GObject *acq_store)
   }
   if (objs->img_pend != NULL)
     act_log_error(act_log_msg("There are images waiting to be stored."));
-  if (objs->img_list_mutex != NULL)
+  /// TODO: Destroy  mutex?
+}
+
+static void *store_pending_img(void *acq_store)
+{
+  AcqStore *objs = ACQ_STORE(acq_store);
+  objs->status |= STAT_STORING;
+  g_object_ref(G_OBJECT(objs));
+  store_next_img(objs);
+  g_object_unref(G_OBJECT(objs));
+  objs->status &= ~STAT_STORING;
+  return 0;
+}
+
+static void store_next_img(AcqStore *objs)
+{
+  if (objs->img_pend == NULL)
   {
-    pthread_mutex_destroy(objs->img_list_mutex);
-    objs->img_list_mutex = NULL;
-  }
-}
-
-
-
-
-
-GType domeshutter_get_type (void)
-{
-  static GType domeshutter_type = 0;
-  
-  if (!domeshutter_type)
-  {
-    const GTypeInfo domeshutter_info =
-    {
-      sizeof (DomeshutterClass),
-      NULL, /* base_init */
-      NULL, /* base_finalize */
-      (GClassInitFunc) domeshutter_class_init,
-      NULL, /* class_finalize */
-      NULL, /* class_data */
-      sizeof (Domeshutter),
-      0,
-      (GInstanceInitFunc) domeshutter_init,
-      NULL
-    };
-    
-    domeshutter_type = g_type_register_static (GTK_TYPE_FRAME, "Domeshutter", &domeshutter_info, 0);
-  }
-  
-  return domeshutter_type;
-}
-
-GtkWidget *domeshutter_new (guchar dshutt_stat)
-{
-  GtkWidget *domeshutter = g_object_new (domeshutter_get_type (), NULL);
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  objs->weath_ok = objs->sun_alt_ok = FALSE;
-  objs->dshutt_cur = 0;
-//   objs->dshutt_cur = ~dshutt_stat;
-//   domeshutter_update (domeshutter, dshutt_stat);
-  // Button should actually be insensitive at start, in case of !weath_ok or !sun_alt_ok, but if it'll mess things up if it's already open
-  if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_open)))
-    gtk_widget_set_sensitive(objs->btn_open, FALSE);
-  
-  g_signal_connect_swapped(G_OBJECT(domeshutter), "destroy", G_CALLBACK(domeshutter_destroy), domeshutter);
-  g_signal_connect(G_OBJECT(objs->btn_open), "toggled", G_CALLBACK(buttons_nand), objs->btn_close);
-  g_signal_connect(G_OBJECT(objs->btn_close), "toggled", G_CALLBACK(buttons_nand), objs->btn_open);
-  g_signal_connect_swapped(G_OBJECT(objs->btn_open), "toggled", G_CALLBACK(buttons_toggled), domeshutter);
-  g_signal_connect_swapped(G_OBJECT(objs->btn_close), "toggled", G_CALLBACK(buttons_toggled), domeshutter);
-  
-  return domeshutter;
-}
-
-void domeshutter_update (GtkWidget *domeshutter, guchar new_dshutt_stat)
-{
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  if (objs->dshutt_cur == new_dshutt_stat)
+    act_log_debug(act_log_msg("Stored all images."));
     return;
-  
-  GdkColor new_col;
-  block_button_toggles(objs);
-  if (new_dshutt_stat & DSHUTT_MOVING_MASK)
-  {
-    gdk_color_parse("#AAAA00", &new_col);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_ACTIVE, &new_col);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_INSENSITIVE, &new_col);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_ACTIVE, &new_col);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_INSENSITIVE, &new_col);
   }
-  else if (new_dshutt_stat & DSHUTT_OPEN_MASK)
-  {
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_open), TRUE);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_close), FALSE);
-    gdk_color_parse("#00AA00", &new_col);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_ACTIVE, &new_col);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_INSENSITIVE, &new_col);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_ACTIVE, NULL);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_INSENSITIVE, NULL);
-  }
-  else if (new_dshutt_stat & DSHUTT_CLOSED_MASK)
-  {
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_open), FALSE);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_close), TRUE);
-    gdk_color_parse("#00AA00", &new_col);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_ACTIVE, NULL);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_INSENSITIVE, NULL);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_ACTIVE, &new_col);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_INSENSITIVE, &new_col);
-  }
-  else
-  {
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_ACTIVE, NULL);
-    gtk_widget_modify_bg(objs->btn_open, GTK_STATE_INSENSITIVE, NULL);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_ACTIVE, NULL);
-    gtk_widget_modify_bg(objs->btn_close, GTK_STATE_INSENSITIVE, NULL);
-  }
-
-  if (((new_dshutt_stat & DSHUTT_OPEN_MASK) != 0) && ((objs->dshutt_cur & DSHUTT_OPEN_MASK) == 0))
-    g_signal_emit(domeshutter, domeshutter_signals[IS_OPEN_SIGNAL], 0, TRUE);
-  else if (((new_dshutt_stat & DSHUTT_OPEN_MASK) == 0) && (((objs->dshutt_cur & DSHUTT_OPEN_MASK) != 0) || (objs->dshutt_cur==0)))
-    g_signal_emit(domeshutter, domeshutter_signals[IS_OPEN_SIGNAL], 0, FALSE);
-
-  if (new_dshutt_stat == objs->dshutt_goal)
-  {
-    if (objs->fail_to_id > 0)
-    {
-      g_source_remove(objs->fail_to_id);
-      objs->fail_to_id = 0;
-    }
-    process_complete(objs, OBSNSTAT_GOOD);
-  }
-  objs->dshutt_cur = new_dshutt_stat;
-  
-  unblock_button_toggles(objs);
-}
-
-void domeshutter_process_msg (GtkWidget *domeshutter, DtiMsg *msg)
-{
-  guchar ret = OBSNSTAT_GOOD;
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  switch(dti_msg_get_mtype(msg))
-  {
-    case MT_QUIT:
-      ret = process_quit(objs, dti_msg_get_quit(msg));
-      break;
-    case MT_ENVIRON:
-      ret = process_environ(objs, dti_msg_get_environ(msg));
-      break;
-    case MT_TARG_SET:
-      ret = process_targset(objs, dti_msg_get_targset(msg));
-      break;
-  }
+  int ret = pthread_mutex_lock(&objs->img_list_mutex);
   if (ret != 0)
   {
-    g_signal_emit(domeshutter, domeshutter_signals[PROC_COMPLETE_SIGNAL], 0, ret, msg);
-    return;
+    /// TODO: Error message
+    act_log_error(act_log_msg("Error returned while trying to obtain mutex lock on pending images list - %d", ret));
   }
-  g_object_ref(msg);
-  objs->pending_msg = msg;
-}
-
-void domeshutter_set_lock (GtkWidget *domeshutter, gboolean lock_on)
-{
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  act_log_debug(act_log_msg("Setting lock %hhu (%hhu %hhu)", lock_on, objs->weath_ok, objs->sun_alt_ok));
-  objs->locked = lock_on;
-  gtk_widget_set_sensitive(objs->btn_open, (!lock_on) && objs->weath_ok && objs->sun_alt_ok);
-  gtk_widget_set_sensitive(objs->btn_close, !lock_on);
-}
-
-static void domeshutter_class_init (DomeshutterClass *klass)
-{
-  domeshutter_signals[IS_OPEN_SIGNAL] = g_signal_new("is-open", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__BOOLEAN, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
-  domeshutter_signals[SEND_START_OPEN_SIGNAL] = g_signal_new("start-open", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST | G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
-  domeshutter_signals[SEND_START_CLOSE_SIGNAL] = g_signal_new("start-close", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST | G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
-  domeshutter_signals[SEND_STOP_MOVE_SIGNAL] = g_signal_new("stop-move", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST | G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
-  domeshutter_signals[PROC_COMPLETE_SIGNAL] = g_signal_new("proc-complete", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__UCHAR_POINTER, G_TYPE_NONE, 2, G_TYPE_UCHAR, G_TYPE_POINTER);
-}
-
-static void domeshutter_init(GtkWidget *domeshutter)
-{
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  gtk_frame_set_label(GTK_FRAME(domeshutter), "Dome Shutter");
-  objs->dshutt_cur = objs->dshutt_goal = objs->fail_to_id = objs->env_to_id = 0;
-  objs->weath_ok = objs->sun_alt_ok = objs->locked = FALSE;
-  objs->pending_msg = NULL;
-  objs->box = gtk_table_new(1,2,TRUE);
-  gtk_container_add(GTK_CONTAINER(domeshutter), objs->box);
+  GSList *cur_el = objs->img_pend;
+  objs->img_pend = objs->img_pend->next;
+  CcdImg *cur_img = CCD_IMG(objs->img_pend->data);
+  g_slist_free_1 (cur_el);
+  ret = pthread_mutex_unlock(&objs->img_list_mutex);
+  if (ret != 0)
+  {
+    /// TODO: Error message
+    act_log_error(act_log_msg("Error returned while trying to release mutex lock on pending images list - %d", ret));
+  }
   
-  objs->btn_open = gtk_toggle_button_new_with_label("Open");
-  gtk_table_attach(GTK_TABLE(objs->box), objs->btn_open, 0, 1, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 5, 5);
-  objs->btn_close = gtk_toggle_button_new_with_label("Close");
-  gtk_table_attach(GTK_TABLE(objs->box), objs->btn_close, 1, 2, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 5, 5);
-}
-
-static void domeshutter_destroy(gpointer domeshutter)
-{
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  if (objs->fail_to_id != 0)
-    g_source_remove(objs->fail_to_id);
-  if (objs->env_to_id != 0)
-    g_source_remove(objs->env_to_id);
-  process_complete(objs, OBSNSTAT_CANCEL);
-}
-
-static void buttons_toggled(gpointer domeshutter)
-{
-  act_log_debug(act_log_msg("Buttons toggled."));
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_open)) && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_close)))
+  if ((objs->status & STAT_ERR_NO_RECOV) > 0)
   {
-    act_log_error(act_log_msg("Both domeshutter open and close buttons simultaneously active. Stopping domeshutter."));
-    send_stop(objs);
-  }
-  else if (!gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_open)) && !gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_close)))
-    send_stop(objs);
-  else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(objs->btn_open)))
-    send_start_open(objs);
-  else
-    send_start_close(objs);
-}
-
-static void buttons_nand(GtkWidget *button1, gpointer button2)
-{
-  if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(button1)) && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(button2)))
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button2), FALSE);
-}
-
-static void block_button_toggles(Domeshutter *objs)
-{
-  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_nand), objs->btn_close);
-  g_signal_handlers_block_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_nand), objs->btn_open);
-}
-
-static void unblock_button_toggles(Domeshutter *objs)
-{
-  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_toggled), objs);
-  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_open), G_CALLBACK(buttons_nand), objs->btn_close);
-  g_signal_handlers_unblock_by_func(G_OBJECT(objs->btn_close), G_CALLBACK(buttons_nand), objs->btn_open);
-}
-
-static guchar process_quit(Domeshutter *objs, struct act_msg_quit *msg_quit)
-{
-  if (!msg_quit->mode_auto)
-    return OBSNSTAT_GOOD;
-  if ((objs->dshutt_cur & DSHUTT_CLOSED_MASK) > 0)
-    return OBSNSTAT_GOOD;
-  if (objs->pending_msg)
-  {
-    act_log_debug(act_log_msg("Quit message received, but another message is being processed. Cancelling earlier."));
-    process_complete(objs, OBSNSTAT_CANCEL);
-  }
-  if (objs->locked)
-    act_log_error(act_log_msg("Auto-quit message received, but lock is engaged. Sending close anyway and hoping for the best."));
-  else
-    act_log_debug(act_log_msg("Closing dome shutter for auto-quit."));
-  block_button_toggles(objs);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_open), FALSE);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_close), TRUE);
-  unblock_button_toggles(objs);
-  send_start_close(objs);
-  return 0;
-}
-
-static guchar process_environ(Domeshutter *objs, struct act_msg_environ *msg_environ)
-{
-  if (objs->env_to_id)
-    g_source_remove(objs->env_to_id);
-  objs->env_to_id = g_timeout_add_seconds(DOMESHUTTER_ENV_TIME_S, env_timeout, objs);
-  act_log_debug(act_log_msg("Processing environ (%hhu %hhu)", msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_NIGHT) > 0));
-  return environ_change(objs, msg_environ->weath_ok>0, (msg_environ->status_active & ACTIVE_TIME_NIGHT) > 0);
-}
-
-static guchar process_targset(Domeshutter *objs, struct act_msg_targset *msg_targset)
-{
-  if (msg_targset->status == OBSNSTAT_ERR_CRIT)
-  {
-    if ((objs->dshutt_cur & DSHUTT_CLOSED_MASK) > 0)
-    {
-      act_log_debug(act_log_msg("Observation message with critical error flag set, dome shutter already closed."));
-      return OBSNSTAT_GOOD;
-    }
-    act_log_debug(act_log_msg("Observation message with critical error flag set. Closing dome shutter."));
-    if (objs->pending_msg)
-    {
-      act_log_debug(act_log_msg("Previous message still being processed. Cancelling earlier message."));
-      process_complete(objs, OBSNSTAT_CANCEL);
-    }
-    if (objs->locked)
-      act_log_error(act_log_msg("Critical target set message received, but lock is engaged. Sending domeshutter close command anyway."));
-    else
-      act_log_debug(act_log_msg("Closing dome shutter for critical condition."));
-    block_button_toggles(objs);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_open), FALSE);
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_close), TRUE);
-    unblock_button_toggles(objs);
-    send_start_close(objs);
-    return 0;
-  }
-  if (!msg_targset->mode_auto)
-    return OBSNSTAT_GOOD;
-  if ((objs->dshutt_cur & DSHUTT_OPEN_MASK) > 0)
-  {
-    act_log_debug(act_log_msg("Dome shutter already open for automatic observation."));
-    return OBSNSTAT_GOOD;
-  }
-  if (!(objs->weath_ok) || !(objs->sun_alt_ok))
-  {
-    act_log_error(act_log_msg("Cannot open dome shutter for automatic target set - a weather alert is asserted."));
-    return OBSNSTAT_ERR_WAIT;
-  }
-  if (objs->pending_msg)
-  {
-    act_log_error(act_log_msg("Cannot open dome shutter for automatic target set, another command is being processed."));
-    return OBSNSTAT_ERR_WAIT;
-  }
-  if (objs->locked)
-    act_log_debug(act_log_msg("Received auto target set message and need to open dome shutter, but dome shutter is locked. This should be impossible, continuing and hoping for the best."));
-  block_button_toggles(objs);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_open), TRUE);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_close), FALSE);
-  unblock_button_toggles(objs);
-  send_start_open(objs);
-  return 0;
-}
-
-static gboolean fail_timeout(gpointer domeshutter)
-{
-  act_log_crit(act_log_msg("Timed out while waiting for domeshutter to open/close."));
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  process_complete(objs, OBSNSTAT_ERR_CRIT);
-  GdkColor new_col;
-  gdk_color_parse("#AA0000", &new_col);
-  gtk_widget_modify_bg(objs->btn_open, GTK_STATE_ACTIVE, &new_col);
-  gtk_widget_modify_bg(objs->btn_close, GTK_STATE_ACTIVE, &new_col);
-  send_start_close(objs);
-  objs->fail_to_id = 0;
-  return FALSE;
-}
-
-static gboolean env_timeout(gpointer domeshutter)
-{
-  act_log_debug(act_log_msg("Timed out while waiting for environment message."));
-  Domeshutter *objs = DOMESHUTTER(domeshutter);
-  environ_change(objs, FALSE, FALSE);
-  objs->env_to_id = 0;
-  return FALSE;
-}
-
-static guchar environ_change(Domeshutter *objs, gboolean weath_ok, gboolean sun_alt_ok)
-{
-  if (((weath_ok>0) == (objs->weath_ok>0)) && ((sun_alt_ok>0) == (objs->sun_alt_ok>0)))
-    return OBSNSTAT_GOOD;
-  objs->weath_ok = weath_ok > 0;
-  objs->sun_alt_ok = sun_alt_ok > 0;
-  if ((objs->weath_ok) && (objs->sun_alt_ok))
-  {
-    if (!objs->locked)
-      gtk_widget_set_sensitive(objs->btn_open, TRUE);
-    return OBSNSTAT_GOOD;
-  }
-  act_log_debug(act_log_msg("Weather alert asserted"));
-  gtk_widget_set_sensitive(objs->btn_open, FALSE);
-  if ((objs->dshutt_cur & DSHUTT_CLOSED_MASK) > 0)
-  {
-    act_log_debug(act_log_msg("Dome already closed."));
-    return OBSNSTAT_GOOD;
-  }
-  if (objs->pending_msg)
-    process_complete(objs, OBSNSTAT_CANCEL);
-  if (objs->locked)
-    act_log_error(act_log_msg("Cannot close domeshutter because lock is engaged. Sending close anyway and hoping for the best."));
-  else
-    act_log_debug(act_log_msg("Closing domeshutter for weather alert."));
-  block_button_toggles(objs);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_open), FALSE);
-  gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(objs->btn_close), TRUE);
-  unblock_button_toggles(objs);
-  send_start_close(objs);
-  return 0;
-}
-
-static void process_complete(Domeshutter *objs, guchar status)
-{
-  if (objs->pending_msg == NULL)
+    act_log_error(act_log_msg("Need to save an image, but data store is currently unavailable."));
+    store_img_fallback(cur_img);
+    g_object_unref(cur_img);
     return;
-  act_log_debug(act_log_msg("Dome shutter process complete, status - %hhu %hhu %hhd", status, objs->dshutt_cur, objs->dshutt_goal));
-  g_signal_emit(G_OBJECT(objs), domeshutter_signals[PROC_COMPLETE_SIGNAL], 0, status, objs->pending_msg);
-  g_object_unref(objs->pending_msg);
-  objs->pending_msg = NULL;
+  }
+  gboolean img_saved;
+  guchar i;
+  for (i=0; i<STORE_MAX_RETRIES; i++)
+  {
+    img_saved = store_img(objs->store_conn, cur_img);
+    if (img_saved)
+      break;
+    act_log_debug(act_log_msg("Failed to save image to database, retrying (try %hhu/%hhu).", i+1, STORE_MAX_RETRIES));
+    if ((objs->status & STAT_ERR_RETRY) == 0)
+    {
+      objs->status |= STAT_ERR_RETRY;
+      g_signal_emit(G_OBJECT(objs), acq_store_signals[STATUS_UPDATE], 0);
+    }
+  }
+  if (!img_saved)
+  {
+    act_log_debug(act_log_msg("Attempting to reconnect to MYSQL server."));
+    img_saved = store_reconnect(objs);
+    if (img_saved)
+      img_saved = store_img(objs->store_conn, cur_img);
+    if (!img_saved)
+    {
+      act_log_crit(act_log_msg("Failed to reconnect to MySQL server and save an image. Please consult IT technician."));
+      objs->status &= ~STAT_ERR_RETRY;
+      objs->status |= STAT_ERR_NO_RECOV;
+      store_img_fallback(cur_img);
+      g_object_unref(cur_img);
+      return;
+    }
+  }
+  if ((objs->status & (STAT_ERR_NO_RECOV | STAT_ERR_RETRY)) > 0)
+  {
+    objs->status &= ~(STAT_ERR_NO_RECOV | STAT_ERR_RETRY);
+    g_signal_emit(G_OBJECT(objs), acq_store_signals[STATUS_UPDATE], 0);
+  }
+  g_object_unref(cur_img);
 }
 
-static void send_start_open(Domeshutter *objs)
+static gboolean store_img(MYSQL *conn, CcdImg *img)
 {
-  act_log_debug(act_log_msg("Sending domeshutter open"));
-  g_signal_emit(objs, domeshutter_signals[SEND_START_OPEN_SIGNAL], 0);
-  if (objs->fail_to_id != 0)
-    g_source_remove(objs->fail_to_id);
-  objs->dshutt_goal = DSHUTT_OPEN_MASK;
-  if (objs->dshutt_cur != DSHUTT_OPEN_MASK)
-    objs->fail_to_id = g_timeout_add_seconds(DOMESHUTTER_FAIL_TIME_S, fail_timeout, objs);
+  struct rastruct tel_ra;
+  struct decstruct tel_dec;
+  ccd_img_get_tel_pos(img, &tel_ra, &tel_dec);
+  struct timestruct start_time;
+  struct datestruct start_date;
+  ccd_img_get_start_datetime(img, &start_date, &start_time);
+  char qrystr[256];
+  sprintf(qrystr, "INSERT INTO ccd_img \
+  (targ_id, user_id, type, exp_t_s, start_date, start_time_h, win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, tel_ra_h, tel_dec_d) VALUES \
+  (%lu, %lu, %hhu, %f, \"%hu-%hhu-%hhu\", %f, %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
+          ccd_img_get_targ_id(img),
+          ccd_img_get_user_id(img),
+          img_type_acq_to_db(ccd_img_get_img_type(img)),
+          ccd_img_get_exp_t(img),
+          start_date.year, start_date.month+1, start_date.day+1,
+          convert_HMSMS_H_time(&start_time),
+          ccd_img_get_win_start_x(img),
+          ccd_img_get_win_start_y(img),
+          ccd_img_get_win_width(img),
+          ccd_img_get_win_height(img),
+          ccd_img_get_prebin_x(img),
+          ccd_img_get_prebin_y(img),
+          convert_HMSMS_H_ra(&tel_ra),
+          convert_DMS_D_dec(&tel_dec));
+  if (mysql_query(conn, qrystr))
+  {
+    act_log_error(act_log_msg("Failed to save CCD image header to database - %s.", mysql_error(conn)));
+    act_log_debug(act_log_msg("SQL query: %s", qrystr));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  act_log_debug(act_log_msg("Inserted image header."));
+  
+  gulong img_id = mysql_insert_id(conn);
+  if (img_id == 0)
+  {
+    act_log_error(act_log_msg("Could not retrieve unique ID for saved CCD photometry image."));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  act_log_debug(act_log_msg("Image ID: %lu", img_id));
+  
+  MYSQL_STMT  *stmt;
+  stmt = mysql_stmt_init(conn);
+  if (!stmt)
+  {
+    act_log_error(act_log_msg("Failed to initialise MySQL prepared statement object - out of memory."));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  sprintf(qrystr, "INSERT INTO ccd_img_data (ccd_img_id, x, y, value) VALUES (%lu, ?, ?, ?);", img_id);
+  if (mysql_stmt_prepare(stmt, qrystr, strlen(qrystr)))
+  {
+    act_log_error(act_log_msg("Failed to prepare statement for inserting image pixel data - %s", mysql_stmt_error(stmt)));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  if (mysql_stmt_param_count(stmt) != 3)
+  {
+    act_log_error(act_log_msg("Invalid number of parameters in prepared statement - %d",  mysql_stmt_param_count(stmt)));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  
+  gushort cur_x, cur_y;
+  gdouble cur_val;
+  MYSQL_BIND  bind[3];
+  memset(bind, 0, sizeof(bind));
+  /// TODO: Checked signed ints and data types in genl
+  bind[0].buffer_type = MYSQL_TYPE_SHORT;
+  bind[0].buffer = (char *)&cur_x;
+  bind[0].is_null = 0;
+  bind[0].length = 0;
+  bind[0].is_unsigned = TRUE;
+  bind[1].buffer_type = MYSQL_TYPE_SHORT;
+  bind[1].buffer = (char *)&cur_y;
+  bind[1].is_null = 0;
+  bind[1].length = 0;
+  bind[1].is_unsigned = TRUE;
+  bind[2].buffer_type = MYSQL_TYPE_DOUBLE;
+  bind[2].buffer = (char *)&cur_val;
+  bind[2].is_null = 0;
+  bind[2].length = 0;
+  if (mysql_stmt_bind_param(stmt, bind))
+  {
+    act_log_error(act_log_msg("Failed to bind parameters for prepared statement - %s", mysql_stmt_error(stmt)));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  
+  gfloat const *img_data = ccd_img_get_img_data(img);
+  gulong i, img_len = ccd_img_get_img_len(img);
+  gushort img_width = ccd_img_get_win_width(img)/ccd_img_get_prebin_x(img), img_height = ccd_img_get_win_height(img)/ccd_img_get_prebin_y(img);
+  gboolean ret = TRUE;
+  if ((gulong)(img_width*img_height) != img_len)
+  {
+    act_log_debug(act_log_msg("Image width and height parameters contradicts image length (width %hu, height %hu, length %lu). Choosing smallest.", img_width, img_height, img_len));
+    img_len = (gulong)(img_width*img_height) < img_len ? (gulong)(img_width*img_height) : img_len;
+  }
+  for (i=0; i<img_len; i++)
+  {
+    cur_x = i%img_width;
+    cur_y = i/img_width;
+    cur_val = img_data[i];
+    if (mysql_stmt_execute(stmt))
+    {
+      act_log_error(act_log_msg("Failed to execute prepared statement to insert pixel datum into database - %s", mysql_stmt_error(stmt)));
+      ret = FALSE;
+      break;
+    }
+  }
+  if (!ret)
+  {
+    act_log_error(act_log_msg("Entire image not saved. Rolling back database transactions."));
+    mysql_query(conn, "ROLLBACK;");
+    return FALSE;
+  }
+  mysql_query(conn, "COMMIT;");
+  return TRUE;
 }
 
-static void send_start_close(Domeshutter *objs)
+static void store_img_fallback(CcdImg *img)
 {
-  act_log_debug(act_log_msg("Sending domeshutter close"));
-  g_signal_emit(objs, domeshutter_signals[SEND_START_CLOSE_SIGNAL], 0);
-  if (objs->fail_to_id != 0)
-    g_source_remove(objs->fail_to_id);
-  objs->dshutt_goal = DSHUTT_CLOSED_MASK;
-  if (objs->dshutt_cur != DSHUTT_CLOSED_MASK)
-    objs->fail_to_id = g_timeout_add_seconds(DOMESHUTTER_FAIL_TIME_S, fail_timeout, objs);
+  static char *fallback_path = NULL;
+  if (fallback_path == NULL)
+  {
+    const char* homedir;
+    homedir = getenv("HOME");
+    if (homedir == NULL)
+    {
+      struct passwd *pw = getpwuid(getuid());
+      homedir = pw->pw_dir;
+      if (homedir == NULL)
+      {
+        act_log_error(act_log_msg("Need to save an image to the fallback directory, but cannot determine software home directory. Image will be lost."));
+        return;
+      }
+    }
+    int len = strlen(homedir);
+    fallback_path = malloc(len+20);
+    if (homedir[len-1] == '/')
+      sprintf(fallback_path, "%sacq_img_fallback/", homedir);
+    else
+      sprintf(fallback_path, "%s/acq_img_fallback/", homedir);
+    DIR* dir = opendir(fallback_path);
+    if (dir != NULL)
+    {
+      /* Directory exists. */
+      closedir(dir);
+    }
+    else if (errno == ENOENT)
+    {
+      /* Directory does not exist. */
+      mkdir(fallback_path, 0755);
+    }
+    else
+    {
+      /* opendir() failed for some other reason. */
+      act_log_error(act_log_msg("Need to save an image to the fallback directory (%s), but an error occurred while trying to open the directory - %s", fallback_path, strerror(errno)));
+      return;
+    }
+  }
+  
+  struct datestruct start_unid;
+  struct timestruct start_unit;
+  ccd_img_get_start_datetime(img, &start_unid, &start_unit);
+  char filepath[strlen(fallback_path)+50];
+  sprintf(filepath, "%s%s%s.dat", fallback_path, date_to_str(&start_unid), time_to_str(&start_unit));
+  FILE *fp = fopen(filepath, "ab");
+  if (fp == NULL)
+  {
+    act_log_error(act_log_msg("Failed to open file %s for fallback image storage. Image will be lost. Error - %s", filepath, strerror(errno)));
+    return;
+  }
+  fwrite(img+sizeof(GObject), 1, sizeof(CcdImg)-sizeof(GObject), fp);
+  fclose(fp);
 }
 
-static void send_stop(Domeshutter *objs)
-{ 
-  act_log_debug(act_log_msg("Sending stop."));
-  g_signal_emit(objs, domeshutter_signals[SEND_STOP_MOVE_SIGNAL], 0);
-  if (objs->fail_to_id != 0)
-    g_source_remove(objs->fail_to_id);
-  objs->fail_to_id = 0;
-  objs->dshutt_goal = 0;
+static gboolean store_reconnect(AcqStore *objs)
+{
+  if (objs->sqlhost == NULL)
+  {
+    act_log_error(act_log_msg("Hostname of database server not available."));
+    return FALSE;
+  }
+  act_log_debug(act_log_msg("Recreating MySQL image storage connection."));
+  MYSQL *store_conn;
+  store_conn = mysql_init(NULL);
+  if (store_conn == NULL)
+  {
+    act_log_error(act_log_msg("Error initialising MySQL image storage connection handler - %s.", mysql_error(store_conn)));
+    return FALSE;
+  }
+  if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  {
+    act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
+    mysql_close(store_conn);
+    return FALSE;
+  }
+  if (objs->store_conn != NULL)
+    mysql_close(objs->store_conn);
+  objs->store_conn = store_conn;
+  
+  return TRUE;
 }
 
+static guchar img_type_acq_to_db(guchar acq_img_type)
+{
+  guchar ret;
+  switch (acq_img_type)
+  {
+    case IMGT_ACQ_OBJ:
+      ret = DB_TYPE_ACQ_OBJ;
+      break;
+    case IMGT_ACQ_SKY:
+      ret = DB_TYPE_ACQ_SKY;
+      break;
+    case IMGT_OBJECT:
+      ret = DB_TYPE_OBJECT;
+      break;
+    case IMGT_BIAS:
+      ret = DB_TYPE_BIAS;
+      break;
+    case IMGT_DARK:
+      ret = DB_TYPE_DARK;
+      break;
+    case IMGT_FLAT:
+      ret = DB_TYPE_FLAT;
+      break;
+    default:
+      ret = DB_TYPE_ANY;
+  }
+  return ret;
+}
