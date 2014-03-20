@@ -1,68 +1,81 @@
-#ifndef __ACQ_IMGDISP_H__
-#define __ACQ_IMGDISP_H__
+#ifndef __IMGDISP_H__
+#define __IMGDISP_H__
 
 #include <glib.h>
 #include <glib-object.h>
 #include <gtk/gtkeventbox.h>
-#include <act_ipc.h>
-#include "acq_ccdcntrl.h"
-
-typedef struct _LutPoint LutPoint;
-
-struct LutPoint
-{
-  gfloat value, red, green, blue;
-};
+#include "ccd_img.h"
 
 G_BEGIN_DECLS
 
-#define ACQ_IMGDISP_TYPE              (acq_imgdisp_get_type())
-#define ACQ_IMGDISP(objs)             (G_TYPE_CHECK_INSTANCE_CAST ((objs), ACQ_IMGDISP_TYPE, AcqImgdisp))
-#define ACQ_IMGDISP_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), ACQ_IMGDISP_TYPE, AcqImgdispClass))
-#define IS_ACQ_IMGDISP(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), ACQ_IMGDISP_TYPE))
-#define IS_ACQ_IMGDISP_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), ACQ_IMGDISP_TYPE))
+typedef struct _LutPoint  LutPoint;
 
-typedef struct _AcqImgdisp       AcqImgdisp;
-typedef struct _AcqImgdispClass  AcqImgdispClass;
+struct _LutPoint
+{
+  gfloat value;
+  gfloat red, green, blue, alpha;
+};
 
-struct _AcqImgdisp
+#define IMGLUT_TYPE              (imglut_get_type())
+#define IMGLUT(objs)             (G_TYPE_CHECK_INSTANCE_CAST ((objs), IMGLUT_TYPE, Imglut))
+#define IMGLUT_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), IMGLUT_TYPE, ImglutClass))
+#define IS_IMGLUT(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), IMGLUT_TYPE))
+#define IS_IMGLUT_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), IMGLUT_TYPE))
+
+typedef struct _Imglut       Imglut;
+typedef struct _ImglutClass  ImglutClass;
+
+struct _Imglut
+{
+  GObject parent;
+  
+  gulong num_points;
+  LutPoint *points;
+};
+
+struct _ImglutClass
+{
+  GObjectClass parent_class;
+};
+
+GType imglut_get_type (void);
+Imglut *imglut_new (gulong num_points, LutPoint const *points);
+
+
+#define IMGDISP_TYPE              (imgdisp_get_type())
+#define IMGDISP(objs)             (G_TYPE_CHECK_INSTANCE_CAST ((objs), IMGDISP_TYPE, Imgdisp))
+#define IMGDISP_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), IMGDISP_TYPE, ImgdispClass))
+#define IS_IMGDISP(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), IMGDISP_TYPE))
+#define IS_IMGDISP_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), IMGDISP_TYPE))
+
+typedef struct _Imgdisp       Imgdisp;
+typedef struct _ImgdispClass  ImgdispClass;
+
+struct _Imgdisp
 {
   GtkEventBox parent;
   GtkWidget *dra_ccdimg
   
   gboolean flip_ns, flip_ew;
   gfloat bright_lim, feint_lim;
-  AcqImgLut *lut;
-  AcqImg *img;
+  ImgLut *lut;
+  CcdImg *img;
 };
 
-struct _AcqImgdispClass
+struct _ImgdispClass
 {
   GtkEventBoxClass parent_class;
 };
 
-GType acq_imgdisp_get_type (void);
-GtkWidget *acq_imgdisp_new (void);
-void acq_imgdisp_set_flip_ns(GtkWidget *acq_imgdisp, gboolean flip_ns);
-void acq_imgdisp_set_flip_ew(GtkWidget *acq_imgdisp, gboolean flip_ew);
-void acq_imgdisp_set_bright_lim(GtkWidget *acq_imgdisp, gfloat lim);
-void acq_imgdisp_set_feint_lim(GtkWidget *acq_imgdisp, gfloat lim);
-void acq_imgdisp_set_lut(GtkWidget *acq_imgdisp, AcqImgLut *lut);
-void acq_imgdisp_set_img(GtkWidget *acq_imgdisp, AcqImg *img);
+GType imgdisp_get_type (void);
+GtkWidget *imgdisp_new (void);
+void imgdisp_set_flip_ns(GtkWidget *imgdisp, gboolean flip_ns);
+void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew);
+void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
+void imgdisp_set_feint_lim(GtkWidget *imgdisp, gfloat lim);
+void imgdisp_set_lut(GtkWidget *imgdisp, ImgLut const *lut);
+void imgdisp_set_img(GtkWidget *imgdisp, CcdImg const *img);
 
 G_END_DECLS
 
-#endif   /* __ACQ_IMGDISP_H__ */
-
-
-
-#ifndef ACQ_IMGDISP_H
-#define ACQ_IMGDISP_H
-
-#include <gtk/gtk.h>
-#include <act_timecoord.h>
-
-int create_imgdisp_objs(MYSQL *conn, GtkWidget *evb_imgdisp);
-void update_imgdisp(struct merlin_img *newimg, struct rastruct *ra, struct decstruct *dec);
-
-#endif
+#endif   /* __IMGDISP_H__ */
