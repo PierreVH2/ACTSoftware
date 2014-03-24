@@ -4,8 +4,11 @@
 #include "acq_ccdcntrl.h"
 #include "acq_marshallers.h"
 
-#define DATETIME_TO_SEC 60
-#define TEL_POS_TO_SEC 60
+// #define DATETIME_TO_SEC 60
+// #define TEL_POS_TO_SEC 60
+
+#define IMGDISP_IMG_TEX    0
+#define IMGDISP_LUT_TEX    2
 
 static void imglut_instance_init(GObject *imglut);
 static void imglut_class_init(ImglutClass *klass);
@@ -14,6 +17,16 @@ static void imglut_instance_dispose(GObject *imglut);
 static void imgdisp_instance_init(GtkWidget *imgdisp);
 static void imgdisp_class_init(ImgdispClass *klass);
 static void imgdisp_instance_dispose(GtkWidget *ccd_cntrl);
+
+enum
+{
+  MOUSE_MOVE_XY = 0,
+  MOUSE_MOVE_VIEW,
+  MOUSE_MOVE_EQUAT,
+  LAST_SIGNAL
+};
+
+static guint imgdisp_signals[LAST_SIGNAL] = { 0 };
 
 // Imglut function implementation
 GType imglut_get_type (void)
@@ -42,13 +55,84 @@ GType imglut_get_type (void)
   return imglut_type;
 }
 
-Imglut *imglut_new (gulong num_points, LutPoint const *points)
+Imglut *imglut_new (gulong num_points, LutPoint const *points);
 {
+  if ((num_points < 2) || (num_points & (num_points - 1)))
+  {
+    act_log_error(act_log_msg("Invalid number of points for colour lookup table. Number of points must be >=2 and must be an integer power of 2."));
+    return NULL;
+  }
   Imglut *objs = IMGLUT(g_object_new (imglut_get_type(), NULL));
   objs->num_points = num_points;
   objs->points = malloc(num_points*sizeof(LutPoint));
-  memcpy(objs->points, points, num_points*sizeof(LutPoint));
+  if (points != NULL)
+    memcpy(objs->points, points, num_points*sizeof(LutPoint));
   return objs;
+}
+
+void imglut_set_points(Imglut *objs, LutPoint const *points)
+{
+  if (points != NULL)
+    memcpy(objs->points, points, num_points*sizeof(LutPoint));
+}
+
+void imglut_set_point(Imglut *objs, gulong idx, LutPoint const *point)
+{
+  if (point == NULL)
+    act_log_error(act_log_msg("Invalid input parameters."));
+  else
+    imglut_set_point_rgb(objs, idx, point->red, point->green, point->blue);
+}
+
+void imglut_set_point_rgb(Imglut *objs, gulong idx, gfloat red, gfloat green, gfloat blue)
+{
+  if ((idx < 0) || (idx >= objs->num_points))
+  {
+    act_log_debug(act_log_msg("Invalid lookup table index - %d.", idx));
+    return;
+  }
+  objs->points[idx].red = red;
+  objs->points[idx].green = green;
+  objs->points[idx].blue = blue;
+}
+
+void imglut_set_point_value(Imglut *objs, gfloat value, LutPoint const *point)
+{
+  if (point == NULL)
+    act_log_error(act_log_msg("Invalid input parameters."));
+  else
+    imglut_set_point_value_rgb(objs, idx, point->red, point->green, point->blue);
+}
+
+void imglut_set_point_value_rgb(Imglut *objs, gfloat value, gfloat red, gfloat green, gfloat blue)
+{
+  if ((value < 0.0) || (value > 1.0))
+  {
+    act_log_debug(act_log_msg("Invalid lookup table value - %f.", value));
+    return;
+  }
+  glong idx = round(value*(objs->num_points-1));
+  imglut_set_point_rgb(objs, idx, red, green, blue);
+}
+
+gulong imglut_get_num_points(Imglut const *objs)
+{
+  return objs->num_points;
+}
+
+LutPoint const *imglut_get_points(Imglut const *objs)
+{
+  return objs->points;
+}
+
+LutPoint const *imglut_get_points(Imglut const *objs, gulong index)
+{
+  if (index >= objs->num_points)
+  {
+    act_log_error(act_log_msg("Invalid lookup table index - %u", index));
+    return NULL;
+  }
+  return objs->points[index];
 }
 
 static void imglut_instance_init(GObject *imglut)
@@ -105,52 +189,44 @@ GtkWidget *imgdisp_new (void)
 {
   Imgdisp *objs = IMGDISP(g_object_new (imgdisp_get_type(), NULL));
   
-  GdkGLConfig *glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGBA | GDK_GL_MODE_DOUBLE);
-  if (glconfig == NULL)
-  {
-    act_log_error(act_log_msg("Could not find suitable OpenGL configuration."));
-    g_object_unref(objs);
-    return NULL;
-  }
-  if (!gtk_widget_set_gl_capability (objs->dra_ccdimg, glconfig, FALSE, TRUE, GDK_GL_RGBA_TYPE))
-  {
-    act_log_error(act_log_msg("Could not find suitable OpenGL capability."));
-    g_object_unref(objs);
-    return NULL;
-  }
-  g_signal_connect (objs->dra_ccdimg, "configure-event", G_CALLBACK (imgdisp_configure), NULL);
-  g_signal_connect (objs->dra_ccdimg, "expose-event", G_CALLBACK (imgdisp_expose), NULL);
 
   
 }
 
 void imgdisp_set_flip_ns(GtkWidget *imgdisp, gboolean flip_ns)
 {
+  IMGDISP(imgdisp)->flip_ns = flip_ns;
+  imgdisp_redraw(imgdisp);
 }
 
 void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew)
 {
+  IMGDISP(imgdisp)->flip_ew = flip_ew;
+  imgdisp_redraw(imgdisp);
 }
 
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim)
 {
+  IMGDISP(imgdisp)->bright_lim = lim;
+  imgdisp_redraw(imgdisp);
 }
 
 void imgdisp_set_feint_lim(GtkWidget *imgdisp, gfloat lim)
 {
+  IMGDISP(imgdisp)->feint_lim = lim;
+  imgdisp_redraw(imgdisp);
 }
 
-void imgdisp_set_lut(GtkWidget *imgdisp, ImgLut const *lut)
+void imgdisp_set_lut(GtkWidget *imgdisp, ImgLut *lut)
 {
-}
+  Imgdisp *objs = IMGDISP(imgdisp);
+  if (objs->lut != NULL)
+    g_object_unref(objs->lut);
+  objs->lut = lut;
+  g_object_ref(lut);
 
-void imgdisp_set_img(GtkWidget *imgdisp, CcdImg const *img)
-{
-  // ??? Implement
-  GtkWidget *dra_ccdimg = IMGDISP(imgdisp)->dra_ccdimg;
-  
-  GdkGLContext *glcontext = gtk_widget_get_gl_context (dra_ccdimg);
-  GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (dra_ccdimg);
+  GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
+  GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
 
   if (!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
   {
@@ -158,10 +234,34 @@ void imgdisp_set_img(GtkWidget *imgdisp, CcdImg const *img)
     return;
   }
 
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, ccdimgname);
+  glActiveTexture(GL_TEXTURE0+IMGDISP_LUT_TEX);
+  glBindTexture(GL_TEXTURE_2D, objs->lut_gl_name);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img->img_params.img_width, img->img_params.img_height, 0, GL_RED, GL_UNSIGNED_BYTE, newimg->img_data);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, imglut_get_num_points(lut), 1, 0, GL_RGB, GL_FLOAT, &imglut_get_points(imglut)[0].red);
+
+  gdk_gl_drawable_gl_end (gldrawable);
+  imgdisp_redraw(imgdisp);
+}
+
+void imgdisp_set_img(GtkWidget *imgdisp, CcdImg const *img)
+{
+  Imgdisp *objs = IMGDISP(imgdisp);
+  
+  GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
+  GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
+
+  if (!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
+  {
+    act_log_error(act_log_msg("Could not access GTK drawable GL context to upload new CCD image."));
+    return;
+  }
+
+  glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
+  glBindTexture(GL_TEXTURE_2D, objs->img_gl_name);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ccd_img_get_img_width(img), ccd_img_get_img_height(img), 0, GL_RED, GL_FLOAT, ccd_img_get_img_data(img));
 
   gdk_gl_drawable_gl_end (gldrawable);
   imgdisp_redraw(imgdisp);
@@ -173,32 +273,41 @@ static void imgdisp_instance_init(GtkWidget *imgdisp)
   objs->flip_ns = objs->flip_ew = FALSE;
   objs->bright_lim = 1.0;
   objs->feint_lim = 0.0;
-  
-  objs->dra_ccdimg = gtk_drawing_area_new();
-  g_object_ref(objs->dra_ccdimg);
-  gtk_container_add(GTK_CONTAINER(imgdisp), objs->dra_ccdimg);
-  gtk_widget_add_events (dra_ccdimg, GDK_EXPOSURE_MASK);
-
-  LutPoint *def_lut_points = malloc(2*sizeof(LutPoint));
-  def_lut_points[0].value = 0.0;
-  def_lut_points[0].red = 0.0;
-  def_lut_points[0].green = 0.0;
-  def_lut_points[0].blue = 0.0;
-  def_lut_points[0].alpha = 1.0;
-  def_lut_points[0].value = 1.0;
-  def_lut_points[0].red = 1.0;
-  def_lut_points[0].green = 1.0;
-  def_lut_points[0].blue = 1.0;
-  def_lut_points[0].alpha = 1.0;
-  objs->lut = imglut_new (2, def_lut_points);
-  free(def_lut_points);
+  objs->img_gl_name = lut_gl_name = 0;
+  objs->lut = imglut_new (2, NULL);
+  imglut_set_point_rgb(0, 0.0, 0.0, 0.0);
+  imglut_set_point_rgb(1, 1.0, 1.0, 1.0);
   
   objs->img = NULL;
+  
+  objs->dra_ccdimg = gtk_drawing_area_new();
+  gtk_container_add(GTK_CONTAINER(imgdisp), objs->dra_ccdimg);
+  gtk_widget_add_events (dra_ccdimg, GDK_EXPOSURE_MASK);
+  g_object_ref(objs->dra_ccdimg);
+  GdkGLConfig *glconfig = gdk_gl_config_new_by_mode (GDK_GL_MODE_RGBA | GDK_GL_MODE_DOUBLE);
+  if (glconfig == NULL)
+  {
+    act_log_error(act_log_msg("Could not find suitable OpenGL configuration."));
+    g_object_unref(objs);
+    return;
+  }
+  if (!gtk_widget_set_gl_capability (objs->dra_ccdimg, glconfig, FALSE, TRUE, GDK_GL_RGBA_TYPE))
+  {
+    act_log_error(act_log_msg("Could not find suitable OpenGL capability."));
+    g_object_unref(objs);
+    return;
+  }
+  g_signal_connect (objs->dra_ccdimg, "configure-event", G_CALLBACK (imgdisp_configure), NULL);
+  g_signal_connect (objs->dra_ccdimg, "expose-event", G_CALLBACK (imgdisp_expose), NULL);
+
+
 }
 
 static void imgdisp_class_init(ImgdispClass *klass)
 {
-  // ??? Implement
+  imgdisp_signals[MOUSE_MOVE_XY] = g_signal_new("imgdisp-move-xy", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__UINT_UINT, G_TYPE_NONE, 2, G_TYPE_UINT, G_TYPE_UINT);
+  imgdisp_signals[MOUSE_MOVE_VIEW] = g_signal_new("imgdisp-move-view", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__FLOAT_FLOAT, G_TYPE_NONE, 2, G_TYPE_FLOAT, G_TYPE_FLOAT);
+  imgdisp_signals[MOUSE_MOVE_EQUAT] = g_signal_new("imgdisp-move-equat", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__FLOAT_FLOAT, G_TYPE_NONE, 2, G_TYPE_FLOAT, G_TYPE_FLOAT);
   G_OBJECT_CLASS(klass)->dispose = imgdisp_instance_dispose;
 }
 
@@ -251,7 +360,7 @@ gboolean dra_configure(GtkWidget *dra_ccdimg)
   glOrtho(-1.0,1.0,-1.0,1.0,-1.0,1.0);
   glEnable(GL_TEXTURE_2D);
   
-  G_glsl_prog = glCreateProgram();
+  GLuint glsl_prog = glCreateProgram();
   GLuint shader;
   GLint length, result;
   
@@ -261,19 +370,19 @@ gboolean dra_configure(GtkWidget *dra_ccdimg)
   glShaderSource(shader, 1, &vert_src, &length);
   glCompileShader(shader);
   glGetShaderiv(shader, GL_COMPILE_STATUS, &result);
-  if(result == GL_FALSE) 
+  if (result == GL_FALSE) 
   {
     char *log;
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
     log = malloc(length);
     glGetShaderInfoLog(shader, length, &result, log);
-    fprintf(stderr, "Unable to compile vertex shader: %s\n", log);
+    act_log_error(act_log_msg("Unable to compile vertex shader: %s", log));
     free(log);
     glDeleteShader(shader);
   }
-  if(shader != 0) 
+  if (shader != 0) 
   {
-    glAttachShader(G_glsl_prog, shader);
+    glAttachShader(glsl_prog, shader);
     glDeleteShader(shader);
   }
   
@@ -289,41 +398,41 @@ gboolean dra_configure(GtkWidget *dra_ccdimg)
     glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
     log = malloc(length);
     glGetShaderInfoLog(shader, length, &result, log);
-    fprintf(stderr, "Unable to compile fragment shader: %s\n", log);
+    act_log_error(act_log_msg("Unable to compile fragmet shader: %s", log));
     free(log);
     glDeleteShader(shader);
   }
   if(shader != 0)
   {
-    glAttachShader(G_glsl_prog, shader);
+    glAttachShader(glsl_prog, shader);
     glDeleteShader(shader);
   }
   
-  glLinkProgram(G_glsl_prog);
-  glGetProgramiv(G_glsl_prog, GL_LINK_STATUS, &result);
+  glLinkProgram(glsl_prog);
+  glGetProgramiv(glsl_prog, GL_LINK_STATUS, &result);
   if(result == GL_FALSE) 
   {
     GLint length;
     char *log;
-    glGetProgramiv(G_glsl_prog, GL_INFO_LOG_LENGTH, &length);
+    glGetProgramiv(glsl_prog, GL_INFO_LOG_LENGTH, &length);
     log = malloc(length);
-    glGetProgramInfoLog(G_glsl_prog, length, &result, log);
-    fprintf(stderr, "sceneInit(): Program linking failed: %s\n", log);
+    glGetProgramInfoLog(glsl_prog, length, &result, log);
+    act_log_error(act_log_msg("Unable to link GL shader programme: %s", log));
     free(log);
     glDeleteProgram(G_glsl_prog);
     G_glsl_prog = 0;
   }
   
-  GLint ccdimg_loc = glGetUniformLocation(G_glsl_prog, "ccdimg_tex");
-  GLint coltbl_loc = glGetUniformLocation(G_glsl_prog, "coltbl_tex");
+  GLint ccdimg_loc = glGetUniformLocation(glsl_prog, "ccdimg_tex");
+  GLint coltbl_loc = glGetUniformLocation(glsl_prog, "coltbl_tex");
   
-  glUseProgram(G_glsl_prog);
-  glUniform1i(ccdimg_loc, 0); //Texture unit 0 is for CCD images.
-  glUniform1i(coltbl_loc, 2); //Texture unit 2 is for colour table.
+  glUseProgram(glsl_prog);
+  glUniform1i(ccdimg_loc, IMGDISP_IMG_TEX); //Texture unit 0 is for CCD images.
+  glUniform1i(coltbl_loc, IMGDISP_LUT_TEX); //Texture unit 2 is for colour table.
   
   //When rendering an objectwith this program.
   glGenTextures(1,&G_ccdimgname);
-  glActiveTexture(GL_TEXTURE0 + 0);
+  glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
   glBindTexture(GL_TEXTURE_2D, G_ccdimgname);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -335,7 +444,7 @@ gboolean dra_configure(GtkWidget *dra_ccdimg)
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, ccdcntrl_get_max_width(), ccdcntrl_get_max_height(), 0, GL_RED, GL_UNSIGNED_BYTE, &img[0]);
   glMatrixMode(GL_MODELVIEW);
   
-  glActiveTexture(GL_TEXTURE0 + 2);
+  glActiveTexture(GL_TEXTURE0+IMGDISP_LUT_TEX);
   glGenTextures(1,&G_coltblname);
   glBindTexture(GL_TEXTURE_2D, G_coltblname);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -370,7 +479,7 @@ gboolean dra_expose (GtkWidget *dra_ccdimg)
     glScalef(1.0, -1.0, 1.0);
   glScaled(1.0, -1.0, 1.0);
   glEnable (GL_TEXTURE_2D);
-  glActiveTexture(GL_TEXTURE0 + 0);
+  glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
   glBindTexture(GL_TEXTURE_2D, G_ccdimgname);
   glColor3ub(0,0,0);
   glBegin (GL_QUADS);

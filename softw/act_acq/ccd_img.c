@@ -54,6 +54,16 @@ void ccd_img_set_exp_t(CcdImg *objs, gfloat exp_t_s)
   objs->exp_t_s = exp_t_s;
 }
 
+gushort ccd_img_get_img_width(CcdImg *objs)
+{
+  return floor ((float)objs->win_width/objs->prebin_x);
+}
+
+gushort ccd_img_get_img_height(CcdImg *objs)
+{
+  return floor((float)objs->win_height/objs->prebin_y);
+}
+
 gushort ccd_img_get_win_start_x(CcdImg *objs)
 {
   return objs->win_start_x;

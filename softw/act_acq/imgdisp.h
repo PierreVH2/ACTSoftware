@@ -12,8 +12,7 @@ typedef struct _LutPoint  LutPoint;
 
 struct _LutPoint
 {
-  gfloat value;
-  gfloat red, green, blue, alpha;
+  gfloat red, green, blue;
 };
 
 #define IMGLUT_TYPE              (imglut_get_type())
@@ -40,6 +39,14 @@ struct _ImglutClass
 
 GType imglut_get_type (void);
 Imglut *imglut_new (gulong num_points, LutPoint const *points);
+void imglut_set_points(Imglut *objs, LutPoint const *points);
+void imglut_set_point(Imglut *objs, gulong idx, LutPoint const *point);
+void imglut_set_point_rgb(Imglut *objs, gulong idx, gfloat red, gfloat green, gfloat blue);
+void imglut_set_point_value(Imglut *objs, gfloat value, LutPoint const *point);
+void imglut_set_point_value_rgb(Imglut *objs, gfloat value, gfloat red, gfloat green, gfloat blue);
+gulong imglut_get_num_points(Imglut const *objs);
+LutPoint const *imglut_get_points(Imglut const *objs);
+LutPoint const *imglut_get_points(Imglut const *objs, gulong index);
 
 
 #define IMGDISP_TYPE              (imgdisp_get_type())
@@ -60,6 +67,7 @@ struct _Imgdisp
   gfloat bright_lim, feint_lim;
   ImgLut *lut;
   CcdImg *img;
+  guint img_gl_name, lut_gl_name;
 };
 
 struct _ImgdispClass
@@ -73,7 +81,7 @@ void imgdisp_set_flip_ns(GtkWidget *imgdisp, gboolean flip_ns);
 void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew);
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_feint_lim(GtkWidget *imgdisp, gfloat lim);
-void imgdisp_set_lut(GtkWidget *imgdisp, ImgLut const *lut);
+void imgdisp_set_lut(GtkWidget *imgdisp, ImgLut *lut);
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg const *img);
 
 G_END_DECLS

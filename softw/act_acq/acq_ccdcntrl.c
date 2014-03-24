@@ -505,7 +505,7 @@ static void ccd_cntrl_instance_init(GObject *ccd_cntrl)
 
 static void ccd_cntrl_class_init(CcdImgClass *klass)
 {
-  cntrl_signals[CNTRL_STAT_UPDATE] = g_signal_new("acq-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__UCHAR_FLOAT, G_TYPE_NONE, 1, G_TYPE_UCHAR, G_TYPE_FLOAT);
+  cntrl_signals[CNTRL_STAT_UPDATE] = g_signal_new("acq-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__UCHAR_FLOAT, G_TYPE_NONE, 2, G_TYPE_UCHAR, G_TYPE_FLOAT);
   cntrl_signals[CNTRL_NEW_IMG] = g_signal_new("acq-new-image", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__OBJECT, G_TYPE_NONE, 1, G_TYPE_OBJECT);
   G_OBJECT_CLASS(klass)->dispose = ccd_cntrl_instance_dispose;
 }
