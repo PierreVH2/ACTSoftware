@@ -24,8 +24,8 @@ static void check_coord_poll(Dtimotor *objs);
 static gboolean coord_poll(gpointer dti_motor);
 //static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec);
 static guchar check_warn(Dtimotor *objs);
-static void pointing_model_forward(struct hastruct *ha, struct decstruct *dec);
-static void pointing_model_reverse(struct hastruct *ha, struct decstruct *dec);
+static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec);
+static void pointing_model_tel_sky(struct hastruct *ha, struct decstruct *dec);
 static gint read_motor_stat(gint motor_fd, guchar *motor_stat);
 static gint read_motor_limits(gint motor_fd, guchar *limits_stat);
 static void read_motor_coord(gint motor_fd, struct hastruct *ha, struct decstruct *dec);
@@ -250,7 +250,7 @@ GActTelcoord *dti_motor_get_coord(Dtimotor *objs)
 void dti_motor_apply_pointing_tel_sky(GActTelcoord *coord)
 {
   if (IS_GACT_TELCOORD(coord))
-    pointing_model_reverse(&coord->ha, &coord->dec);
+    pointing_model_tel_sky(&coord->ha, &coord->dec);
   else
     act_log_error(act_log_msg("Invalid input parameters."));
 }
@@ -258,7 +258,7 @@ void dti_motor_apply_pointing_tel_sky(GActTelcoord *coord)
 void dti_motor_apply_pointing_sky_tel(GActTelcoord *coord)
 {
   if (IS_GACT_TELCOORD(coord))
-    pointing_model_forward(&coord->ha, &coord->dec);
+    pointing_model_sky_tel(&coord->ha, &coord->dec);
   else
     act_log_error(act_log_msg("Invalid input parameters."));
 }
@@ -484,22 +484,30 @@ static guchar check_warn(Dtimotor *objs)
   return tmp_warn;
 }
 
-static void pointing_model_forward(struct hastruct *ha, struct decstruct *dec)
+static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec)
 {
+  struct altstruct tmpalt;
+  struct azmstruct tmpazm;
+  convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
+  corr_atm_refract_sky_tel(&tmpalt);
+  convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
   double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
-  /// TODO: Apply refraction here
-  POINTING_MODEL_FORWARD(ha_h,dec_d);
+  POINTING_MODEL_ST(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
   convert_D_DMS_dec(dec_d, dec);
 }
 
-static void pointing_model_reverse(struct hastruct *ha, struct decstruct *dec)
+static void pointing_model_tel_sky(struct hastruct *ha, struct decstruct *dec)
 {
   double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
-  POINTING_MODEL_REVERSE(ha_h,dec_d);
-  /// TODO: Apply refraction here
+  POINTING_MODEL_TS(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
   convert_D_DMS_dec(dec_d, dec);
+  struct altstruct tmpalt;
+  struct azmstruct tmpazm;
+  convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
+  corr_atm_refract_tel_sky(&tmpalt);
+  convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
 }
 
 static gint read_motor_stat(gint motor_fd, guchar *motor_stat)

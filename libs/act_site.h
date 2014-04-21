@@ -24,4 +24,10 @@
 //#define LONGITUDE         20.8010678
 #define LONGITUDE 20.811
 
+/// Average atmospheric temperatuer at site - degrees Celcius
+#define AVG_TEMP_degC     15.0
+/// Average atmospheric pressure at site - kilopascal
+#define AVG_PRESS_kPa     82.8
+
+
 #endif

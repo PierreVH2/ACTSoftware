@@ -5,6 +5,8 @@
  * \todo Check coord limits
  */
 
+#include <stdio.h>
+
 #include <math.h>
 #include <string.h>
 #include "act_site.h"
@@ -536,19 +538,10 @@ void precess_coord(struct rastruct *ra_in, struct decstruct *dec_in, float epoch
 /** \brief Calculates unrefracted altitude from observed altitude
  * \param alt Altitude structure - modified in-place.
  * \return (void)
- *
- * Formulae from "Astronomical Algorithms (2nd ed.), Jean Meeus, Willmann-Bell, Inc., 1998, pg. 105-108
  */
-void corr_atm_refract_to_sky(struct altstruct *alt)
+void corr_atm_refract_tel_sky(struct altstruct *alt)
 {
-  double alt_deg = convert_DMS_D_alt(alt);
-  double coeff = alt_deg + 7.31/(alt_deg+4.4);
-  double R = 1.0 / tan(convert_DEG_RAD(coeff));
-//   R += 0.0013515;
-//   R -= 0.06*sin(convert_DEG_RAD(14.7*R + 13));
-//   R *= AVG_PRESS_mb/1010;
-//   R *= 283 / (273 + AVG_TEMP_degC);
-  alt_deg -= R / 60.0;
+  double alt_deg = convert_DMS_D_alt(alt) - calc_atm_refract_deg(alt, AVG_PRESS_kPa, AVG_TEMP_degC);
   convert_D_DMS_alt(alt_deg, alt);
 }
 
@@ -558,15 +551,29 @@ void corr_atm_refract_to_sky(struct altstruct *alt)
  *
  * Formulae from "Astronomical Algorithms (2nd ed.), Jean Meeus, Willmann-Bell, Inc., 1998, pg. 105-108
  */
-void corr_atm_refract_to_obs(struct altstruct *alt)
+void corr_atm_refract_sky_tel(struct altstruct *alt)
+{
+  double alt_deg = convert_DMS_D_alt(alt) + calc_atm_refract_deg(alt, AVG_PRESS_kPa, AVG_TEMP_degC);
+  convert_D_DMS_alt(alt_deg, alt);
+}
+
+/** \brief Calculates refraction at given altitude
+ * \param alt Altitude structure - not modified.
+ * \param press_kpa Atmospheric pressure in kPa
+ * \param temp_c Atmospheric temperature in degrees Celcius
+ * \return Atmospheric refraction angle in degrees
+ *
+ * Formula from "Astronomical Algorithms (2nd ed.), Jean Meeus, Willmann-Bell, Inc., 1998, pg. 105-108
+ * Observed or calculated altitude may be used - difference in refraction should be negligible (see Meeus)
+ * Add returned angle to ideal (unrefracted) altitude to find predicted true altitude ("sky to tel")
+ * Subtract returned angle from observed altitude to find ideal (unrefracted) altitude ("tel to sky")
+ */
+double calc_atm_refract_deg(struct altstruct *alt, double press_kpa, double temp_c)
 {
   double alt_deg = convert_DMS_D_alt(alt);
   double coeff = alt_deg + 10.3/(alt_deg+5.11);
-  double R = 1.02 / tan(convert_DEG_RAD(coeff));
-//   R += 0.0013515;
-//   R -= 0.06*sin(convert_DEG_RAD(14.7*R + 13));
-//   R *= AVG_PRESS_mb/1010;
-//   R *= 283 / (273 + AVG_TEMP_degC);
-  alt_deg += R / 60.0;
-  convert_D_DMS_alt(alt_deg, alt);
+  double R = (press_kpa/101.0) * (283.0/(273.0+temp_c)) * 1.02 / tan(coeff*ONEPI/180.0);
+  if (R < 0.0)
+    return 0.0;
+  return R / 60.0;
 }

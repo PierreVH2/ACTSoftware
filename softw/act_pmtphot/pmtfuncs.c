@@ -36,7 +36,7 @@ struct pmtdetailstruct *init_pmtdetail(GtkWidget *container)
   int pmt_fd = open("/dev/" PMT_DEVICE_NAME, O_RDWR);
   if (pmt_fd <= 0)
   {
-    act_log_error(act_log_msg("Could not open PMT device driver character device %s - %s.", "/dev/" PMT_DEVICE_NAME, strerror(pmt_fd)));
+    act_log_error(act_log_msg("Could not open PMT device driver character device %s - %s.", "/dev/" PMT_DEVICE_NAME, strerror(errno)));
     free(pmtdetail);
     return NULL;
   }

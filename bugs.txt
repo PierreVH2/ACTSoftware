@@ -14,6 +14,7 @@ act_dti/domeshutter,dropout - button sensitivity incorrect (dropout open+close g
 motor_driver - does not stop tracking when act_dti disconnects
 act_dti - auto target set when already at coordinates fails
 Pointing model goes berserk at zenith
+Should domeshutter close when programme exits/restarts?
 
 
 
