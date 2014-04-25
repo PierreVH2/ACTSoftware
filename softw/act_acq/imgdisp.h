@@ -39,14 +39,14 @@ struct _ImglutClass
 
 GType imglut_get_type (void);
 Imglut *imglut_new (gulong num_points, LutPoint const *points);
-void imglut_set_points(Imglut *objs, LutPoint const *points);
+void imglut_set_points(Imglut *objs, gulong num_points, LutPoint const *points);
 void imglut_set_point(Imglut *objs, gulong idx, LutPoint const *point);
 void imglut_set_point_rgb(Imglut *objs, gulong idx, gfloat red, gfloat green, gfloat blue);
 void imglut_set_point_value(Imglut *objs, gfloat value, LutPoint const *point);
 void imglut_set_point_value_rgb(Imglut *objs, gfloat value, gfloat red, gfloat green, gfloat blue);
 gulong imglut_get_num_points(Imglut const *objs);
 LutPoint const *imglut_get_points(Imglut const *objs);
-LutPoint const *imglut_get_points(Imglut const *objs, gulong index);
+LutPoint const *imglut_get_point(Imglut const *objs, gulong index);
 
 
 #define IMGDISP_TYPE              (imgdisp_get_type())
@@ -61,13 +61,14 @@ typedef struct _ImgdispClass  ImgdispClass;
 struct _Imgdisp
 {
   GtkEventBox parent;
-  GtkWidget *dra_ccdimg
+  GtkWidget *dra_ccdimg;
   
   gboolean flip_ns, flip_ew;
   gfloat bright_lim, feint_lim;
-  ImgLut *lut;
+  Imglut *lut;
   CcdImg *img;
   guint img_gl_name, lut_gl_name;
+  guint glsl_prog;
 };
 
 struct _ImgdispClass
@@ -81,8 +82,14 @@ void imgdisp_set_flip_ns(GtkWidget *imgdisp, gboolean flip_ns);
 void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew);
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_feint_lim(GtkWidget *imgdisp, gfloat lim);
-void imgdisp_set_lut(GtkWidget *imgdisp, ImgLut *lut);
+void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut);
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg const *img);
+gulong imgdisp_coord_pixel_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
+gulong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
+gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
+gfloat imgdisp_coord_viewport_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
+gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
+gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 
 G_END_DECLS
 

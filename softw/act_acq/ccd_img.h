@@ -3,6 +3,7 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include <act_timecoord.h>
 
 G_BEGIN_DECLS
 

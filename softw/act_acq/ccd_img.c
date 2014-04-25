@@ -1,6 +1,8 @@
 #include <gtk/gtk.h>
 #include <string.h>
 #include <errno.h>
+#include <math.h>
+#include <stdlib.h>
 #include "ccd_img.h"
 
 static void ccd_img_instance_init(GObject *ccd_img);
@@ -34,7 +36,7 @@ GType ccd_img_get_type(void)
   return ccd_img_type;
 }
 
-guchar ccd_img_get_img_type(CcdImg *objs)
+guchar ccd_img_get_img_type(CcdImg const *objs)
 {
   return objs->img_type;
 }
@@ -44,7 +46,7 @@ void ccd_img_set_img_type(CcdImg *objs, guchar img_type)
   objs->img_type = img_type;
 }
 
-gfloat ccd_img_get_exp_t(CcdImg *objs)
+gfloat ccd_img_get_exp_t(CcdImg const *objs)
 {
   return objs->exp_t_s;
 }
@@ -54,42 +56,42 @@ void ccd_img_set_exp_t(CcdImg *objs, gfloat exp_t_s)
   objs->exp_t_s = exp_t_s;
 }
 
-gushort ccd_img_get_img_width(CcdImg *objs)
+gushort ccd_img_get_img_width(CcdImg const *objs)
 {
   return floor ((float)objs->win_width/objs->prebin_x);
 }
 
-gushort ccd_img_get_img_height(CcdImg *objs)
+gushort ccd_img_get_img_height(CcdImg const *objs)
 {
   return floor((float)objs->win_height/objs->prebin_y);
 }
 
-gushort ccd_img_get_win_start_x(CcdImg *objs)
+gushort ccd_img_get_win_start_x(CcdImg const *objs)
 {
   return objs->win_start_x;
 }
 
-gushort ccd_img_get_win_start_y(CcdImg *objs)
+gushort ccd_img_get_win_start_y(CcdImg const *objs)
 {
   return objs->win_start_y;
 }
 
-gushort ccd_img_get_win_width(CcdImg *objs)
+gushort ccd_img_get_win_width(CcdImg const *objs)
 {
   return objs->win_width;
 }
 
-gushort ccd_img_get_win_height(CcdImg *objs)
+gushort ccd_img_get_win_height(CcdImg const *objs)
 {
   return objs->win_height;
 }
 
-gushort ccd_img_get_prebin_x(CcdImg *objs)
+gushort ccd_img_get_prebin_x(CcdImg const *objs)
 {
   return objs->prebin_x;
 }
 
-gushort ccd_img_get_prebin_y(CcdImg *objs)
+gushort ccd_img_get_prebin_y(CcdImg const *objs)
 {
   return objs->prebin_y;
 }
@@ -104,7 +106,7 @@ void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, 
   objs->prebin_y = prebin_y;
 }
 
-void ccd_img_get_start_datetime(CcdImg *objs, struct datestruct *start_unid, struct timestruct *start_unit)
+void ccd_img_get_start_datetime(CcdImg const *objs, struct datestruct *start_unid, struct timestruct *start_unit)
 {
   if (start_unid != NULL)
     memcpy(start_unid, &objs->start_unid, sizeof(struct datestruct));
@@ -112,18 +114,18 @@ void ccd_img_get_start_datetime(CcdImg *objs, struct datestruct *start_unid, str
     memcpy(start_unit, &objs->start_unit, sizeof(struct timestruct));
 }
 
-static void ccd_img_set_start_datetime(CcdImg *objs, struct datestruct const *start_unid, struct timestruct const *start_unit)
+void ccd_img_set_start_datetime(CcdImg *objs, struct datestruct const *start_unid, struct timestruct const *start_unit)
 {
   memcpy(&objs->start_unid, start_unid, sizeof(struct datestruct));
   memcpy(&objs->start_unit, start_unit, sizeof(struct timestruct));
 }
 
-gchar const *ccd_img_get_targ_name(CcdImg *objs)
+gchar const *ccd_img_get_targ_name(CcdImg const *objs)
 {
   return objs->targ_name;
 }
 
-gulong ccd_img_get_targ_id(CcdImg *objs)
+gulong ccd_img_get_targ_id(CcdImg const *objs)
 {
   return objs->targ_id;
 }
@@ -136,12 +138,12 @@ void ccd_img_set_target(CcdImg *objs, gulong targ_id, gchar const *targ_name)
   objs->targ_name = g_strdup(targ_name);
 }
 
-gchar const *ccd_img_get_user_name(CcdImg *objs)
+gchar const *ccd_img_get_user_name(CcdImg const *objs)
 {
   return objs->user_name;
 }
 
-gulong ccd_img_get_user_id(CcdImg *objs)
+gulong ccd_img_get_user_id(CcdImg const *objs)
 {
   return objs->user_id;
 }
@@ -154,7 +156,7 @@ void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name)
   objs->user_name = g_strdup(user_name);
 }
 
-void ccd_img_get_tel_pos(CcdImg *objs, struct rastruct *tel_ra, struct decstruct *tel_dec)
+void ccd_img_get_tel_pos(CcdImg const *objs, struct rastruct *tel_ra, struct decstruct *tel_dec)
 {
   if (tel_ra != NULL)
     memcpy(tel_ra, &objs->tel_ra, sizeof(struct rastruct));
@@ -168,12 +170,12 @@ void ccd_img_set_tel_pos(CcdImg *objs, struct rastruct const *tel_ra, struct dec
   memcpy(&objs->tel_dec, tel_dec, sizeof(struct decstruct));
 }
 
-gulong ccd_img_get_img_len(CcdImg *objs)
+gulong ccd_img_get_img_len(CcdImg const *objs)
 {
   return objs->img_len;
 }
 
-gfloat const *ccd_img_get_img_data(CcdImg *objs)
+gfloat const *ccd_img_get_img_data(CcdImg const *objs)
 {
   return objs->img_data;
 }

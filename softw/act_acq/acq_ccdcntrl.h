@@ -5,6 +5,7 @@
 #include <glib-object.h>
 #include <act_timecoord.h>
 #include <act_ipc.h>
+#include "ccd_img.h"
 
 G_BEGIN_DECLS
 
