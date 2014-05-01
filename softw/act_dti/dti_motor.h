@@ -98,7 +98,9 @@ struct _DtimotorClass
 
 GType gact_telcoord_get_type (void);
 GActTelcoord *gact_telcoord_new (struct hastruct *tel_ha, struct decstruct *tel_dec);
+GActTelcoord *gact_telcoord_new_telcoord (GActTelcoord *copy);
 void gact_telcoord_set (GActTelcoord *objs, struct hastruct *tel_ha, struct decstruct *tel_dec);
+void gact_telcoord_set_telcoord(GActTelcoord *objs, GActTelcoord *copy);
 
 GType gact_telgoto_get_type (void);
 GActTelgoto *gact_telgoto_new (struct hastruct *ha, struct decstruct *dec, guchar speed, gboolean is_sidereal);

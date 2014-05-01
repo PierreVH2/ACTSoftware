@@ -35,7 +35,9 @@ double calc_airmass(struct altstruct *alt);
 void precess_coord(struct rastruct *ra_in, struct decstruct *dec_in, float epoch_in, float epoch_out, struct rastruct *ra_out, struct decstruct *dec_out);
 void corr_atm_refract_tel_sky(struct altstruct *alt);
 void corr_atm_refract_sky_tel(struct altstruct *alt);
-double calc_atm_refract_deg(struct altstruct *alt, double press_kpa, double temp_c);
+void corr_atm_refract_tel_sky_equat(struct hastruct *ha, struct decstruct *dec);
+void corr_atm_refract_sky_tel_equat(struct hastruct *ha, struct decstruct *dec);
+double calc_atm_refract_deg(double alt_deg, double press_kpa, double temp_c);
 
 #ifdef __cplusplus
 }

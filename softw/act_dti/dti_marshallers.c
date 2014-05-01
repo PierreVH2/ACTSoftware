@@ -49,7 +49,44 @@
 #endif /* !G_ENABLE_DEBUG */
 
 
-/* VOID:UCHAR,POINTER (./dti_widget_marshal.txt:1) */
+/* VOID:BOOLEAN,POINTER (./dti_marshallers.txt:1) */
+void
+g_cclosure_user_marshal_VOID__BOOLEAN_POINTER (GClosure     *closure,
+                                               GValue       *return_value G_GNUC_UNUSED,
+                                               guint         n_param_values,
+                                               const GValue *param_values,
+                                               gpointer      invocation_hint G_GNUC_UNUSED,
+                                               gpointer      marshal_data)
+{
+  typedef void (*GMarshalFunc_VOID__BOOLEAN_POINTER) (gpointer     data1,
+                                                      gboolean     arg_1,
+                                                      gpointer     arg_2,
+                                                      gpointer     data2);
+  register GMarshalFunc_VOID__BOOLEAN_POINTER callback;
+  register GCClosure *cc = (GCClosure*) closure;
+  register gpointer data1, data2;
+
+  g_return_if_fail (n_param_values == 3);
+
+  if (G_CCLOSURE_SWAP_DATA (closure))
+    {
+      data1 = closure->data;
+      data2 = g_value_peek_pointer (param_values + 0);
+    }
+  else
+    {
+      data1 = g_value_peek_pointer (param_values + 0);
+      data2 = closure->data;
+    }
+  callback = (GMarshalFunc_VOID__BOOLEAN_POINTER) (marshal_data ? marshal_data : cc->callback);
+
+  callback (data1,
+            g_marshal_value_peek_boolean (param_values + 1),
+            g_marshal_value_peek_pointer (param_values + 2),
+            data2);
+}
+
+/* VOID:UCHAR,POINTER (./dti_marshallers.txt:2) */
 void
 g_cclosure_user_marshal_VOID__UCHAR_POINTER (GClosure     *closure,
                                              GValue       *return_value G_GNUC_UNUSED,
@@ -86,7 +123,7 @@ g_cclosure_user_marshal_VOID__UCHAR_POINTER (GClosure     *closure,
             data2);
 }
 
-/* VOID:INT,LONG (./dti_widget_marshal.txt:2) */
+/* VOID:INT,LONG (./dti_marshallers.txt:3) */
 void
 g_cclosure_user_marshal_VOID__INT_LONG (GClosure     *closure,
                                         GValue       *return_value G_GNUC_UNUSED,
@@ -123,7 +160,7 @@ g_cclosure_user_marshal_VOID__INT_LONG (GClosure     *closure,
             data2);
 }
 
-/* VOID:INT,POINTER (./dti_widget_marshal.txt:3) */
+/* VOID:INT,POINTER (./dti_marshallers.txt:4) */
 void
 g_cclosure_user_marshal_VOID__INT_POINTER (GClosure     *closure,
                                            GValue       *return_value G_GNUC_UNUSED,

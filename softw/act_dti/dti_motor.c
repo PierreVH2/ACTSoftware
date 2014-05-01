@@ -10,6 +10,7 @@
 #include "dti_motor.h"
 #include "pointing_model.h"
 #include "tracking_model.h"
+#include "dti_marshallers.h"
 
 #define DTI_MOTOR_WARN_N        0x10
 #define DTI_MOTOR_WARN_S        0x20
@@ -22,6 +23,7 @@ static void dti_motor_instance_dispose(GObject *dti_motor);
 static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpointer dti_motor);
 static void check_coord_poll(Dtimotor *objs);
 static gboolean coord_poll(gpointer dti_motor);
+static void update_coord(Dtimotor *objs);
 //static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec);
 static guchar check_warn(Dtimotor *objs);
 static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec);
@@ -45,7 +47,7 @@ enum
   LIMITS_UPDATE,
   WARN_UPDATE,
   COORD_UPDATE,
-  GOTO_FINISH,
+  MOVE_FINISH,
   LAST_SIGNAL
 };
 
@@ -317,7 +319,7 @@ static void dti_motor_class_init (DtimotorClass *klass)
   dti_motor_signals[LIMITS_UPDATE] = g_signal_new("limits-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
   dti_motor_signals[WARN_UPDATE] = g_signal_new("warn-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
   dti_motor_signals[COORD_UPDATE] = g_signal_new("coord-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__OBJECT, G_TYPE_NONE, 1, G_TYPE_OBJECT);
-  dti_motor_signals[GOTO_FINISH] = g_signal_new("goto-finish", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__BOOLEAN, G_TYPE_NONE, 1, G_TYPE_BOOLEAN);
+  dti_motor_signals[MOVE_FINISH] = g_signal_new("move-finish", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__BOOLEAN_POINTER, G_TYPE_NONE, 2, G_TYPE_BOOLEAN, G_TYPE_POINTER);
   G_OBJECT_CLASS(klass)->dispose = dti_motor_instance_dispose;
 }
 
@@ -373,10 +375,11 @@ static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpoi
   g_signal_emit(G_OBJECT(objs), dti_motor_signals[STAT_UPDATE], 0, tmp_stat);
   if (((objs->cur_stat & MOTOR_STAT_MOVING) > 0) && ((tmp_stat & MOTOR_STAT_MOVING) == 0))
   {
+    update_coord(objs);
     if ((tmp_stat & (MOTOR_STAT_ALLSTOP | MOTOR_STAT_ERR_LIMS)) > 0)
-      g_signal_emit(dti_motor, dti_motor_signals[GOTO_FINISH], 0, FALSE);
+      g_signal_emit(dti_motor, dti_motor_signals[MOVE_FINISH], 0, FALSE, objs->cur_coord);
     else
-      g_signal_emit(dti_motor, dti_motor_signals[GOTO_FINISH], 0, TRUE);
+      g_signal_emit(dti_motor, dti_motor_signals[MOVE_FINISH], 0, TRUE, objs->cur_coord);
   }
   objs->cur_stat = tmp_stat;
   check_coord_poll(objs);
@@ -414,11 +417,7 @@ static void check_coord_poll(Dtimotor *objs)
 static gboolean coord_poll(gpointer dti_motor)
 {
   Dtimotor *objs = DTI_MOTOR(dti_motor);
-  struct hastruct tmp_ha;
-  struct decstruct tmp_dec;
-  gint motor_fd = g_io_channel_unix_get_fd(objs->motor_chan);
-  read_motor_coord(motor_fd, &tmp_ha, &tmp_dec);
-  gact_telcoord_set(objs->cur_coord, &tmp_ha, &tmp_dec);
+  update_coord(objs);
   
   guchar tmp_warn = check_warn(objs);
   if (tmp_warn != objs->cur_warn)
@@ -436,10 +435,19 @@ static gboolean coord_poll(gpointer dti_motor)
 //     calc_track_adj(&tmp_ha, &tmp_dec, &adj_ha, &adj_dec);
 //     send_motor_track_adj(motor_fd, convert_HMSMS_H_ha(&adj_ha), convert_DMS_D_dec(&adj_dec));
 //   }
-  GActTelcoord *tmp_coord = gact_telcoord_new(&tmp_ha, &tmp_dec);
+  GActTelcoord *tmp_coord = gact_telcoord_new_telcoord(objs->cur_coord);
   g_object_force_floating (G_OBJECT(tmp_coord));
   g_signal_emit(G_OBJECT(objs), dti_motor_signals[COORD_UPDATE], 0, tmp_coord);
   return TRUE;
+}
+
+static void update_coord(Dtimotor *objs)
+{
+  struct hastruct tmp_ha;
+  struct decstruct tmp_dec;
+  gint motor_fd = g_io_channel_unix_get_fd(objs->motor_chan);
+  read_motor_coord(motor_fd, &tmp_ha, &tmp_dec);
+  gact_telcoord_set(objs->cur_coord, &tmp_ha, &tmp_dec);
 }
 
 /*
@@ -486,13 +494,14 @@ static guchar check_warn(Dtimotor *objs)
 
 static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec)
 {
-  struct altstruct tmpalt;
-  struct azmstruct tmpazm;
-  convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
-  corr_atm_refract_sky_tel(&tmpalt);
-  convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
+//   struct altstruct tmpalt;
+//   struct azmstruct tmpazm;
+//   convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
+//  corr_atm_refract_sky_tel(&tmpalt);
+//   convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
+  corr_atm_refract_sky_tel_equat(ha, dec);
   double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
-  POINTING_MODEL_ST(ha_h,dec_d);
+//   POINTING_MODEL_ST(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
   convert_D_DMS_dec(dec_d, dec);
 }
@@ -500,14 +509,15 @@ static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec)
 static void pointing_model_tel_sky(struct hastruct *ha, struct decstruct *dec)
 {
   double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
-  POINTING_MODEL_TS(ha_h,dec_d);
+//   POINTING_MODEL_TS(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
   convert_D_DMS_dec(dec_d, dec);
-  struct altstruct tmpalt;
-  struct azmstruct tmpazm;
-  convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
-  corr_atm_refract_tel_sky(&tmpalt);
-  convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
+  corr_atm_refract_tel_sky_equat(ha, dec);
+//   struct altstruct tmpalt;
+//   struct azmstruct tmpazm;
+//   convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
+//  corr_atm_refract_tel_sky(&tmpalt);
+//   convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
 }
 
 static gint read_motor_stat(gint motor_fd, guchar *motor_stat)
@@ -555,6 +565,7 @@ static void read_motor_coord(gint motor_fd, struct hastruct *ha, struct decstruc
     act_log_error(act_log_msg("Failed to read telescope coordinates from motor driver - %s.", strerror(errno)));
     return;
   }
+  act_log_debug(act_log_msg("HA steps: %lu", coord.tel_ha));
   double ha_h = ((double) (MOTOR_LIM_E_MSEC - MOTOR_LIM_W_MSEC) * coord.tel_ha / range_ha + MOTOR_LIM_W_MSEC) / 3600000.0;
   double dec_d = ((double) (MOTOR_LIM_N_ASEC - MOTOR_LIM_S_ASEC) * coord.tel_dec / range_dec + MOTOR_LIM_S_ASEC) / 3600.0;
   convert_H_HMSMS_ha(ha_h, ha);
@@ -671,12 +682,28 @@ GActTelcoord *gact_telcoord_new (struct hastruct *tel_ha, struct decstruct *tel_
   return objs;
 }
 
+GActTelcoord *gact_telcoord_new_telcoord (GActTelcoord *copy)
+{
+  GObject *gacttelcoord = g_object_new (gact_telcoord_get_type(), NULL);
+  GActTelcoord *objs = GACT_TELCOORD(gacttelcoord);
+  memcpy(&objs->ha, &copy->ha, sizeof(struct hastruct));
+  memcpy(&objs->dec, &copy->dec, sizeof(struct decstruct));
+  return gacttelcoord;
+}
+
+
 void gact_telcoord_set (GActTelcoord *objs, struct hastruct *tel_ha, struct decstruct *tel_dec)
 {
   if (tel_ha != NULL)
     memcpy(&objs->ha, tel_ha, sizeof(struct hastruct));
   if (tel_dec != NULL)
     memcpy(&objs->dec, tel_dec, sizeof(struct decstruct));
+}
+
+void gact_telcoord_set_telcoord(GActTelcoord *objs, GActTelcoord *copy)
+{
+  memcpy(&objs->ha, &copy->ha, sizeof(struct hastruct));
+  memcpy(&objs->dec, &copy->dec, sizeof(struct decstruct));
 }
 
 GType gact_telgoto_get_type (void)

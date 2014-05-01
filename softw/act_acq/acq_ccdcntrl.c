@@ -743,7 +743,7 @@ int ccdcntrl_check_targset_exp(struct ccdcntrl_objects *ccdcntrl_objs, double *a
   {
     act_log_normal(act_log_msg("Target is centred."));
     *targ_cent = TRUE;
-//     ccdcntrl_save_image(ccdcntrl_objs);
+    ccdcntrl_save_image(ccdcntrl_objs);
   }
   else
     *targ_cent = FALSE;

@@ -48,7 +48,7 @@ static void stat_update(gpointer telmove, guchar stat);
 static void limits_update(gpointer telmove, guchar limits);
 static void warn_update(gpointer telmove, guchar warn);
 static void coord_update(gpointer telmove, GActTelcoord *new_coord);
-static void goto_finish(gpointer telmove, gboolean success);
+static void move_finish(gpointer telmove, gboolean success, gpointer new_coord);
 // static void update_statdisp(Telmove *objs);
 // static void update_limitdisp(Telmove *objs);
 static void check_button_sens(Telmove *objs);
@@ -132,7 +132,7 @@ GtkWidget *telmove_new (void)
   g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "limits-update", G_CALLBACK(limits_update), objs);
   g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "warn-update", G_CALLBACK(warn_update), objs);
   g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "coord-update", G_CALLBACK(coord_update), objs);
-  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "goto-finish", G_CALLBACK(goto_finish), objs);
+  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "move-finish", G_CALLBACK(move_finish), objs);
   
   g_signal_connect_swapped(G_OBJECT(telmove), "destroy", G_CALLBACK(telmove_destroy), telmove);
   g_signal_connect(G_OBJECT(objs->btn_goto), "clicked", G_CALLBACK(user_tel_goto), telmove);
@@ -461,14 +461,15 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
   }
 }
 
-static void goto_finish(gpointer telmove, gboolean success)
+static void move_finish(gpointer telmove, gboolean success, gpointer new_coord)
 {
   Telmove *objs = TELMOVE(telmove);
+  coord_update(telmove, GACT_TELCOORD(new_coord));
   if (objs->pending_msg == NULL)
     return;
   if (!success)
   {
-    act_log_debug(act_log_msg("Goto finished, unsuccessful."));
+    act_log_debug(act_log_msg("Move finished, unsuccessful."));
     process_complete(objs, OBSNSTAT_ERR_NEXT);
     return;
   }

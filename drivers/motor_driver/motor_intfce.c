@@ -55,10 +55,10 @@
 
 /** Stop goto if within these distances to the target coordinates
  * \{ */
-#define TOLERANCE_ENCOD_HA_PULSES   4
-#define TOLERANCE_ENCOD_DEC_PULSES  3
-#define TOLERANCE_MOTOR_HA_STEPS    10
-#define TOLERANCE_MOTOR_DEC_STEPS   5
+#define TOLERANCE_ENCOD_HA_PULSES   2
+#define TOLERANCE_ENCOD_DEC_PULSES  1
+#define TOLERANCE_MOTOR_HA_STEPS    3
+#define TOLERANCE_MOTOR_DEC_STEPS   2
 /** \} */
 
 /** Slow down if this distance from target coordinates
@@ -328,6 +328,7 @@ int start_card(struct motor_card_cmd *cmd)
   }
 
   // Check if requested direction valid
+//  printk(KERN_DEBUG PRINTK_PREFIX "start_card direction: %hhu\n", cmd->dir);
   dir = get_dir_mask(cmd->dir);
   if (dir == 0)
   {
@@ -357,6 +358,7 @@ int start_card(struct motor_card_cmd *cmd)
   if (G_status & MOTOR_STAT_CARD)
     return 0;
   params->dir_cur = params->dir_req;
+//  printk(KERN_DEBUG PRINTK_PREFIX "start_card dir_cur, dir_req: %hhu, %hhu\n", params->dir_cur, params->dir_req);
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
   params->timer_ms = 0;
   params->handset_move = FALSE;
@@ -633,7 +635,6 @@ static void update_motor_coords(int reset_motor_steps)
     G_motor_steps_dec += last_motor_steps - new_motor_steps;
   else if (dir & DIR_SOUTH_MASK)
     G_motor_steps_dec -= last_motor_steps - new_motor_steps;
-//   printk(KERN_DEBUG PRINTK_PREFIX "HA coord: 0x%x %d %d %d %u\n", dir, last_motor_steps, new_motor_steps, reset_motor_steps, G_motor_steps_ha);
   if (reset_motor_steps >= 0)
     last_motor_steps = reset_motor_steps;
   else
@@ -1138,7 +1139,6 @@ static unsigned char check_soft_lims(void)
 
 static void send_direction(unsigned char dir)
 {
-  printk(KERN_DEBUG PRINTK_PREFIX "Sending direction %hhu\n", dir);
   #ifndef MOTOR_SIM
    if (dir == 0)
      outb_p(POWER_OFF_MASK | TRK_OFF_MASK, DIR_CONTROL);
