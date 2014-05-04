@@ -46,6 +46,7 @@ void imglut_set_point_value(Imglut *objs, gfloat value, LutPoint const *point);
 void imglut_set_point_value_rgb(Imglut *objs, gfloat value, gfloat red, gfloat green, gfloat blue);
 gulong imglut_get_num_points(Imglut const *objs);
 LutPoint const *imglut_get_points(Imglut const *objs);
+gfloat const *imglut_get_points_float(Imglut const *objs);
 LutPoint const *imglut_get_point(Imglut const *objs, gulong index);
 
 
@@ -64,7 +65,7 @@ struct _Imgdisp
   GtkWidget *dra_ccdimg;
   
   gboolean flip_ns, flip_ew;
-  gfloat bright_lim, feint_lim;
+  gfloat bright_lim, faint_lim;
   Imglut *lut;
   CcdImg *img;
   guint img_gl_name, lut_gl_name;
@@ -81,9 +82,9 @@ GtkWidget *imgdisp_new (void);
 void imgdisp_set_flip_ns(GtkWidget *imgdisp, gboolean flip_ns);
 void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew);
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
-void imgdisp_set_feint_lim(GtkWidget *imgdisp, gfloat lim);
+void imgdisp_set_faint_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut);
-void imgdisp_set_img(GtkWidget *imgdisp, CcdImg const *img);
+void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img);
 gulong imgdisp_coord_pixel_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 gulong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
