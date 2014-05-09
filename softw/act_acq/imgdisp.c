@@ -32,10 +32,8 @@ static gboolean imgdisp_configure(GtkWidget *imgdisp);
 static gboolean imgdisp_expose (GtkWidget *imgdisp);
 static gboolean create_shaders(Imgdisp *objs);
 static void update_colour_transl(Imgdisp *objs);
-
-
-
-// static guint imgdisp_signals[LAST_SIGNAL] = { 0 };
+static glong img_x(Imgdisp *objs, gulong x);
+static glong img_y(Imgdisp *objs, gulong y);
 
 // Imglut function implementation
 GType imglut_get_type (void)
@@ -261,7 +259,7 @@ void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut)
 
   if (objs->glsl_prog == 0)
   {
-    act_log_debug(act_log_msg("Imgdisp widget not realised yet. LUT will be updated when object is realised."));
+    act_log_debug(act_log_msg("Imgdisp widget not configured yet. LUT will be updated when object is realised."));
     return;
   }
   
@@ -280,8 +278,6 @@ void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut)
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, lut_num_points, 1, 0, GL_RGB, GL_FLOAT, imglut_get_points_float(objs->lut));
   
   update_colour_transl(objs);
-  imgdisp_redraw(imgdisp);
-  
   gdk_gl_drawable_gl_end (gldrawable);
   imgdisp_redraw(imgdisp);
 }
@@ -296,7 +292,7 @@ void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img)
   }
   objs->img = img;
   g_object_ref(img);
-  gulong cur_width = objs->dra_ccdimg->allocation.width, cur_height = objs->dra_ccdimg->allocation.height;
+/*  gulong cur_width = objs->dra_ccdimg->allocation.width, cur_height = objs->dra_ccdimg->allocation.height;
   gulong img_width = ccd_img_get_img_width(img), img_height = ccd_img_get_img_height(img);
   if ((cur_width < img_width) || (cur_height < img_height))
   {
@@ -305,10 +301,10 @@ void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img)
     if (cur_height < img_height)
       cur_height = img_height;
     gtk_widget_set_size_request(imgdisp, cur_width, cur_height);
-  }
+  }*/
   if (objs->glsl_prog == 0)
   {
-    act_log_debug(act_log_msg("Imgdisp widget not realised yet. Image will be updated when object is realised."));
+    act_log_debug(act_log_msg("Imgdisp widget not configured yet. Image will be updated when object is realised."));
     return;
   }
   
@@ -325,22 +321,50 @@ void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img)
   glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
   glBindTexture(GL_TEXTURE_2D, objs->img_gl_name);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+  gulong img_width = ccd_img_get_img_width(img), img_height = ccd_img_get_img_height(img);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, img_width, img_height, 0, GL_ALPHA, GL_FLOAT, ccd_img_get_img_data(img));
 
   gdk_gl_drawable_gl_end (gldrawable);
   imgdisp_redraw(imgdisp);
 }
 
+void imgdisp_set_window(GtkWidget *imgdisp, glong start_x, glong start_y, gulong width, gulong height)
+{
+  Imgdisp *objs = IMGDISP(imgdisp);
+  if ((start_x == (glong)width) || (start_y == (glong)height))
+    objs->win_start_x = objs->win_start_y = objs->win_width = objs->win_height = 0;
+  else
+  {
+    objs->win_start_x = start_x;
+    objs->win_start_y = start_y;
+    objs->win_width = width;
+    objs->win_height = height;
+  }
+  imgdisp_redraw(imgdisp);
+}
+
 gulong imgdisp_coord_pixel_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 {
-  (void) mouse_y;
-  return mouse_x;
+  Imgdisp *objs = IMGDISP(imgdisp);
+  glong x=img_x(objs,mouse_x), y=img_y(objs,mouse_y);
+  if ((x > ccd_img_get_img_width(objs->img)) || (x < 0) || (y > ccd_img_get_img_height(objs->img)) || (y < 0))
+  {
+    act_log_debug(act_log_msg("Mouse pixel coordinate beyond image border - %d %d.", x, y));
+    return 0;
+  }
+  return x;
 }
 
 gulong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 {
-  (void) mouse_x;
-  return mouse_y;
+  Imgdisp *objs = IMGDISP(imgdisp);
+  glong x=img_x(objs,mouse_x), y=img_y(objs,mouse_y);
+  if ((x > ccd_img_get_img_width(objs->img)) || (x < 0) || (y > ccd_img_get_img_height(objs->img)) || (y < 0))
+  {
+    act_log_debug(act_log_msg("Mouse pixel coordinate beyond image border - %d %d.", x, y));
+    return 0;
+  }
+  return y;
 }
 
 gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
@@ -351,8 +375,8 @@ gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse
     act_log_debug(act_log_msg("No image available, cannot calculate mouse viewport X."));
     return 0.0;
   }
-  (void) mouse_y;
-  return mouse_x*2.0/ccd_img_get_img_width(objs->img) - 1.0;
+  gulong pixel_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
+  return pixel_x*2.0/ccd_img_get_img_width(objs->img) - 1.0;
 }
 
 gfloat imgdisp_coord_viewport_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
@@ -363,8 +387,8 @@ gfloat imgdisp_coord_viewport_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse
     act_log_debug(act_log_msg("No image available, cannot calculate mouse viewport Y."));
     return 0.0;
   }
-  (void) mouse_x;
-  return mouse_y*-2.0/ccd_img_get_img_height(objs->img) + 1.0;
+  gulong pixel_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+  return pixel_y*-2.0/ccd_img_get_img_height(objs->img) + 1.0;
 }
 
 gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
@@ -439,9 +463,11 @@ gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 
 static void imgdisp_instance_init(GtkWidget *imgdisp)
 {
-  act_log_debug(act_log_msg("Initialising imgdisp instance"));
   Imgdisp *objs = IMGDISP(imgdisp);
   objs->flip_ns = objs->flip_ew = FALSE;
+  objs->win_start_x = objs->win_start_y = 0;
+  objs->win_width = objs->win_height = 0;
+  
   objs->bright_lim = 1.0;
   objs->faint_lim = 0.0;
   objs->img_gl_name = objs->lut_gl_name = 0;
@@ -501,15 +527,19 @@ static void imgdisp_instance_destroy(GtkWidget *imgdisp)
 
 static void imgdisp_redraw(GtkWidget *imgdisp)
 {
-  act_log_debug(act_log_msg("Redrawing scene."));
-  GtkWidget *dra_ccdimg = IMGDISP(imgdisp)->dra_ccdimg;
+  Imgdisp *objs = IMGDISP(imgdisp);
+  if (objs->glsl_prog == 0)
+  {
+    act_log_debug(act_log_msg("Imgdisp widget not configured yet. Bright limit will be set when object is realised."));
+    return;
+  }
+  GtkWidget *dra_ccdimg = objs->dra_ccdimg;
   gdk_window_invalidate_rect (dra_ccdimg->window, &dra_ccdimg->allocation, FALSE);
   gdk_window_process_updates (dra_ccdimg->window, FALSE);
 }
 
 static gboolean imgdisp_configure(GtkWidget *imgdisp)
 {
-  act_log_debug(act_log_msg("Configuring imgdisp object"));
   Imgdisp *objs = IMGDISP(imgdisp);
   gulong width = objs->dra_ccdimg->allocation.width, height = objs->dra_ccdimg->allocation.height;
   GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
@@ -523,10 +553,10 @@ static gboolean imgdisp_configure(GtkWidget *imgdisp)
   
   glClearColor(0.0,0.0,0.0,0.0);
   glShadeModel(GL_FLAT);
-  glMatrixMode(GL_PROJECTION);
+/*  glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   glViewport (0, 0, width, height);
-  glOrtho(-1.0,1.0,-1.0,1.0,-1.0,1.0);
+  glOrtho(-1.0,1.0,-1.0,1.0,-1.0,1.0);*/
   glEnable(GL_TEXTURE_2D);
   
   if (objs->glsl_prog == 0)
@@ -598,9 +628,19 @@ static gboolean imgdisp_configure(GtkWidget *imgdisp)
 
 static gboolean imgdisp_expose (GtkWidget *imgdisp)
 {
-  act_log_debug(act_log_msg("Imgdisp object exposed."));
   Imgdisp *objs = IMGDISP(imgdisp);
-  gulong width = objs->dra_ccdimg->allocation.width, height = objs->dra_ccdimg->allocation.height;
+  if (objs->glsl_prog == 0)
+  {
+    act_log_debug(act_log_msg("Imgdisp widget not configured yet. Imgdisp expose event will be ignored."));
+    return TRUE;
+  }
+  if (objs->img == NULL)
+  {
+    act_log_debug(act_log_msg("No image available."));
+    return TRUE;
+  }
+  gulong dra_width = objs->dra_ccdimg->allocation.width, dra_height = objs->dra_ccdimg->allocation.height;
+  gulong img_width = ccd_img_get_img_width(objs->img), img_height = ccd_img_get_img_height(objs->img);
   
   GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
   GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
@@ -614,31 +654,35 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   glClearColor(0.0, 0.0, 0.0, 1.0);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glUseProgram(objs->glsl_prog);
-
-  // Draw the image from the CCD
-  glMatrixMode(GL_MODELVIEW);
+  
+  glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  if (!objs->flip_ns)
+  glViewport (0, 0, dra_width, dra_height);
+  glOrtho(-1.0,1.0,-1.0,1.0,-1.0,1.0);
+  if (objs->flip_ns)
     glScalef(1.0, -1.0, 1.0);
   if (objs->flip_ew)
     glScalef(-1.0, 1.0, 1.0);
+  
+  // Draw the image from the CCD
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glScalef(-1./dra_width, 1./dra_height, 1.0);
   glEnable (GL_TEXTURE_2D);
   glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
   glBindTexture(GL_TEXTURE_2D, objs->img_gl_name);
   glColor3f(0.0,0.0,0.0);
   glBegin (GL_QUADS);
-  glTexCoord2f(0.0,0.0); glVertex3d(-1.0,-1.0,0.0);
-  glTexCoord2f(1.0,0.0); glVertex3d( 1.0,-1.0,0.0);
-  glTexCoord2f(1.0,1.0); glVertex3d( 1.0, 1.0,0.0);
-  glTexCoord2f(0.0,1.0); glVertex3d(-1.0, 1.0,0.0);
+  glTexCoord2f(1.0,1.0); glVertex3d(0.0,0.0,0.0);
+  glTexCoord2f(0.0,1.0); glVertex3d(img_width,0.0,0.0);
+  glTexCoord2f(0.0,0.0); glVertex3d(img_width, img_height,0.0);
+  glTexCoord2f(1.0,0.0); glVertex3d(0.0, img_height,0.0);
   glEnd();
   glDisable(GL_TEXTURE_2D);
 
   glPushMatrix();
-  glScalef(2.0/(float)width, 2.0/(float)height, 1.0);
-  glTranslated(-(float)width/2.0, -(float)height/2.0, 1.0);
+  glTranslated(img_width/2.0, img_height/2.0, 1.0);
   double ang, radius_px = 7;
-  glTranslated((double)width/2.0, (double)height/2.0, 0.0);
   glColor3f(1.0,0,0);
   glBegin(GL_LINE_LOOP);
   for (ang = 0.0; ang<=2.0*ONEPI; ang+=2.0*ONEPI/fmax((double)(radius_px),10.0))
@@ -841,7 +885,7 @@ static void update_colour_transl(Imgdisp *objs)
 {
   if (objs->glsl_prog == 0)
   {
-    act_log_debug(act_log_msg("Imgdisp widget not realised yet. Bright limit will be set when object is realised."));
+    act_log_debug(act_log_msg("Imgdisp widget not configured yet. Bright limit will be set when object is realised."));
     return;
   }
   if (objs->lut == NULL)
@@ -869,3 +913,24 @@ static void update_colour_transl(Imgdisp *objs)
   glUniform1f(offset_loc, offset);
   gdk_gl_drawable_gl_end (gldrawable);
 }
+
+static glong img_x(Imgdisp *objs, gulong x)
+{
+  if (objs->img == NULL)
+  {
+    act_log_debug(act_log_msg("No image available, cannot pixel X coordinate."));
+    return 0;
+  }
+  return objs->flip_ew ? ccd_img_get_img_width(objs->img)-x : x;
+}
+
+static glong img_y(Imgdisp *objs, gulong y)
+{
+  if (objs->img == NULL)
+  {
+    act_log_debug(act_log_msg("No image available, cannot pixel Y coordinate."));
+    return 0;
+  }
+  return objs->flip_ns ? ccd_img_get_img_height(objs->img)-y : y;
+}
+

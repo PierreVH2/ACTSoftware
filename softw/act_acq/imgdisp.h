@@ -64,6 +64,8 @@ struct _Imgdisp
   GtkEventBox parent;
   GtkWidget *dra_ccdimg;
   
+  glong win_start_x, win_start_y;
+  gulong win_width, win_height;
   gboolean flip_ns, flip_ew;
   gfloat bright_lim, faint_lim;
   Imglut *lut;
@@ -85,6 +87,7 @@ void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_faint_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut);
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img);
+void imgdisp_set_window(GtkWidget *imgdisp, glong start_x, glong start_y, gulong width, gulong height);
 gulong imgdisp_coord_pixel_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 gulong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);

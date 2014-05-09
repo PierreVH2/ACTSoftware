@@ -4,6 +4,7 @@
 #include <ccd_img.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 
 void faint_changed(GtkWidget *scl_faint, gpointer imgdisp)
 {
@@ -77,12 +78,14 @@ int main(int argc, char **argv)
   guint i;
   for (i=0; i<width * height; i++)
   {
-    double tmp = (double)rand()/RAND_MAX;
-//     double tmp = (i%width) / (double)width;
+//     double tmp = (double)rand()/RAND_MAX;
+    unsigned long row=i%width, col=i/width;
+    double tmp = pow((pow(row,2)+pow(col,2))/(pow(width,2)+pow(height,2)),0.5);
     img_data[i] = tmp;
   }
   ccd_img_set_img_data(img, width*height, img_data);
   imgdisp_set_img(imgdisp, img);
+  gtk_widget_set_size_request(imgdisp, width, height);
   
   GtkWidget *scl_faint = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);
   gtk_range_set_value(GTK_RANGE(scl_faint), 0.0);
