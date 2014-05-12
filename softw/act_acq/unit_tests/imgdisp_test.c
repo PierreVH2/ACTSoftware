@@ -29,7 +29,7 @@ void toggle_flip_ns(GtkWidget *btn_flip_ns, gpointer imgdisp)
 
 void toggle_flip_ew(GtkWidget *btn_flip_ew, gpointer imgdisp)
 {
-  static gboolean flip_ew = FALSE;
+  static gboolean flip_ew = TRUE;
   flip_ew = !flip_ew;
   imgdisp_set_flip_ew(imgdisp, flip_ew);
   if (flip_ew)
@@ -85,7 +85,9 @@ int main(int argc, char **argv)
   }
   ccd_img_set_img_data(img, width*height, img_data);
   imgdisp_set_img(imgdisp, img);
-  gtk_widget_set_size_request(imgdisp, width, height);
+  gtk_widget_set_size_request(imgdisp, width*2, height*2);
+  imgdisp_set_window(imgdisp, 0, 0, width*2, height*2);
+  imgdisp_set_flip_ew(imgdisp, TRUE);
   
   GtkWidget *scl_faint = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);
   gtk_range_set_value(GTK_RANGE(scl_faint), 0.0);

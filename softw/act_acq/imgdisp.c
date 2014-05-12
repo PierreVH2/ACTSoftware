@@ -331,7 +331,7 @@ void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img)
 void imgdisp_set_window(GtkWidget *imgdisp, glong start_x, glong start_y, gulong width, gulong height)
 {
   Imgdisp *objs = IMGDISP(imgdisp);
-  if ((start_x == (glong)width) || (start_y == (glong)height))
+  if ((width == 0) || (height == 0))
     objs->win_start_x = objs->win_start_y = objs->win_width = objs->win_height = 0;
   else
   {
@@ -658,7 +658,7 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
   glViewport (0, 0, dra_width, dra_height);
-  glOrtho(-1.0,1.0,-1.0,1.0,-1.0,1.0);
+  glOrtho(1.0,-1.0,1.0,-1.0,1.0,-1.0);
   if (objs->flip_ns)
     glScalef(1.0, -1.0, 1.0);
   if (objs->flip_ew)
@@ -667,21 +667,26 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   // Draw the image from the CCD
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
-  glScalef(-1./dra_width, 1./dra_height, 1.0);
+  glTranslated(-1.0,-1.0,0.0);
+  glScalef(2./dra_width, 2./dra_height, 1.0);
+//   glTranslated(100.0,100.0,0.0);
+  glTranslated(objs->win_start_x,objs->win_start_y,0.0);
+//   glTranslated(-img_width/2.0, -img_height/2.0, 1.0);
+  glScalef(objs->win_width/(float)img_width, objs->win_height/(float)img_height, 1.0);
   glEnable (GL_TEXTURE_2D);
   glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
   glBindTexture(GL_TEXTURE_2D, objs->img_gl_name);
   glColor3f(0.0,0.0,0.0);
   glBegin (GL_QUADS);
-  glTexCoord2f(1.0,1.0); glVertex3d(0.0,0.0,0.0);
-  glTexCoord2f(0.0,1.0); glVertex3d(img_width,0.0,0.0);
-  glTexCoord2f(0.0,0.0); glVertex3d(img_width, img_height,0.0);
-  glTexCoord2f(1.0,0.0); glVertex3d(0.0, img_height,0.0);
+  glTexCoord2f(0.0,0.0); glVertex3d(0.0,0.0,0.0);
+  glTexCoord2f(1.0,0.0); glVertex3d(img_width,0.0,0.0);
+  glTexCoord2f(1.0,1.0); glVertex3d(img_width, img_height,0.0);
+  glTexCoord2f(0.0,1.0); glVertex3d(0.0, img_height,0.0);
   glEnd();
   glDisable(GL_TEXTURE_2D);
 
   glPushMatrix();
-  glTranslated(img_width/2.0, img_height/2.0, 1.0);
+  glTranslated(img_width/2.0, img_height/2.0, 0.0);
   double ang, radius_px = 7;
   glColor3f(1.0,0,0);
   glBegin(GL_LINE_LOOP);
