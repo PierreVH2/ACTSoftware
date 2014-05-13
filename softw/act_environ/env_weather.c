@@ -389,6 +389,7 @@ static gboolean update_weather(gpointer env_weather)
   }
   else if (swasp_actual)
   {
+    act_log_debug(act_log_msg("SWASP actual, SALT outdated/failed."));
     if (objs->swasp_ok)
       gtk_widget_modify_bg(objs->evb_swasp_stat, GTK_STATE_NORMAL, &colgreen);
     else
@@ -402,6 +403,7 @@ static gboolean update_weather(gpointer env_weather)
   }
   else if (salt_actual)
   {
+    act_log_debug(act_log_msg("SALT actual, SWASP outdated/failed."));
     if (objs->salt_ok)
       gtk_widget_modify_bg(objs->evb_salt_stat, GTK_STATE_NORMAL, &colgreen);
     else
@@ -415,6 +417,7 @@ static gboolean update_weather(gpointer env_weather)
   }
   else
   {
+    act_log_debug(act_log_msg("SWASP and SALT actual."));
     if (objs->salt_ok)
       gtk_widget_modify_bg(objs->evb_salt_stat, GTK_STATE_NORMAL, &colgreen);
     else
@@ -510,6 +513,7 @@ static void update_salt_weath(gpointer env_weather, gboolean salt_ok)
 {
   EnvWeather *objs = ENV_WEATHER(env_weather);
   objs->salt_ok = salt_ok;
+  act_log_debug(act_log_msg("SALT OK: %s", salt_ok ? "Yes" : "No"));
   GdkColor new_col;
   if (salt_ok)
     gdk_color_parse("#00AA00", &new_col);
@@ -522,6 +526,7 @@ static void update_swasp_weath(gpointer env_weather, gboolean swasp_ok)
 {
   EnvWeather *objs = ENV_WEATHER(env_weather);
   objs->swasp_ok = swasp_ok;
+  act_log_debug(act_log_msg("SWASP OK: %s", salt_ok ? "Yes" : "No"));
   GdkColor new_col;
   if (swasp_ok)
     gdk_color_parse("#00AA00", &new_col);
@@ -592,8 +597,8 @@ static void process_msg_environ(EnvWeather *objs, struct act_msg_environ *msg_en
 {
   memcpy(msg_environ, &objs->all_env, sizeof(struct act_msg_environ));
   // Override weather warnings for now
-  msg_environ->weath_ok = TRUE;
-  msg_environ->status_active = ACTIVE_TIME_NIGHT;
+//   msg_environ->weath_ok = TRUE;
+//   msg_environ->status_active = ACTIVE_TIME_NIGHT;
 }
 
 static void process_msg_targset(EnvWeather *objs, struct act_msg_targset *msg_targset)

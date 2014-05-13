@@ -28,5 +28,7 @@ unsigned long get_sim_steps(void);
 unsigned char get_sim_dir(void);
 unsigned long get_sim_speed(void);
 #endif
+void set_motor_steps_ha(unsigned long new_steps);
+void set_motor_steps_dec(unsigned long new_steps);
 
 #endif

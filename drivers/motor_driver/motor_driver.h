@@ -109,4 +109,17 @@ struct motor_track_adj
 #endif
 /** \} */
 
+/** \brief Additional IOCTL - FOR TESTING PURPOSES ONLY
+ * \{
+ */
+/// IOCTL to set number of steps representing telescope's current HA position relative to the Western fiducial point
+/// NOTE: This feature can be dangerous and may only be used if the user is ABSOLUTELY certain what position the telescope is pointing in
+#define IOCTL_MOTOR_SET_HA_STEPS _IOW(MOTOR_IOCTL_NUM, 13, unsigned long)
+
+/// IOCTL to set number of steps representing telescope's current Dec position relative to the Southern fiducial point
+/// NOTE: This feature can be dangerous and may only be used if the user is ABSOLUTELY certain what position the telescope is pointing in
+#define IOCTL_MOTOR_SET_DEC_STEPS _IOW(MOTOR_IOCTL_NUM, 14, unsigned long)
+
+/** \} */
+
 #endif //MOTOR_DRIVER_H
