@@ -526,7 +526,7 @@ static void update_swasp_weath(gpointer env_weather, gboolean swasp_ok)
 {
   EnvWeather *objs = ENV_WEATHER(env_weather);
   objs->swasp_ok = swasp_ok;
-  act_log_debug(act_log_msg("SWASP OK: %s", salt_ok ? "Yes" : "No"));
+  act_log_debug(act_log_msg("SWASP OK: %s", swasp_ok ? "Yes" : "No"));
   GdkColor new_col;
   if (swasp_ok)
     gdk_color_parse("#00AA00", &new_col);

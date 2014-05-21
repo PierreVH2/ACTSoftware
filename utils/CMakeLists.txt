@@ -27,6 +27,10 @@ IF (DEFINED MOTOR_SIM)
   )
 ENDIF (DEFINED MOTOR_SIM)
 
+ADD_EXECUTABLE(motor_stat motor_stat.c ${ACT_DRV_SRC}/motor_driver/motor_driver.h)
+
+ADD_EXECUTABLE(motor_set_pos motor_set_pos.c ${ACT_DRV_SRC}/motor_driver/motor_driver.h)
+
 ADD_EXECUTABLE(plc_hog plc_hog.c ${ACT_DRV_SRC}/plc_ldisc/plc_ldisc.h)
 
 IF (DEFINED PLC_SIM)
