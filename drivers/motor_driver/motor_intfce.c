@@ -610,29 +610,29 @@ unsigned long get_sim_speed(void)
 }
 #endif
 
-void set_motor_steps_ha(unsigned long new_steps)
+void set_motor_steps_ha(int new_steps)
 {
   if ((G_status & MOTOR_STAT_HA_INIT) == 0)
   {
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting HA motor steps to %lu. HA not initialised.\n", new_steps);
+    printk(KERN_DEBUG PRINTK_PREFIX "Setting HA motor steps to %d. HA not initialised.\n", new_steps);
     G_status |= MOTOR_STAT_HA_INIT;
     update_status();
   }
   else
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting HA motor steps to %lu. HA initialised, currently at %d steps.\n", new_steps, G_motor_steps_ha);
+    printk(KERN_DEBUG PRINTK_PREFIX "Setting HA motor steps to %d. HA initialised, currently at %d steps.\n", new_steps, G_motor_steps_ha);
   G_motor_steps_ha = new_steps;
 }
 
-void set_motor_steps_dec(unsigned long new_steps)
+void set_motor_steps_dec(int new_steps)
 {
   if ((G_status & MOTOR_STAT_DEC_INIT) == 0)
   {
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting Dec motor steps to %lu. Dec not initialised.\n", new_steps);
+    printk(KERN_DEBUG PRINTK_PREFIX "Setting Dec motor steps to %d. Dec not initialised.\n", new_steps);
     G_status |= MOTOR_STAT_DEC_INIT;
     update_status();
   }
   else
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting Dec motor steps to %lu. Dec initialised, currently at %d steps.\n", new_steps, G_motor_steps_dec);
+    printk(KERN_DEBUG PRINTK_PREFIX "Setting Dec motor steps to %d. Dec initialised, currently at %d steps.\n", new_steps, G_motor_steps_dec);
   G_motor_steps_dec = new_steps;
 }
 

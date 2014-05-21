@@ -44,14 +44,14 @@ int main(int argc, char ** argv)
     return 1;
   }
   int ret = ioctl(motor_fd, IOCTL_MOTOR_SET_HA_STEPS, &ha_steps);
-  if (ret != 0)
+  if (ret < 0)
   {
     fprintf(stderr, "Failed to set motor driver HA steps - %s.\nWARNING: Motor coordinates may be partially set. Proceed with extreme caution - preferably initialise the telescope with the hand paddle in the dome.\n", strerror(errno));
     close(motor_fd);
     return 1;
   }
   ret = ioctl(motor_fd, IOCTL_MOTOR_SET_DEC_STEPS, &dec_steps);
-  if (ret != 0)
+  if (ret < 0)
   {
     fprintf(stderr, "Failed to set motor driver DEC steps - %s.\nWARNING: Motor coordinates may be partially set. Proceed with extreme caution - preferably initialise the telescope with the hand paddle in the dome.\n", strerror(errno));
     close(motor_fd);

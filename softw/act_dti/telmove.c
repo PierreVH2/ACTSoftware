@@ -397,8 +397,7 @@ static void warn_update(gpointer telmove, guchar warn)
 static void coord_update(gpointer telmove, GActTelcoord *new_coord)
 {
   Telmove *objs = TELMOVE(telmove);
-  if (g_object_is_floating(G_OBJECT(new_coord)))
-    g_object_ref_sink(G_OBJECT(new_coord));
+  g_object_ref(G_OBJECT(new_coord));
 /*  GActTelcoord *raw_coord = gact_telcoord_new(&new_coord->ha, &new_coord->dec);
   if (g_object_is_floating(G_OBJECT(raw_coord)))
     g_object_ref_sink(G_OBJECT(raw_coord));*/

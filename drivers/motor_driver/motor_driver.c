@@ -283,8 +283,8 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     #endif
     case IOCTL_MOTOR_SET_HA_STEPS:
     {
-      unsigned long steps;
-      value = copy_from_user((void*)ioctl_param, &steps, sizeof(unsigned long));
+      int steps;
+      value = copy_from_user((void*)ioctl_param, &steps, sizeof(int));
       if (value < 0)
       {
         printk(KERN_INFO PRINTK_PREFIX "Failed to read HA steps from user-space.\n");
@@ -297,8 +297,8 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
 
     case IOCTL_MOTOR_SET_DEC_STEPS:
     {
-      unsigned long steps;
-      value = copy_from_user((void*)ioctl_param, &steps, sizeof(unsigned long));
+      int steps;
+      value = copy_from_user((void*)ioctl_param, &steps, sizeof(int));
       if (value < 0)
       {
         printk(KERN_INFO PRINTK_PREFIX "Failed to read Dec steps from user-space.\n");

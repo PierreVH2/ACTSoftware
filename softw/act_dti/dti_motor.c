@@ -23,7 +23,7 @@ static void dti_motor_instance_dispose(GObject *dti_motor);
 static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpointer dti_motor);
 static void check_coord_poll(Dtimotor *objs);
 static gboolean coord_poll(gpointer dti_motor);
-static void update_coord(Dtimotor *objs);
+static GActTelcoord *update_coord(Dtimotor *objs);
 //static void calc_track_adj(struct hastruct *ha, struct decstruct *dec, struct hastruct *adj_ha, struct decstruct *adj_dec);
 static guchar check_warn(Dtimotor *objs);
 static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec);
@@ -375,11 +375,12 @@ static gboolean motor_read_ready(GIOChannel *motor_chan, GIOCondition cond, gpoi
   g_signal_emit(G_OBJECT(objs), dti_motor_signals[STAT_UPDATE], 0, tmp_stat);
   if (((objs->cur_stat & MOTOR_STAT_MOVING) > 0) && ((tmp_stat & MOTOR_STAT_MOVING) == 0))
   {
-    update_coord(objs);
+    GActTelcoord *coord = update_coord(objs);
+    g_object_force_floating (G_OBJECT(coord));
     if ((tmp_stat & (MOTOR_STAT_ALLSTOP | MOTOR_STAT_ERR_LIMS)) > 0)
-      g_signal_emit(dti_motor, dti_motor_signals[MOVE_FINISH], 0, FALSE, objs->cur_coord);
+      g_signal_emit(dti_motor, dti_motor_signals[MOVE_FINISH], 0, FALSE, coord);
     else
-      g_signal_emit(dti_motor, dti_motor_signals[MOVE_FINISH], 0, TRUE, objs->cur_coord);
+      g_signal_emit(dti_motor, dti_motor_signals[MOVE_FINISH], 0, TRUE, coord);
   }
   objs->cur_stat = tmp_stat;
   check_coord_poll(objs);
@@ -417,7 +418,7 @@ static void check_coord_poll(Dtimotor *objs)
 static gboolean coord_poll(gpointer dti_motor)
 {
   Dtimotor *objs = DTI_MOTOR(dti_motor);
-  update_coord(objs);
+  GActTelcoord *tmp_coord = update_coord(objs);
   
   guchar tmp_warn = check_warn(objs);
   if (tmp_warn != objs->cur_warn)
@@ -435,19 +436,19 @@ static gboolean coord_poll(gpointer dti_motor)
 //     calc_track_adj(&tmp_ha, &tmp_dec, &adj_ha, &adj_dec);
 //     send_motor_track_adj(motor_fd, convert_HMSMS_H_ha(&adj_ha), convert_DMS_D_dec(&adj_dec));
 //   }
-  GActTelcoord *tmp_coord = gact_telcoord_new_telcoord(objs->cur_coord);
   g_object_force_floating (G_OBJECT(tmp_coord));
   g_signal_emit(G_OBJECT(objs), dti_motor_signals[COORD_UPDATE], 0, tmp_coord);
   return TRUE;
 }
 
-static void update_coord(Dtimotor *objs)
+static GActTelcoord *update_coord(Dtimotor *objs)
 {
   struct hastruct tmp_ha;
   struct decstruct tmp_dec;
   gint motor_fd = g_io_channel_unix_get_fd(objs->motor_chan);
   read_motor_coord(motor_fd, &tmp_ha, &tmp_dec);
   gact_telcoord_set(objs->cur_coord, &tmp_ha, &tmp_dec);
+  return gact_telcoord_new(&tmp_ha, &tmp_dec);
 }
 
 /*
@@ -688,7 +689,7 @@ GActTelcoord *gact_telcoord_new_telcoord (GActTelcoord *copy)
   GActTelcoord *objs = GACT_TELCOORD(gacttelcoord);
   memcpy(&objs->ha, &copy->ha, sizeof(struct hastruct));
   memcpy(&objs->dec, &copy->dec, sizeof(struct decstruct));
-  return gacttelcoord;
+  return objs;
 }
 
 
