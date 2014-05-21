@@ -20,6 +20,7 @@ void toggle_tracking(unsigned char tracking_on);
 void adjust_tracking(int adj_ha, int adj_dec);
 void get_coord_motor(struct motor_tel_coord *coord);
 void get_coord_encod(struct motor_tel_coord *coord);
+void set_coord_motor(struct motor_tel_coord *coord);
 void handset_handler(unsigned char old_hs, unsigned char new_hs);
 #ifdef MOTOR_SIM
 void set_sim_steps(unsigned long steps);
@@ -28,7 +29,5 @@ unsigned long get_sim_steps(void);
 unsigned char get_sim_dir(void);
 unsigned long get_sim_speed(void);
 #endif
-void set_motor_steps_ha(int new_steps);
-void set_motor_steps_dec(int new_steps);
 
 #endif

@@ -281,33 +281,16 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
       break;
     }
     #endif
-    case IOCTL_MOTOR_SET_HA_STEPS:
-    {
-      int steps;
-      value = copy_from_user((void*)ioctl_param, &steps, sizeof(int));
+    case IOCTL_MOTOR_SET_MOTOR_POS:
+      value = copy_from_user((void*)ioctl_param, &user_data.coord, sizeof(struct motor_tel_coord));
       if (value < 0)
       {
-        printk(KERN_INFO PRINTK_PREFIX "Failed to read HA steps from user-space.\n");
+        printk(KERN_INFO PRINTK_PREFIX "Failed to read motor steps from user-space.\n");
         value = -EIO;
         break;
       }
-      set_motor_steps_ha(steps);
+      set_coord_motor(&user_data.coord);
       break;
-    }
-
-    case IOCTL_MOTOR_SET_DEC_STEPS:
-    {
-      int steps;
-      value = copy_from_user((void*)ioctl_param, &steps, sizeof(int));
-      if (value < 0)
-      {
-        printk(KERN_INFO PRINTK_PREFIX "Failed to read Dec steps from user-space.\n");
-        value = -EIO;
-        break;
-      }
-      set_motor_steps_dec(steps);
-      break;
-    }
 
     default:
       printk(KERN_DEBUG PRINTK_PREFIX "Invalid IOCTL number (%d).\n", ioctl_num);

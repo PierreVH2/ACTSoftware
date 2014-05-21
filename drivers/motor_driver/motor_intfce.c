@@ -477,6 +477,26 @@ void get_coord_encod(struct motor_tel_coord *coord)
     coord->tel_dec = 0;
 }
 
+void set_coord_motor(struct motor_tel_coord *coord)
+{
+  if (G_status & MOTOR_STAT_HA_INIT)
+    printk(KERN_INFO PRINTK_PREFIX "Resetting HA motor steps to %d, currently %d.\n", coord->tel_ha, G_motor_steps_ha);
+  else
+  {
+    G_status |= MOTOR_STAT_HA_INIT;
+    printk(KERN_INFO PRINTK_PREFIX "Setting HA motor steps to %d and flagging HA initialised.\n", coord->tel_ha);
+  }
+  G_motor_steps_ha = coord->tel_ha;
+  if (G_status & MOTOR_STAT_DEC_INIT)
+    printk(KERN_INFO PRINTK_PREFIX "Resetting DEC motor steps to %d, currently %d.\n", coord->tel_dec, G_motor_steps_dec);
+  else
+  {
+    G_status |= MOTOR_STAT_DEC_INIT;
+    printk(KERN_INFO PRINTK_PREFIX "Setting HA motor steps to %d and flagging DEC initialised.\n", coord->tel_dec);
+  }
+  G_motor_steps_dec = coord->tel_dec;
+}
+
 void handset_handler(unsigned char old_hs, unsigned char new_hs)
 {
   unsigned char dir, speed;
@@ -609,32 +629,6 @@ unsigned long get_sim_speed(void)
   return G_sim_speed;
 }
 #endif
-
-void set_motor_steps_ha(int new_steps)
-{
-  if ((G_status & MOTOR_STAT_HA_INIT) == 0)
-  {
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting HA motor steps to %d. HA not initialised.\n", new_steps);
-    G_status |= MOTOR_STAT_HA_INIT;
-    update_status();
-  }
-  else
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting HA motor steps to %d. HA initialised, currently at %d steps.\n", new_steps, G_motor_steps_ha);
-  G_motor_steps_ha = new_steps;
-}
-
-void set_motor_steps_dec(int new_steps)
-{
-  if ((G_status & MOTOR_STAT_DEC_INIT) == 0)
-  {
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting Dec motor steps to %d. Dec not initialised.\n", new_steps);
-    G_status |= MOTOR_STAT_DEC_INIT;
-    update_status();
-  }
-  else
-    printk(KERN_DEBUG PRINTK_PREFIX "Setting Dec motor steps to %d. Dec initialised, currently at %d steps.\n", new_steps, G_motor_steps_dec);
-  G_motor_steps_dec = new_steps;
-}
 
 static void update_status(void)
 {

@@ -43,17 +43,11 @@ int main(int argc, char ** argv)
     fprintf(stderr, "Failed to open motor device (/dev/%s) - %s\n\nAborted.\n", MOTOR_DEVICE_NAME, strerror(errno));
     return 1;
   }
-  int ret = ioctl(motor_fd, IOCTL_MOTOR_SET_HA_STEPS, &ha_steps);
+  struct motor_tel_coord coord = { .tel_ha = ha_steps, .tel_dec = dec_steps };
+  int ret = ioctl(motor_fd, IOCTL_MOTOR_SET_MOTOR_POS, &coord);
   if (ret < 0)
   {
-    fprintf(stderr, "Failed to set motor driver HA steps - %s.\nWARNING: Motor coordinates may be partially set. Proceed with extreme caution - preferably initialise the telescope with the hand paddle in the dome.\n", strerror(errno));
-    close(motor_fd);
-    return 1;
-  }
-  ret = ioctl(motor_fd, IOCTL_MOTOR_SET_DEC_STEPS, &dec_steps);
-  if (ret < 0)
-  {
-    fprintf(stderr, "Failed to set motor driver DEC steps - %s.\nWARNING: Motor coordinates may be partially set. Proceed with extreme caution - preferably initialise the telescope with the hand paddle in the dome.\n", strerror(errno));
+    fprintf(stderr, "Failed to set motor driver coordinates - %s.\nWARNING: Motor coordinates may be partially set. Proceed with extreme caution - preferably initialise the telescope with the hand paddle in the dome.\n", strerror(errno));
     close(motor_fd);
     return 1;
   }
