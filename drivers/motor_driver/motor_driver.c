@@ -282,7 +282,7 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
     }
     #endif
     case IOCTL_MOTOR_SET_MOTOR_POS:
-      value = copy_from_user((void*)ioctl_param, &user_data.coord, sizeof(struct motor_tel_coord));
+      value = copy_from_user(&user_data.coord, (void*)ioctl_param, sizeof(struct motor_tel_coord));
       if (value < 0)
       {
         printk(KERN_INFO PRINTK_PREFIX "Failed to read motor steps from user-space.\n");

@@ -43,7 +43,9 @@ int main(int argc, char ** argv)
     fprintf(stderr, "Failed to open motor device (/dev/%s) - %s\n\nAborted.\n", MOTOR_DEVICE_NAME, strerror(errno));
     return 1;
   }
-  struct motor_tel_coord coord = { .tel_ha = ha_steps, .tel_dec = dec_steps };
+  struct motor_tel_coord coord;
+  coord.tel_ha = ha_steps;
+  coord.tel_dec = dec_steps;
   int ret = ioctl(motor_fd, IOCTL_MOTOR_SET_MOTOR_POS, &coord);
   if (ret < 0)
   {
