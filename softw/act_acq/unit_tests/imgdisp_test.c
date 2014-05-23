@@ -41,15 +41,15 @@ void toggle_flip_ew(GtkWidget *btn_flip_ew, gpointer imgdisp)
 gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_coord)
 {
   gulong mouse_x = motdata->x, mouse_y = motdata->y;
-  gulong pixel_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
-  gulong pixel_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+  glong pixel_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
+  glong pixel_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
   gfloat viewp_x = imgdisp_coord_viewport_x(imgdisp, mouse_x, mouse_y);
   gfloat viewp_y = imgdisp_coord_viewport_y(imgdisp, mouse_x, mouse_y);
   gfloat ra_h = imgdisp_coord_ra(imgdisp, mouse_x, mouse_y);
   gfloat dec_d = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
   
   char str[256];
-  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %lu  ;  Y: %lu\nvX: %f  ;  vY: %f\nRA: %f  ;  Dec: %f", mouse_x, mouse_y, pixel_x, pixel_y, viewp_x, viewp_y, ra_h, dec_d);
+  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %ld  ;  Y: %ld\nvX: %f  ;  vY: %f\nRA: %f  ;  Dec: %f", mouse_x, mouse_y, pixel_x, pixel_y, viewp_x, viewp_y, ra_h, dec_d);
   gtk_label_set_text(GTK_LABEL(lbl_coord), str);
   
   return FALSE;
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
   ccd_img_set_img_data(img, width*height, img_data);
   imgdisp_set_img(imgdisp, img);
   gtk_widget_set_size_request(imgdisp, width*2, height*2);
-  imgdisp_set_window(imgdisp, 0, 0, width*2, height*2);
+  imgdisp_set_window(imgdisp, 0, 0, width, height);
   imgdisp_set_flip_ew(imgdisp, TRUE);
   
   GtkWidget *scl_faint = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);

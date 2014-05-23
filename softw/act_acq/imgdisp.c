@@ -343,52 +343,32 @@ void imgdisp_set_window(GtkWidget *imgdisp, glong start_x, glong start_y, gulong
   imgdisp_redraw(imgdisp);
 }
 
-gulong imgdisp_coord_pixel_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
-{
-  Imgdisp *objs = IMGDISP(imgdisp);
-  glong x=img_x(objs,mouse_x), y=img_y(objs,mouse_y);
-  if ((x > ccd_img_get_img_width(objs->img)) || (x < 0) || (y > ccd_img_get_img_height(objs->img)) || (y < 0))
-  {
-    act_log_debug(act_log_msg("Mouse pixel coordinate beyond image border - %d %d.", x, y));
-    return 0;
-  }
-  return x;
-}
-
-gulong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
-{
-  Imgdisp *objs = IMGDISP(imgdisp);
-  glong x=img_x(objs,mouse_x), y=img_y(objs,mouse_y);
-  if ((x > ccd_img_get_img_width(objs->img)) || (x < 0) || (y > ccd_img_get_img_height(objs->img)) || (y < 0))
-  {
-    act_log_debug(act_log_msg("Mouse pixel coordinate beyond image border - %d %d.", x, y));
-    return 0;
-  }
-  return y;
-}
-
 gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 {
-  Imgdisp *objs = IMGDISP(imgdisp);
-  if (objs->img == NULL)
-  {
-    act_log_debug(act_log_msg("No image available, cannot calculate mouse viewport X."));
-    return 0.0;
-  }
-  gulong pixel_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
-  return pixel_x*2.0/ccd_img_get_img_width(objs->img) - 1.0;
+  (void)mouse_y;
+  GtkAllocation alloc;
+  gtk_widget_get_allocation(imgdisp, &alloc);
+  return (((gfloat)mouse_x)*2/alloc.width-1.0)*(IMGDISP(imgdisp)->flip_ew ? 1 : -1);
 }
 
 gfloat imgdisp_coord_viewport_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 {
+  (void)mouse_x;
+  GtkAllocation alloc;
+  gtk_widget_get_allocation(imgdisp, &alloc);
+  return (((gfloat)mouse_y)*2/alloc.height-1.0)*(IMGDISP(imgdisp)->flip_ns ? 1 : -1);
+}
+
+glong imgdisp_coord_pixel_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
+{
   Imgdisp *objs = IMGDISP(imgdisp);
-  if (objs->img == NULL)
-  {
-    act_log_debug(act_log_msg("No image available, cannot calculate mouse viewport Y."));
-    return 0.0;
-  }
-  gulong pixel_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
-  return pixel_y*-2.0/ccd_img_get_img_height(objs->img) + 1.0;
+  return round((imgdisp_coord_viewport_x(imgdisp, mouse_x, mouse_y)/2.0+0.5)*objs->win_width) - objs->win_start_x;
+}
+
+glong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
+{
+  Imgdisp *objs = IMGDISP(imgdisp);
+  return round((imgdisp_coord_viewport_y(imgdisp, mouse_x, mouse_y)/-2.0+0.5)*objs->win_height) - objs->win_start_y;
 }
 
 gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
@@ -672,7 +652,7 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
 //   glTranslated(100.0,100.0,0.0);
   glTranslated(objs->win_start_x,objs->win_start_y,0.0);
 //   glTranslated(-img_width/2.0, -img_height/2.0, 1.0);
-  glScalef(objs->win_width/(float)img_width, objs->win_height/(float)img_height, 1.0);
+  glScalef(dra_width/(float)objs->win_width, dra_height/(float)objs->win_height, 1.0);
   glEnable (GL_TEXTURE_2D);
   glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
   glBindTexture(GL_TEXTURE_2D, objs->img_gl_name);
