@@ -282,6 +282,12 @@ void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut)
   imgdisp_redraw(imgdisp);
 }
 
+void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid)
+{
+  IMGDISP(imgdisp)->grid_type = grid_type;
+  imgdisp_redraw(imgdisp);
+}
+
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img)
 {
   Imgdisp *objs = IMGDISP(imgdisp);
@@ -292,16 +298,6 @@ void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img)
   }
   objs->img = img;
   g_object_ref(img);
-/*  gulong cur_width = objs->dra_ccdimg->allocation.width, cur_height = objs->dra_ccdimg->allocation.height;
-  gulong img_width = ccd_img_get_img_width(img), img_height = ccd_img_get_img_height(img);
-  if ((cur_width < img_width) || (cur_height < img_height))
-  {
-    if (cur_width < img_width)
-      cur_width = img_width;
-    if (cur_height < img_height)
-      cur_height = img_height;
-    gtk_widget_set_size_request(imgdisp, cur_width, cur_height);
-  }*/
   if (objs->glsl_prog == 0)
   {
     act_log_debug(act_log_msg("Imgdisp widget not configured yet. Image will be updated when object is realised."));
@@ -380,41 +376,13 @@ gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
     return 0.0;
   }
   
-  long img_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y), img_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+  long img_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
   double img_dec = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
   if (fabs(img_dec) > 89.99)
     img_dec = 89.99;
   struct rastruct ra;
   ccd_img_get_tel_pos(objs->img, &ra, NULL);
-  
-  
-  
-  double ra_offset_deg = (XAPERTURE - mouse_x) * ccdcntrl_get_ra_width() / ccdcntrl_get_max_width() / cos(convert_DEG_RAD(img_dec)) / 3600.0;
-  
-  
-  (void) mouse_x;
-  (void) mouse_y;
-/*  double img_dec = convert_DMS_D_dec(&G_img_dec);
-  if (fabs(img_dec) > 89.0)
-    img_dec = 89.0;
-  double ra_offset_deg = (XAPERTURE - motdata->x) * ccdcntrl_get_ra_width() / ccdcntrl_get_max_width() / cos(convert_DEG_RAD(img_dec)) / 3600.0;
-  if ((G_flip_img & IMG_FLIP_EW) != IMG_FLIP_EW)
-    ra_offset_deg *= -1,0;
-  struct rastruct mouse_ra;
-  convert_H_HMSMS_ra(convert_HMSMS_H_ra(&G_img_ra) + convert_DEG_H(ra_offset_deg), &mouse_ra);
-  tmpstr = ra_to_str(&mouse_ra);
-  gtk_label_set_text(GTK_LABEL(labels->lbl_disp_RA), tmpstr);
-  free(tmpstr);
-  
-  double dec_offset_deg = (YAPERTURE - motdata->y) * ccdcntrl_get_dec_height() / ccdcntrl_get_max_height() / 3600.0;
-  if ((G_flip_img & IMG_FLIP_NS) == IMG_FLIP_NS)
-    dec_offset_deg *= -1.0;
-  struct decstruct mouse_dec;
-  convert_D_DMS_dec(convert_DMS_D_dec(&G_img_dec) + dec_offset_deg, &mouse_dec);
-  tmpstr = dec_to_str(&mouse_dec);
-  gtk_label_set_text(GTK_LABEL(labels->lbl_disp_Dec), tmpstr);*/
-  
-  return 0.0;
+  return convert_HMSMS_H_ra(&ra) + (img_x - ccd_img_get_img_width(objs->img)/2.0) * ccd_img_get_pixel_size_ra(objs->img) / cos(convert_DEG_RAD(img_dec)) / 3600.0;
 }
 
 gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
@@ -426,31 +394,10 @@ gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
     return 0.0;
   }
   
-  (void) mouse_x;
-  (void) mouse_y;
-/*  struct decstruct dec;
+  long img_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+  struct decstruct dec;
   ccd_img_get_tel_pos(objs->img, NULL, &dec);
-  double dec_d = convert_DMS_D_dec(&dec);
-  double viewp_y = imgdisp_coord_viewport_y(imgdisp, mouse_x, mouse_y);
-  
-  double ra_offset_deg = (XAPERTURE - motdata->x) * ccdcntrl_get_ra_width() / ccdcntrl_get_max_width() / cos(convert_DEG_RAD(img_dec)) / 3600.0;
-  if ((G_flip_img & IMG_FLIP_EW) != IMG_FLIP_EW)
-    ra_offset_deg *= -1,0;
-  struct rastruct mouse_ra;
-  convert_H_HMSMS_ra(convert_HMSMS_H_ra(&G_img_ra) + convert_DEG_H(ra_offset_deg), &mouse_ra);
-  tmpstr = ra_to_str(&mouse_ra);
-  gtk_label_set_text(GTK_LABEL(labels->lbl_disp_RA), tmpstr);
-  free(tmpstr);
-  
-  double dec_offset_deg = viewp_y * ccdcntrl_get_dec_height() / ccdcntrl_get_max_height() / 3600.0;
-  if ((G_flip_img & IMG_FLIP_NS) == IMG_FLIP_NS)
-    dec_offset_deg *= -1.0;
-  struct decstruct mouse_dec;
-  convert_D_DMS_dec(convert_DMS_D_dec(&G_img_dec) + dec_offset_deg, &mouse_dec);
-  tmpstr = dec_to_str(&mouse_dec);
-  gtk_label_set_text(GTK_LABEL(labels->lbl_disp_Dec), tmpstr);
-  free(tmpstr);*/
-  return 0.0;
+  return convert_DMS_D_dec(&dec) - (img_y - ccd_img_get_img_height(objs->img)/2.0) * ccd_img_get_pixel_size_dec(objs->img) / 3600.0;
 }
 
 static void imgdisp_instance_init(GtkWidget *imgdisp)
@@ -545,10 +492,6 @@ static gboolean imgdisp_configure(GtkWidget *imgdisp)
   
   glClearColor(0.0,0.0,0.0,0.0);
   glShadeModel(GL_FLAT);
-/*  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glViewport (0, 0, width, height);
-  glOrtho(-1.0,1.0,-1.0,1.0,-1.0,1.0);*/
   glEnable(GL_TEXTURE_2D);
   
   if (objs->glsl_prog == 0)
@@ -661,9 +604,7 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   glLoadIdentity();
   glTranslated(-1.0,-1.0,0.0);
   glScalef(2./dra_width, 2./dra_height, 1.0);
-//   glTranslated(100.0,100.0,0.0);
   glTranslated(objs->win_start_x,objs->win_start_y,0.0);
-//   glTranslated(-img_width/2.0, -img_height/2.0, 1.0);
   glScalef(dra_width/(float)objs->win_width, dra_height/(float)objs->win_height, 1.0);
   glEnable (GL_TEXTURE_2D);
   glActiveTexture(GL_TEXTURE0+IMGDISP_IMG_TEX);
@@ -687,9 +628,35 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   glEnd();
   glPopMatrix();
   
-/*  switch(G_grid_type)
+  switch(G_grid_type)
   {
-    case GRID_VIEWPORT:
+    case GRID_IMAGE:
+    {
+      if (objs->img == NULL)
+      {
+        act_log_debug(act_log_msg("Image grid type selected, but no image available."));
+        break;
+      }
+      glMatrixMode(GL_MODELVIEW);
+//       glLoadIdentity();
+//       glScalef(2.0/(float)ccdcntrl_get_max_width(), -2.0/(float)ccdcntrl_get_max_height(), 1.0);
+//       glTranslated(-(float)ccdcntrl_get_max_width()/2.0, -(float)ccdcntrl_get_max_height()/2.0, 1.0);
+      float cur_line;
+      glBegin (GL_LINES);
+      for (cur_line = 0.0; cur_line < (float)ccdcntrl_get_max_width(); cur_line += GRID_SPACING_PIXEL)
+      {
+        glVertex3f(cur_line, 0.0, 0.0);
+        glVertex3f(cur_line, ccdcntrl_get_max_height(), 0.0);
+      }
+      for (cur_line = 0.0; cur_line < (float)ccdcntrl_get_max_height(); cur_line += GRID_SPACING_PIXEL)
+      {
+        glVertex3f(0.0, cur_line, 0.0);
+        glVertex3f(ccdcntrl_get_max_width(), cur_line, 0.0);
+      }
+      glEnd();
+      break;
+    }
+    case GRID_VIEW:
     {
       glMatrixMode(GL_MODELVIEW);
       glLoadIdentity();
@@ -704,31 +671,6 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
       {
         glVertex3f(-1.0, cur_line, 0.0);
         glVertex3f(1.0, cur_line, 0.0);
-      }
-      glEnd();
-      break;
-    }
-    case GRID_PIXEL:
-    {
-      glMatrixMode(GL_MODELVIEW);
-      glLoadIdentity();
-      if ((G_flip_img&IMG_FLIP_EW) == IMG_FLIP_EW)
-        glScalef(-1.0, 1.0, 1.0);
-      if ((G_flip_img&IMG_FLIP_NS) == IMG_FLIP_NS)
-        glScalef(1.0, -1.0, 1.0);
-      glScalef(2.0/(float)ccdcntrl_get_max_width(), -2.0/(float)ccdcntrl_get_max_height(), 1.0);
-      glTranslated(-(float)ccdcntrl_get_max_width()/2.0, -(float)ccdcntrl_get_max_height()/2.0, 1.0);
-      float cur_line;
-      glBegin (GL_LINES);
-      for (cur_line = 0.0; cur_line < (float)ccdcntrl_get_max_width(); cur_line += GRID_SPACING_PIXEL)
-      {
-        glVertex3f(cur_line, 0.0, 0.0);
-        glVertex3f(cur_line, ccdcntrl_get_max_height(), 0.0);
-      }
-      for (cur_line = 0.0; cur_line < (float)ccdcntrl_get_max_height(); cur_line += GRID_SPACING_PIXEL)
-      {
-        glVertex3f(0.0, cur_line, 0.0);
-        glVertex3f(ccdcntrl_get_max_width(), cur_line, 0.0);
       }
       glEnd();
       break;
@@ -783,7 +725,7 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
       }
       break;
     }
-  }*/
+  }
   
   if (gdk_gl_drawable_is_double_buffered (gldrawable))
     gdk_gl_drawable_swap_buffers (gldrawable);

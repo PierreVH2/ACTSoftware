@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <act_timecoord.h>
 
 void faint_changed(GtkWidget *scl_faint, gpointer imgdisp)
 {
@@ -48,9 +49,18 @@ gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_co
   gfloat ra_h = imgdisp_coord_ra(imgdisp, mouse_x, mouse_y);
   gfloat dec_d = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
   
+  struct rastruct ra;
+  convert_H_HMSMS_ra(ra_h, &ra);
+  char *ra_str = ra_to_str(&ra);
+  struct decstruct dec;
+  convert_D_DMS_dec(dec_d, &dec);
+  char *dec_str = dec_to_str(&dec);
+
   char str[256];
-  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %ld  ;  Y: %ld\nvX: %f  ;  vY: %f\nRA: %f  ;  Dec: %f", mouse_x, mouse_y, pixel_x, pixel_y, viewp_x, viewp_y, ra_h, dec_d);
+  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %ld  ;  Y: %ld\nvX: %f  ;  vY: %f\nRA: %s  ;  Dec: %s", mouse_x, mouse_y, pixel_x, pixel_y, viewp_x, viewp_y, ra_str, dec_str);
   gtk_label_set_text(GTK_LABEL(lbl_coord), str);
+  free(ra_str);
+  free(dec_str);
   
   return FALSE;
 }
@@ -73,6 +83,12 @@ int main(int argc, char **argv)
   ccd_img_set_exp_t(img, 1.0);
   gulong width=407, height=288;
   ccd_img_set_window(img, 0, 0, width, height, 1, 1);
+  struct rastruct ra;
+  struct decstruct dec;
+  convert_H_HMSMS_ra(0.0, &ra);
+  convert_D_DMS_dec(-90.0, &dec);
+  ccd_img_set_tel_pos(img, &ra, &dec);
+  ccd_img_set_pixel_size(img, 1.5, 1.5);
   gfloat img_data[width * height];
   srand(time(NULL));
   guint i;

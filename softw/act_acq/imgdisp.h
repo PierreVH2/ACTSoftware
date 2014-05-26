@@ -56,6 +56,14 @@ LutPoint const *imglut_get_point(Imglut const *objs, gulong index);
 #define IS_IMGDISP(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), IMGDISP_TYPE))
 #define IS_IMGDISP_CLASS(klass)   (G_TYPE_CHECK_CLASS_TYPE ((klass), IMGDISP_TYPE))
 
+enum
+{
+  IMGDISP_GRID_NONE = 0,
+  IMGDISP_GRID_IMAGE,
+  IMGDISP_GRID_VIEW,
+  IMGDISP_GRID_EQUAT,
+}
+
 typedef struct _Imgdisp       Imgdisp;
 typedef struct _ImgdispClass  ImgdispClass;
 
@@ -68,6 +76,7 @@ struct _Imgdisp
   gulong win_width, win_height;
   gboolean flip_ns, flip_ew;
   gfloat bright_lim, faint_lim;
+  guchar grid_type;
   Imglut *lut;
   CcdImg *img;
   guint img_gl_name, lut_gl_name;
@@ -86,6 +95,7 @@ void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew);
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_faint_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut);
+void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid);
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img);
 void imgdisp_set_window(GtkWidget *imgdisp, glong start_x, glong start_y, gulong width, gulong height);
 gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);

@@ -96,14 +96,6 @@ gushort ccd_img_get_prebin_y(CcdImg const *objs)
   return objs->prebin_y;
 }
 
-gfloat ccd_img_get_pixel_size_ra(CcdImg const *objs)
-{
-}
-
-gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs)
-{
-}
-
 void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y)
 {
   objs->win_start_x = win_start_x;
@@ -112,6 +104,22 @@ void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, 
   objs->win_height = win_height;
   objs->prebin_x = prebin_x;
   objs->prebin_y = prebin_y;
+}
+
+void ccd_img_set_pixel_size(CcdImg *objs, gfloat size_ra_asec, gfloat size_dec_asec)
+{
+  objs->pix_size_ra = size_ra_asec;
+  objs->pix_size_dec = size_dec_asec;
+}
+
+gfloat ccd_img_get_pixel_size_ra(CcdImg const *objs)
+{
+  return objs->pix_size_ra;
+}
+
+gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs)
+{
+  return objs->pix_size_dec;
 }
 
 void ccd_img_get_start_datetime(CcdImg const *objs, struct datestruct *start_unid, struct timestruct *start_unit)
@@ -169,7 +177,7 @@ void ccd_img_get_tel_pos(CcdImg const *objs, struct rastruct *tel_ra, struct dec
   if (tel_ra != NULL)
     memcpy(tel_ra, &objs->tel_ra, sizeof(struct rastruct));
   if (tel_dec != NULL)
-    memcpy(tel_ra, &objs->tel_dec, sizeof(struct decstruct));
+    memcpy(tel_dec, &objs->tel_dec, sizeof(struct decstruct));
 }
 
 void ccd_img_set_tel_pos(CcdImg *objs, struct rastruct const *tel_ra, struct decstruct const *tel_dec)
@@ -201,8 +209,18 @@ static void ccd_img_instance_init(GObject *ccd_img)
 {
   CcdImg *objs = CCD_IMG(ccd_img);
   objs->img_type = IMGT_NONE;
+  objs->win_start_x = objs->win_start_y = 0;
+  objs->win_width = objs->win_height = 0;
+  objs->exp_t_s = 0.0;
+  memset(&objs->start_unid, 0, sizeof(struct datestruct));
+  memset(&objs->start_unit, 0, sizeof(struct timestruct));
   objs->targ_name = NULL;
-  objs->targ_id = 1;
+  objs->targ_id = 0;
+  objs->user_name = NULL;
+  objs->user_id = 0;
+  memset(&objs->tel_ra, 0, sizeof(struct rastruct));
+  memset(&objs->tel_dec, 0, sizeof(struct decstruct));
+  objs->pix_size_ra = objs->pix_size_dec = 0.0;
   objs->img_len = 0;
   objs->img_data = NULL;
 }
