@@ -52,9 +52,12 @@ struct _CcdImg
   /// User name and DB id
   gchar *user_name;
   gulong user_id;
-  /// Starting telescope coordinates
+  /// Telescope coordinates at exposure start
   struct rastruct tel_ra;
   struct decstruct tel_dec;
+  /// Size of pixels in arcseconds
+  gfloat pix_size_ra;
+  gfloat pix_size_dec;
   /// Length of image
   gulong img_len;
   /// Image data
@@ -79,6 +82,8 @@ gushort ccd_img_get_win_width(CcdImg const *objs);
 gushort ccd_img_get_win_height(CcdImg const *objs);
 gushort ccd_img_get_prebin_x(CcdImg const *objs);
 gushort ccd_img_get_prebin_y(CcdImg const *objs);
+gfloat ccd_img_get_pixel_size_ra(CcdImg const *objs);
+gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs);
 void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y);
 void ccd_img_get_start_datetime(CcdImg const *objs, struct datestruct *start_unid, struct timestruct *start_unit);
 void ccd_img_set_start_datetime(CcdImg *objs, struct datestruct const *start_unid, struct timestruct const *start_unit);

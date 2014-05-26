@@ -32,8 +32,8 @@ static gboolean imgdisp_configure(GtkWidget *imgdisp);
 static gboolean imgdisp_expose (GtkWidget *imgdisp);
 static gboolean create_shaders(Imgdisp *objs);
 static void update_colour_transl(Imgdisp *objs);
-static glong img_x(Imgdisp *objs, gulong x);
-static glong img_y(Imgdisp *objs, gulong y);
+// static glong img_x(Imgdisp *objs, gulong x);
+// static glong img_y(Imgdisp *objs, gulong y);
 
 // Imglut function implementation
 GType imglut_get_type (void)
@@ -379,6 +379,18 @@ gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
     act_log_debug(act_log_msg("No image available, cannot calculate mouse RA."));
     return 0.0;
   }
+  
+  long img_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y), img_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+  double img_dec = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
+  if (fabs(img_dec) > 89.99)
+    img_dec = 89.99;
+  struct rastruct ra;
+  ccd_img_get_tel_pos(objs->img, &ra, NULL);
+  
+  
+  
+  double ra_offset_deg = (XAPERTURE - mouse_x) * ccdcntrl_get_ra_width() / ccdcntrl_get_max_width() / cos(convert_DEG_RAD(img_dec)) / 3600.0;
+  
   
   (void) mouse_x;
   (void) mouse_y;
@@ -899,6 +911,7 @@ static void update_colour_transl(Imgdisp *objs)
   gdk_gl_drawable_gl_end (gldrawable);
 }
 
+/*
 static glong img_x(Imgdisp *objs, gulong x)
 {
   if (objs->img == NULL)
@@ -918,4 +931,5 @@ static glong img_y(Imgdisp *objs, gulong y)
   }
   return objs->flip_ns ? ccd_img_get_img_height(objs->img)-y : y;
 }
+*/
 

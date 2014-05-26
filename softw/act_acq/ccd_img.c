@@ -96,6 +96,14 @@ gushort ccd_img_get_prebin_y(CcdImg const *objs)
   return objs->prebin_y;
 }
 
+gfloat ccd_img_get_pixel_size_ra(CcdImg const *objs)
+{
+}
+
+gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs)
+{
+}
+
 void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y)
 {
   objs->win_start_x = win_start_x;
