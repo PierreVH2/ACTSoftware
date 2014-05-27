@@ -21,6 +21,16 @@
 #define IMGDISP_IMG_TEX    0
 #define IMGDISP_LUT_TEX    2
 
+/// Number of arcminutes per radian
+#define ONEARCMIN_RAD 0.0002908882086657216
+/// Spacing between Viewport grid lines
+#define GRID_SPACING_VIEWPORT  0.2
+/// Spacing between Pixel grid lines
+#define GRID_SPACING_PIXEL     50
+/// Spacing between Equitorial grid lines at equator
+#define GRID_SPACING_EQUAT     ONEARCMIN_RAD
+
+
 static void imglut_instance_init(GObject *imglut);
 static void imglut_class_init(ImglutClass *klass);
 static void imglut_instance_dispose(GObject *imglut);
@@ -284,7 +294,7 @@ void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut)
 
 void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid)
 {
-  IMGDISP(imgdisp)->grid_type = grid_type;
+  IMGDISP(imgdisp)->grid_type = new_grid;
   imgdisp_redraw(imgdisp);
 }
 
@@ -628,9 +638,9 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   glEnd();
   glPopMatrix();
   
-  switch(G_grid_type)
+  switch(objs->grid_type)
   {
-    case GRID_IMAGE:
+    case IMGDISP_GRID_IMAGE:
     {
       if (objs->img == NULL)
       {
@@ -643,20 +653,20 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
 //       glTranslated(-(float)ccdcntrl_get_max_width()/2.0, -(float)ccdcntrl_get_max_height()/2.0, 1.0);
       float cur_line;
       glBegin (GL_LINES);
-      for (cur_line = 0.0; cur_line < (float)ccdcntrl_get_max_width(); cur_line += GRID_SPACING_PIXEL)
+      for (cur_line = 0.0; cur_line < (float)img_width; cur_line += GRID_SPACING_PIXEL)
       {
         glVertex3f(cur_line, 0.0, 0.0);
-        glVertex3f(cur_line, ccdcntrl_get_max_height(), 0.0);
+        glVertex3f(cur_line, img_height, 0.0);
       }
-      for (cur_line = 0.0; cur_line < (float)ccdcntrl_get_max_height(); cur_line += GRID_SPACING_PIXEL)
+      for (cur_line = 0.0; cur_line < (float)img_height; cur_line += GRID_SPACING_PIXEL)
       {
         glVertex3f(0.0, cur_line, 0.0);
-        glVertex3f(ccdcntrl_get_max_width(), cur_line, 0.0);
+        glVertex3f(img_width, cur_line, 0.0);
       }
       glEnd();
       break;
     }
-    case GRID_VIEW:
+    case IMGDISP_GRID_VIEW:
     {
       glMatrixMode(GL_MODELVIEW);
       glLoadIdentity();
@@ -675,22 +685,117 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
       glEnd();
       break;
     }
-    case GRID_EQUAT:
+    case IMGDISP_GRID_EQUAT:
     {
+      double ra_h = 3.0;
+      double dec_d = -50.0;
+      double img_height_dec = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
+      double img_width_ra = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/cos(dec_d*ONEPI/180.0);
       glMatrixMode(GL_MODELVIEW);
       glLoadIdentity();
-      if ((G_flip_img&IMG_FLIP_EW) == IMG_FLIP_EW)
-        glScaled(-1.0, 1.0, 1.0);
-      if ((G_flip_img&IMG_FLIP_NS) == 0)
-        glScaled(1.0, -1.0, 1.0);
-      double dec_height_rad = convert_DEG_RAD(ccdcntrl_get_dec_height()/3600.0);
-      double ra_width_rad = convert_DEG_RAD(ccdcntrl_get_ra_width()/3600.0);
-      glScaled(2.0/sin(ra_width_rad), 2.0/sin(dec_height_rad), 1.0);
-      glRotated(-(convert_DMS_D_dec(&G_img_dec)+DEC_APER_OFFSET_DEG),1.0,0.0,0.0);
-      glRotated(-convert_H_DEG(convert_HMSMS_H_ra(&G_img_ra))+RA_APER_OFFSET_DEG,0.0,1.0,0.0);
-      double ra_lim_low, ra_lim_high, ra_spacing, dec_lim_low, dec_lim_high;
-      double dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&G_img_dec));
-      double ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&G_img_ra));
+//       glScaled(2.0/sin(img_width_ra), 2.0/sin(img_height_dec), 1.0);
+//       glScaled(2, 2, 1.0);
+//       glRotated(-90.0,1.0,0.0,0.0);
+//       glRotated(0,0.0,1.0,0.0);
+//       double ra_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/2.0;
+//       double dec_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_dec(objs->img)/3600.0)/2.0;
+      double ra_range = TWOPI/64.0/cos(dec_d*ONEPI/180.0), dec_range=ONEPI/64.0;
+      glScaled(1/sin(img_width_ra), 1/sin(img_height_dec), 1.0);
+      glRotated(dec_d,1.0,0.0,0.0);
+      glRotated(-ra_h*15.0,0.0,1.0,0.0);
+      double dec, ra;
+/*      glColor3f(1.0, 0.0, 0.0);
+      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
+          glVertex3d(cos(ra)*cos(dec),sin(ra)*cos(dec),sin(dec));
+        glEnd();
+      }
+      glColor3f(0.0, 1.0, 0.0);
+      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
+          glVertex3d(cos(ra)*cos(dec),sin(dec),sin(ra)*cos(dec));
+        glEnd();
+      }
+      glColor3f(0.0, 0.0, 1.0);
+      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
+          glVertex3d(sin(ra)*cos(dec),cos(ra)*cos(dec),sin(dec));
+        glEnd();
+      }
+      glColor3f(1.0, 1.0, 0.0);
+      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
+          glVertex3d(sin(dec),cos(ra)*cos(dec),sin(ra)*cos(dec));
+        glEnd();
+      }*/
+//       glColor3f(1.0, 0.0, 1.0);
+      for (dec=dec_d*ONEPI/180.0-dec_range; dec<dec_d*ONEPI/180.0+dec_range; dec+=dec_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (ra=ra_h*ONEPI/12.0-ra_range; ra<ra_h*ONEPI/12.0+ra_range; ra+=ra_range/20.0)
+          glVertex3d(sin(ra)*cos(dec),sin(dec),cos(ra)*cos(dec));
+        glEnd();
+      }
+      for (ra=ra_h*ONEPI/12.0-ra_range; ra<ra_h*ONEPI/12.0+ra_range; ra+=ra_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (dec=dec_d*ONEPI/180.0-dec_range; dec<dec_d*ONEPI/180.0+dec_range; dec+=dec_range/20.0)
+          glVertex3d(sin(ra)*cos(dec),sin(dec),cos(ra)*cos(dec));
+        glEnd();
+      }
+/*      glColor3f(0.0, 1.0, 1.0);
+      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
+          glVertex3d(sin(dec),sin(ra)*cos(dec),cos(ra)*cos(dec));
+        glEnd();
+      }*/
+
+/*      for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
+          glVertex3d(sin(ra)*sin(dec),cos(dec),sin(ra)*cos(dec));
+        glEnd();
+      }*/
+/*      struct rastruct ra;
+      struct decstruct dec;
+      ccd_img_get_tel_pos(objs->img, &ra, &dec);
+      double img_height_dec = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
+      double img_width_ra = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
+//       glScaled(100/sin(img_width_ra), 100/sin(img_height_dec), 1.0);
+      glScaled(1000.0, 1000.0, 1.0);
+      glRotated(-convert_DMS_D_dec(&dec),1.0,0.0,0.0);
+      glRotated(-convert_H_DEG(convert_HMSMS_H_ra(&ra)),0.0,1.0,0.0);
+      double ra_spacing = convert_DEG_RAD(round(GRID_SPACING_PIXEL*ccd_img_get_pixel_size_ra(objs->img)/cos(convert_DEG_RAD(convert_DMS_D_dec(&dec)))/60.0)/60.0);
+      double dec_spacing = convert_DEG_RAD(round(GRID_SPACING_PIXEL*ccd_img_get_pixel_size_dec(objs->img)/60.0)/60.0);
+      double ra_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/2.0;
+      double dec_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_dec(objs->img)/3600.0)/2.0*100.0;
+      double ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&ra)), dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&dec));
+      double ra_line, dec_line;
+      printf("%f %f %f %f %f %f %f %f\n", img_width_ra, img_height_dec, ra_spacing, dec_spacing, ra_range, dec_range, ra_rad, dec_rad);
+      for (dec_line=dec_rad-dec_range; dec_line<dec_rad+dec_range; dec_line+=dec_spacing)
+      {
+        glBegin(GL_LINE_STRIP);
+        for (ra_line=ra_rad-ra_range; ra_line<ra_rad+ra_range; ra_line+=ra_spacing)
+          glVertex3d(sin(ra_line)*cos(dec_line),sin(ra_line)*sin(dec_line),cos(dec_line));
+//         glVertex3d(sin(ra_line)*cos(dec_line),sin(ra_line)*sin(dec_line),cos(dec_line));
+//         glVertex3d(sin(dec_line)*sin(ra_line),cos(dec_line),sin(dec_line)*cos(ra_line));
+        glEnd();
+      }*/
+
+/*      double ra_lim_low, ra_lim_high, ra_spacing, dec_lim_low, dec_lim_high;
+      double dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&dec));
+      double ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&ra));
       dec_lim_low = GRID_SPACING_EQUAT*floor(dec_rad / GRID_SPACING_EQUAT) - GRID_SPACING_EQUAT*ceil(dec_height_rad / GRID_SPACING_EQUAT);
       dec_lim_high = GRID_SPACING_EQUAT*ceil(dec_rad / GRID_SPACING_EQUAT) + GRID_SPACING_EQUAT*ceil(dec_height_rad / GRID_SPACING_EQUAT);
       ra_spacing = GRID_SPACING_EQUAT * round(GRID_SPACING_EQUAT / fabs(cos(dec_rad)) / ONEARCMIN_RAD);
@@ -706,23 +811,23 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
         ra_spacing = (ra_lim_high-ra_lim_low) / 30.0;
       if (ra_spacing > 15.0 * 60.0 * GRID_SPACING_EQUAT)
         ra_spacing = 15.0 * 60.0 * GRID_SPACING_EQUAT;
-      double dec, ra;
-      for (dec=dec_lim_low; dec<dec_lim_high; dec+=GRID_SPACING_EQUAT)
+      double cur_dec, cur_ra;
+      for (cur_dec=dec_lim_low; cur_dec<dec_lim_high; cur_dec+=GRID_SPACING_EQUAT)
       {
         glBegin(GL_LINE_STRIP);
-        for (ra=ra_lim_low; ra<ra_lim_high; ra+=ra_spacing)
-          glVertex3d(sin(dec+0.5*ONEPI)*sin(ra),cos(dec+0.5*ONEPI),sin(dec+0.5*ONEPI)*cos(ra));
-        glVertex3d(sin(dec+0.5*ONEPI)*sin(ra),cos(dec+0.5*ONEPI),sin(dec+0.5*ONEPI)*cos(ra));
+        for (cur_ra=ra_lim_low; cur_ra<ra_lim_high; cur_ra+=ra_spacing)
+          glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
+        glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
         glEnd();
       }
-      for (ra=ra_lim_low; ra<ra_lim_high; ra+=ra_spacing)
+      for (cur_ra=ra_lim_low; cur_ra<ra_lim_high; cur_ra+=ra_spacing)
       {
         glBegin(GL_LINE_STRIP);
-        for (dec=dec_lim_low; dec<dec_lim_high; dec+=GRID_SPACING_EQUAT)
-          glVertex3d(sin(dec+0.5*ONEPI)*sin(ra),cos(dec+0.5*ONEPI),sin(dec+0.5*ONEPI)*cos(ra));
-        glVertex3d(sin(dec+0.5*ONEPI)*sin(ra),cos(dec+0.5*ONEPI),sin(dec+0.5*ONEPI)*cos(ra));
+        for (cur_dec=dec_lim_low; cur_dec<dec_lim_high; cur_dec+=GRID_SPACING_EQUAT)
+          glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
+        glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
         glEnd();
-      }
+      }*/
       break;
     }
   }

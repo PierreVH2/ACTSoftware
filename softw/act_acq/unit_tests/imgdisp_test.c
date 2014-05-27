@@ -85,8 +85,8 @@ int main(int argc, char **argv)
   ccd_img_set_window(img, 0, 0, width, height, 1, 1);
   struct rastruct ra;
   struct decstruct dec;
-  convert_H_HMSMS_ra(0.0, &ra);
-  convert_D_DMS_dec(-90.0, &dec);
+  convert_H_HMSMS_ra(0, &ra);
+  convert_D_DMS_dec(0.0, &dec);
   ccd_img_set_tel_pos(img, &ra, &dec);
   ccd_img_set_pixel_size(img, 1.5, 1.5);
   gfloat img_data[width * height];
@@ -104,6 +104,7 @@ int main(int argc, char **argv)
   gtk_widget_set_size_request(imgdisp, width*2, height*2);
   imgdisp_set_window(imgdisp, 0, 0, width, height);
   imgdisp_set_flip_ew(imgdisp, TRUE);
+  imgdisp_set_grid(imgdisp, IMGDISP_GRID_EQUAT);
   
   GtkWidget *scl_faint = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);
   gtk_range_set_value(GTK_RANGE(scl_faint), 0.0);

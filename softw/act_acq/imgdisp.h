@@ -62,7 +62,7 @@ enum
   IMGDISP_GRID_IMAGE,
   IMGDISP_GRID_VIEW,
   IMGDISP_GRID_EQUAT,
-}
+};
 
 typedef struct _Imgdisp       Imgdisp;
 typedef struct _ImgdispClass  ImgdispClass;
