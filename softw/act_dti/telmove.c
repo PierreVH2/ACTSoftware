@@ -78,6 +78,8 @@ static gint start_goto(Dtimotor *dti_motor, struct hastruct *ha, struct decstruc
 static void check_sidt(Telmove *objs);
 static void error_dialog(GtkWidget *top_parent, const char *message, unsigned int errcode);
 
+static void print_coord(gpointer telmove);
+
 
 enum
 {
@@ -147,6 +149,8 @@ GtkWidget *telmove_new (void)
   g_signal_connect(G_OBJECT(objs->btn_moveS), "button-release-event", G_CALLBACK(end_moveNSEW), telmove);
   g_signal_connect(G_OBJECT(objs->btn_moveE), "button-release-event", G_CALLBACK(end_moveNSEW), telmove);
   g_signal_connect(G_OBJECT(objs->btn_moveW), "button-release-event", G_CALLBACK(end_moveNSEW), telmove);
+
+  g_signal_connect_swapped(G_OBJECT(objs->btn_print_coord), "clicked", G_CALLBACK(print_coord), telmove);
 
   return telmove;
 }
@@ -256,6 +260,9 @@ static void telmove_init(GtkWidget *telmove)
   objs->lbl_stat = gtk_label_new("");
   gtk_label_set_width_chars(GTK_LABEL(objs->lbl_stat), 20);
   gtk_container_add(GTK_CONTAINER(objs->evb_stat),objs->lbl_stat);
+
+  objs->btn_print_coord = gtk_button_new_with_label("Print Coord.");
+  gtk_table_attach(GTK_TABLE(objs->box), objs->btn_print_coord, 4, 7, 5, 6, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
 }
 
 static void telmove_destroy(gpointer telmove)
@@ -925,4 +932,12 @@ static void error_dialog(GtkWidget *top_parent, const char *message, unsigned in
     err_dialog = gtk_message_dialog_new (GTK_WINDOW(top_parent), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s.", message);
   g_signal_connect_swapped(G_OBJECT(err_dialog), "response", G_CALLBACK(gtk_widget_destroy), err_dialog);
   gtk_widget_show_all(err_dialog);
+}
+
+static void print_coord(gpointer telmove)
+{
+  Telmove *objs = TELMOVE(telmove);
+  glong ha_steps, dec_steps;
+  dti_motor_get_raw_coord(objs->dti_motor, &ha_steps, &dec_steps);
+  act_log_debug(act_log_msg("Tel coord (SIDT h, HA steps, DEC steps): %f, %d, %d", objs->sidt_h, ha_steps, dec_steps));
 }

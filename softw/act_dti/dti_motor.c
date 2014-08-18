@@ -134,9 +134,9 @@ Dtimotor *dti_motor_new (void)
   objs->lim_alt_d = 20.0;
   objs->cur_limits = tmp_limits;
   objs->cur_warn = check_warn(objs);
-  gchar pointing_model_str[256];
+/*  gchar pointing_model_str[256];
   PRINT_MODEL(pointing_model_str);
-  act_log_debug(act_log_msg("Using pointing model: %s", pointing_model_str));
+  act_log_debug(act_log_msg("Using pointing model: %s", pointing_model_str));*/
   return objs;
 }
 
@@ -312,6 +312,21 @@ gint dti_motor_track_adj(Dtimotor *objs, gdouble ha_adj_h, gdouble dec_adj_d)
 {
   return send_motor_track_adj(g_io_channel_unix_get_fd(objs->motor_chan), ha_adj_h, dec_adj_d);
 }
+
+
+void dti_motor_get_raw_coord(Dtimotor *objs, glong *ha_steps, glong *dec_steps)
+{
+  struct motor_tel_coord coord;
+  gint ret = ioctl(g_io_channel_unix_get_fd(objs->motor_chan), IOCTL_MOTOR_GET_MOTOR_POS, &coord);
+  if (ret < 0)
+  {
+    act_log_error(act_log_msg("Failed to read telescope coordinates from motor driver - %s.", strerror(errno)));
+    return;
+  }
+  *ha_steps = coord.tel_ha;
+  *dec_steps = coord.tel_dec;
+}
+
 
 static void dti_motor_class_init (DtimotorClass *klass)
 {
@@ -495,30 +510,20 @@ static guchar check_warn(Dtimotor *objs)
 
 static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec)
 {
-//   struct altstruct tmpalt;
-//   struct azmstruct tmpazm;
-//   convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
-//  corr_atm_refract_sky_tel(&tmpalt);
-//   convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
-  corr_atm_refract_sky_tel_equat(ha, dec);
+/*  corr_atm_refract_sky_tel_equat(ha, dec);
   double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
 //   POINTING_MODEL_ST(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
-  convert_D_DMS_dec(dec_d, dec);
+  convert_D_DMS_dec(dec_d, dec);*/
 }
 
 static void pointing_model_tel_sky(struct hastruct *ha, struct decstruct *dec)
 {
-  double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
+/*  double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
 //   POINTING_MODEL_TS(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
   convert_D_DMS_dec(dec_d, dec);
-  corr_atm_refract_tel_sky_equat(ha, dec);
-//   struct altstruct tmpalt;
-//   struct azmstruct tmpazm;
-//   convert_EQUI_ALTAZ(ha, dec, &tmpalt, &tmpazm);
-//  corr_atm_refract_tel_sky(&tmpalt);
-//   convert_ALTAZ_EQUI(&tmpalt, &tmpazm, ha, dec);
+  corr_atm_refract_tel_sky_equat(ha, dec);*/
 }
 
 static gint read_motor_stat(gint motor_fd, guchar *motor_stat)
@@ -566,7 +571,6 @@ static void read_motor_coord(gint motor_fd, struct hastruct *ha, struct decstruc
     act_log_error(act_log_msg("Failed to read telescope coordinates from motor driver - %s.", strerror(errno)));
     return;
   }
-  act_log_debug(act_log_msg("HA steps: %lu", coord.tel_ha));
   double ha_h = ((double) (MOTOR_LIM_E_MSEC - MOTOR_LIM_W_MSEC) * coord.tel_ha / range_ha + MOTOR_LIM_W_MSEC) / 3600000.0;
   double dec_d = ((double) (MOTOR_LIM_N_ASEC - MOTOR_LIM_S_ASEC) * coord.tel_dec / range_dec + MOTOR_LIM_S_ASEC) / 3600.0;
   convert_H_HMSMS_ha(ha_h, ha);

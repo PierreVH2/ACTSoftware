@@ -137,6 +137,8 @@ gint dti_motor_init (Dtimotor *objs);
 gint dti_motor_set_tracking (Dtimotor *objs, gboolean tracking_on);
 gint dti_motor_track_adj(Dtimotor *objs, gdouble ha_adj_h, gdouble dec_adj_d);
 
+void dti_motor_get_raw_coord(Dtimotor *objs, glong *ha_steps, glong *dec_steps);
+
 G_END_DECLS
 
 #endif   /* __DTI_MOTOR_H__ */

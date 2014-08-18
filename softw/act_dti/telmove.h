@@ -31,7 +31,7 @@ struct _Telmove
   GtkWidget *btn_speed_slew, *btn_speed_set, *btn_speed_guide;
   GtkWidget *btn_moveN, *btn_moveS, *btn_moveE, *btn_moveW, *btn_emgny_stop;
   GtkWidget *lbl_hara_label, *lbl_dec_label, *lbl_hara, *lbl_dec;
-  GtkWidget *evb_stat, *lbl_stat;
+  GtkWidget *evb_stat, *lbl_stat, *btn_print_coord;
   
   guchar motor_stat, motor_limits, motor_warn;
   gdouble sidt_h;
