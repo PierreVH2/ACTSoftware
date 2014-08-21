@@ -687,10 +687,33 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
     }
     case IMGDISP_GRID_EQUAT:
     {
-      double ra_h = 3.0;
-      double dec_d = -50.0;
+      double ra_rad = convert_H_RAD(3.0);
+      double dec_rad = convert_DEG_RAD(-50.0);
       double img_height_dec = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
-      double img_width_ra = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/cos(dec_d*ONEPI/180.0);
+      double img_width_ra = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/cos(dec_rad);
+      double ra_low, ra_high, dec_low, dec_high;
+      double dec_inc, ra_ing;
+      dec_low = dec_rad - img_height_dec / 2.0;
+      dec_high = dec_rad + img_height_dec / 2.0;
+      ra_low = 
+      dec_inc = 1.0 / 60.0, ra_inc = round(1.0 / cos(dec_rad)) / 60.0;
+      
+      dec_low = dec_rad - ceil(img_height_dec / 2.0 / dec_inc)*dec_inc, dec_high = dec_rad + ceil(img_height_dec / 2.0 / dec_inc)*dec_inc;
+      if ((fabs(dec_low) >= ONEPI/2.0) || (fabs(dec_high) >= ONEPI/2.0))
+      {
+        if (fabs(dec_low) >= ONEPI/2.0)
+          dec_low = ONEPI/2.0 * dec_low/fabs(dec_low);
+        if (fabs(dec_high) >= ONEPI/2.0)
+          dec_high = ONEPI/2.0 * dec_high/fabs(dec_high);
+        ra_low = 0.0;
+        ra_high = TWOPI;
+      }
+      else
+      {
+        ra_low = ra_rad - ceil(img_width_ra / 2.0 / ra_inc)*ra_inc;
+        ra_high = ra_rad + ceil(img_width_ra / 2.0 / ra_inc)*ra_inc;
+      }
+      
       glMatrixMode(GL_MODELVIEW);
       glLoadIdentity();
 //       glScaled(2.0/sin(img_width_ra), 2.0/sin(img_height_dec), 1.0);
@@ -699,7 +722,7 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
 //       glRotated(0,0.0,1.0,0.0);
 //       double ra_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/2.0;
 //       double dec_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_dec(objs->img)/3600.0)/2.0;
-      double ra_range = TWOPI/64.0/cos(dec_d*ONEPI/180.0), dec_range=ONEPI/64.0;
+      double ra_range = img_width_ra/10.0, dec_range=img_dec_height/10.0;
       glScaled(1/sin(img_width_ra), 1/sin(img_height_dec), 1.0);
       glRotated(dec_d,1.0,0.0,0.0);
       glRotated(-ra_h*15.0,0.0,1.0,0.0);

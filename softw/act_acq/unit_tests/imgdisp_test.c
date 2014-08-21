@@ -78,7 +78,7 @@ int main(int argc, char **argv)
   GtkWidget *imgdisp  = imgdisp_new();
   gtk_box_pack_start(GTK_BOX(box_main), imgdisp, 0, 0, 0);
     
-  CcdImg *img = g_object_new (imgdisp_get_type(), NULL);
+  CcdImg *img = g_object_new (ccd_img_get_type(), NULL);
   ccd_img_set_img_type(img, IMGT_ACQ_OBJ);
   ccd_img_set_exp_t(img, 1.0);
   gulong width=407, height=288;
