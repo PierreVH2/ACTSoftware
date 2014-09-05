@@ -264,6 +264,9 @@ int start_goto(struct motor_goto_cmd *cmd)
     printk(KERN_INFO PRINTK_PREFIX "Telescope limit reached in requested direction.");
     return -EINVAL;
   }
+  // If we need to move in Dec, move in Dec first (move in HA later)
+  if ((dir & (DIR_NORTH_MASK | DIR_SOUTH_MASK)) != 0)
+    dir &= (DIR_NORTH_MASK | DIR_SOUTH_MASK);
   
   rate = calc_rate(dir, cmd->speed, 0);
   if (rate == 0)
@@ -296,7 +299,6 @@ void end_goto(void)
     printk(KERN_DEBUG PRINTK_PREFIX "No goto motion is currently underway. Not cancelling goto.\n");
     return;
   }
-//   printk(KERN_DEBUG PRINTK_PREFIX "Goto end requested.\n");
   params->rate_req = RATE_MIN;
   params->cancelled = TRUE;
   if (params->rate_cur >= RATE_MIN)
@@ -328,7 +330,6 @@ int start_card(struct motor_card_cmd *cmd)
   }
 
   // Check if requested direction valid
-//  printk(KERN_DEBUG PRINTK_PREFIX "start_card direction: %hhu\n", cmd->dir);
   dir = get_dir_mask(cmd->dir);
   if (dir == 0)
   {
@@ -358,7 +359,6 @@ int start_card(struct motor_card_cmd *cmd)
   if (G_status & MOTOR_STAT_CARD)
     return 0;
   params->dir_cur = params->dir_req;
-//  printk(KERN_DEBUG PRINTK_PREFIX "start_card dir_cur, dir_req: %hhu, %hhu\n", params->dir_cur, params->dir_req);
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
   params->timer_ms = 0;
   params->handset_move = FALSE;
@@ -746,7 +746,6 @@ unsigned char check_gotomove(void)
   unsigned char dir_new;
   struct gotomove_params *params = &G_move_params.gotomove;
   
-//   printk(KERN_DEBUG PRINTK_PREFIX "Checking goto.\n");
   if ((G_hard_limits | G_alt_limits) & params->dir_cur)
   {
     printk(KERN_INFO PRINTK_PREFIX "Limit reached in move direction. Cancelling goto.\n");
@@ -758,11 +757,9 @@ unsigned char check_gotomove(void)
   
   if (params->cancelled)
   {
-//     printk(KERN_DEBUG PRINTK_PREFIX "Goto cancelled\n");
     if (params->rate_cur < RATE_MIN)
     {
       rate_new = calc_ramp_rate(params->rate_cur, RATE_MIN);
-//       printk(KERN_DEBUG PRINTK_PREFIX "Ramping down: %u\n", rate_new);
       send_rate(rate_new);
       params->rate_cur = rate_new;
       return FALSE;
@@ -783,16 +780,16 @@ unsigned char check_gotomove(void)
     new_targ_ha = params->targ_ha - (params->timer_ms*HA_INCR_MOTOR_STEPS);
   
   dir_new = calc_direction(new_targ_ha, params->targ_dec, params->use_encod);
-//   printk(KERN_DEBUG PRINTK_PREFIX "Goto track-adjusted coordinates,dir: %u %u 0x%x\n", new_targ_ha, params->targ_dec, dir_new);
   if ((dir_new == 0) && (params->rate_cur >= RATE_MIN))
   {
-//     printk(KERN_DEBUG PRINTK_PREFIX "Goto complete (HA %d; Dec %d).\n", params->use_encod ? G_encod_pulses_ha : G_motor_steps_ha, params->use_encod ? G_encod_pulses_dec : G_motor_steps_dec);
     G_status &= ~MOTOR_STAT_GOTO;
     stop_move();
     if ((G_status & MOTOR_STAT_TRACKING) != 0)
       toggle_tracking(TRUE);
     return TRUE;
   }
+  if ((dir_new & (DIR_NORTH_MASK | DIR_SOUTH_MASK)) != 0)
+    dir_new &= (DIR_NORTH_MASK | DIR_SOUTH_MASK);
   if ((dir_new != params->dir_cur) && (params->rate_cur >= RATE_MIN))
   {
     start_move(dir_new, params->rate_cur);
@@ -827,16 +824,6 @@ unsigned char check_cardmove(void)
   }
 
   // If no motion in HA, increment timer so we can catch up later (if moving in HA, even if also moving in Dec, move rate will account for sidereal motion)
-/*  if ((params->start_ha == 0) && ((params->dir_cur & DIR_HA_MASK) == 0) && (G_status | MOTOR_STAT_TRACKING))
-  {
-//     printk(KERN_DEBUG PRINTK_PREFIX "Setting card move start hour angle.\n");
-    params->start_ha = G_motor_steps_ha;
-  }
-  else if ((params->start_ha != 0) && (((params->dir_cur & DIR_HA_MASK) != 0) || ((G_status | MOTOR_STAT_TRACKING) == 0)))
-  {
-//     printk(KERN_DEBUG PRINTK_PREFIX "Unsetting card move start hour angle.\n");
-    params->start_ha = 0;
-  }*/
   if (params->start_ha != 0)
     params->timer_ms += MON_PERIOD_MSEC;
   
@@ -849,7 +836,6 @@ unsigned char check_cardmove(void)
   if (rate_req != params->rate_cur)
   {
     unsigned int rate_new = calc_ramp_rate(params->rate_cur, rate_req);
-//     printk(KERN_DEBUG PRINTK_PREFIX "Ramping down for direction change (0x%x 0x%x %u)\n", params->dir_cur, params->dir_req, rate_req);
     send_rate(rate_new);
     params->rate_cur = rate_new;
   }
@@ -867,9 +853,7 @@ unsigned char check_cardmove(void)
     {
       int new_targ_ha = params->start_ha - (params->timer_ms*HA_INCR_MOTOR_STEPS);
       dir_new = calc_direction(new_targ_ha, G_motor_steps_dec, FALSE) & DIR_WEST_MASK;
-//       printk(KERN_DEBUG PRINTK_PREFIX "Tracking adjusted ha: %d (%d %d %d)\n", new_targ_ha, G_motor_steps_ha, params->timer_ms*HA_INCR_MOTOR_STEPS, params->start_ha);
     }
-//     printk(KERN_DEBUG PRINTK_PREFIX "Slow enough to stop (new dir: 0x%x 0x%x)\n", dir_new, params->dir_cur);
     if (dir_new == params->dir_cur)
       return FALSE;
     stop_move();
@@ -913,16 +897,8 @@ unsigned char check_tracking(void)
   dec_steps = G_motor_steps_dec - params->last_steps_dec;
   if ((params->dir_cur & DIR_HA_MASK) != 0)
     params->adj_ha_steps += ha_steps;
-/*  if (((params->dir_cur & DIR_WEST_MASK) && (ha_steps <= 0)) || ((params->dir_cur & DIR_EAST_MASK) && (ha_steps >= 0)))
-    params->adj_ha_steps -= ha_steps;
-  else if (params->dir_cur & DIR_HA_MASK)
-    printk(KERN_INFO PRINTK_PREFIX "HA tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", (params->dir_cur & DIR_HA_MASK), ha_steps);*/
   if ((params->dir_cur & DIR_DEC_MASK) != 0)
     params->adj_dec_steps += dec_steps;
-/*  if (((params->dir_cur & DIR_NORTH_MASK) && (dec_steps >= 0)) || ((params->dir_cur & DIR_SOUTH_MASK) && (dec_steps <= 0)))
-    params->adj_dec_steps -= dec_steps;
-  else if (params->dir_cur & DIR_DEC_MASK)
-    printk(KERN_INFO PRINTK_PREFIX "Dec tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", params->dir_cur & DIR_DEC_MASK), dec_steps);*/
   
   // Update steps stored in tracking parameters
   params->last_steps_ha = G_motor_steps_ha;
