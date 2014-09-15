@@ -7,6 +7,7 @@
 #include "motor_intfce.h"
 #include "motor_defs.h"
 #include "motor_driver.h"
+#include "soft_limits.h"
 
 #ifdef MOTOR_SIM
  #define MOTORSIM_PFX  "[MOTOR_SIM] "
@@ -157,17 +158,6 @@ static void (*G_status_update) (void) = NULL;
  unsigned char G_sim_limits, G_sim_dir;
  /** \} */
 #endif
-
-/** Additional telescope limits
- * \{ */
-#define TEL_ALT_LIM_MIN_DEC_STEPS 327499
-#define TEL_ALT_LIM_DEC_INC_STEPS 19068
-#define TEL_ALT_LIM_NUM_DIVS      14
-// tel_alt_limits specifies the maximum allowable hour-angle in minutes for a declination within the range corresponding to {(-10)-(-5), (-5)-0, 0-5, 5-10, 10-15, 15-20, 20-25, 25-30, 30-35, 35-40, 40-45} in degrees
-// in order for the telescope to remain above 10 degrees in altitude
-static const int G_tel_alt_lim_E_steps[TEL_ALT_LIM_NUM_DIVS] = { 1159141, 1137539, 1115265, 1091896, 1066969, 1039888, 1009867, 975799, 935947, 887309, 823562, 724239, 573283, 573283 }
-static const int G_tel_alt_lim_W_steps[TEL_ALT_LIM_NUM_DIVS] = { -12581, 9021, 31295, 54664, 79591, 106672, 136693, 170761, 210613, 259251, 322998, 422321, 573277, 573277};
-/** \} */
 
 void motordrv_init(void (*stat_update)(void))
 {
@@ -1069,33 +1059,17 @@ static void stop_move(void)
 
 static unsigned char check_soft_lims(int steps_ha, int steps_dec)
 {
-  unsigned char idx=TEL_ALT_LIM_NUM_DIVS+1, lim_dir = 0;
-  int64_t grad_u, zerop, dec_l, tmp_div;
-  int tel_ha_lim_E = 0, tel_ha_lim_W = 0;
-  
+  int idx, lim_W, lim_E;
+  unsigned char lim_dir = 0;
   if (steps_dec < TEL_ALT_LIM_MIN_DEC_STEPS)
     return 0;
-  idx = (steps_dec - TEL_ALT_LIM_MIN_DEC_STEPS) / TEL_ALT_LIM_DEC_INC_STEPS;
-  if (idx >= TEL_ALT_LIM_NUM_DIVS-1)
+  if (steps_dec >= MOTOR_STEPS_N_LIM)
     return DIR_NORTH_MASK | DIR_WEST_MASK | DIR_EAST_MASK;
-  dec_l = TEL_ALT_LIM_MIN_DEC_STEPS + idx*TEL_ALT_LIM_DEC_INC_STEPS;
-  grad_u = (G_tel_alt_lim_W_steps[idx+1] - G_tel_alt_lim_W_steps[idx]);
-  tmp_div = grad_u * dec_l;
-  do_div(tmp_div,TEL_ALT_LIM_DEC_INC_STEPS);
-  zerop = G_tel_alt_lim_W_steps[idx] - tmp_div;
-  tmp_div = grad_u * steps_dec;
-  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
-  tel_ha_lim_W = tmp_div + zerop;
-  grad_u *= -1;
-  tmp_div = grad_u*dec_l;
-  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
-  zerop = G_tel_alt_lim_E_steps[idx] - tmp_div;
-  tmp_div = grad_u * steps_dec;
-  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
-  tel_ha_lim_E = tmp_div + zerop;
-  if (steps_ha < tel_ha_lim_W)
+  idx = steps_dec-TEL_ALT_LIM_MIN_DEC_STEPS;
+  lim_W  = G_tel_alt_lim_W_steps[idx], lim_E=G_tel_alt_lim_E_steps[idx];
+  if (steps_ha < lim_W)
     lim_dir |= DIR_NORTH_MASK | DIR_WEST_MASK;
-  if (steps_ha > tel_ha_lim_E)
+  if (steps_ha > lim_E)
     lim_dir |= DIR_NORTH_MASK | DIR_EAST_MASK;
   return lim_dir;
 }
