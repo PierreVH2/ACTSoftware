@@ -50,7 +50,7 @@ struct motor_tel_coord
 struct motor_goto_cmd
 {
   int targ_ha, targ_dec;
-  unsigned char speed, tracking_on, use_encod;
+  unsigned char speed, tracking_on;
 };
 
 struct motor_card_cmd
@@ -66,9 +66,6 @@ struct motor_track_adj
 
 /// IOCTL to get the telescope's current position according to telescope motors - saves struct motor_tel_coord to ioctl parameter.
 #define IOCTL_MOTOR_GET_MOTOR_POS _IOR(MOTOR_IOCTL_NUM, 0, void *)
-
-/// IOCTL to get the telescope's current position according to telescope encoders - saves struct motor_tel_coord to ioctl parameter.
-#define IOCTL_MOTOR_GET_ENCOD_POS _IOR(MOTOR_IOCTL_NUM, 1, void *)
 
 /// IOCTL to start or end a telescope goto - takes pointer to motor_goto struct as ioctl parameter, if NULL end goto.
 #define IOCTL_MOTOR_GOTO _IOW(MOTOR_IOCTL_NUM, 2, void *)
@@ -92,7 +89,7 @@ struct motor_track_adj
  * \{
  */
 #ifdef MOTOR_SIM
-/// IOCTL to set the number of motor/encoder steps
+/// IOCTL to set the number of motor steps
 #define IOCTL_MOTOR_SET_SIM_STEPS _IOW(MOTOR_IOCTL_NUM, 8, unsigned long)
 
 /// IOCTL to set the eletronic limit switch flags

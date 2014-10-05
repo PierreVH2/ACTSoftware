@@ -50,12 +50,6 @@ int main()
   else
     printf("Motor coordinates (HA steps, Dec steps):  %d %d\n\n", coord.tel_ha, coord.tel_dec);
   
-  ret = ioctl(motor_fd, IOCTL_MOTOR_GET_ENCOD_POS, &coord);
-  if (ret < 0)
-    fprintf(stderr, "Failed to read encoder coordinates - %s\n", strerror(errno));
-  else
-    printf("Encoder coordinates (HA pulses, Dec pulses):  %d %d\n\n", coord.tel_ha, coord.tel_dec);
-
   close(motor_fd);
   return 0;
 }
