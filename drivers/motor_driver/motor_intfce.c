@@ -2,12 +2,10 @@
 #include <linux/io.h>
 #include <linux/workqueue.h>
 #include <asm/div64.h>
-#include <linux/jiffies.h>
 #include <act_plc/act_plc.h>
 #include "motor_intfce.h"
 #include "motor_defs.h"
 #include "motor_driver.h"
-#include "soft_limits.h"
 
 #ifdef MOTOR_SIM
  #define MOTORSIM_PFX  "[MOTOR_SIM] "
@@ -45,7 +43,7 @@
 /** Motor step rates
  * \{ */
 #define    RATE_SID              57381U    /* previously 57388, 60000U autoscope value 27890U */
-#define    RATE_SLEW             200U
+#define    RATE_SLEW             400U
 #define    RATE_SET              5578U
 #define    RATE_SET_TRACK_W      5084U
 #define    RATE_SET_TRACK_E      6179U
@@ -57,12 +55,16 @@
 
 /** Stop goto if within these distances to the target coordinates
  * \{ */
+#define TOLERANCE_ENCOD_HA_PULSES   2
+#define TOLERANCE_ENCOD_DEC_PULSES  1
 #define TOLERANCE_MOTOR_HA_STEPS    3
 #define TOLERANCE_MOTOR_DEC_STEPS   2
 /** \} */
 
 /** Slow down if this distance from target coordinates
  * \{ */
+#define FLOP_ENCOD_HA_PULSES        842
+#define FLOP_ENCOD_DEC_PULSES       1683
 #define FLOP_MOTOR_HA_STEPS         2334
 #define FLOP_MOTOR_DEC_STEPS        3177
 /** \} */
@@ -73,26 +75,25 @@
 /// Hour angle motor steps increment per millisecond (used to adjust target ha during move if tracking)
 #define HA_INCR_MOTOR_STEPS         31/1000
 /// Hour angle encoder pulses increment per millisecond (used to adjust target ha move goto if tracking)
-// #define HA_INCR_ENCOD_PULSES        11/1000
-
-#define ha_track_time(start_time)   (((long)jiffies - (long)start_time) * 1000 / HZ) * MOTOR_STEPS_E_LIM / (MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC)
+#define HA_INCR_ENCOD_PULSES        11/1000
 
 struct gotomove_params
 {
   int targ_ha, targ_dec;
   unsigned char dir_cur;
   unsigned int rate_req, rate_cur;
+  unsigned int timer_ms;
+  unsigned char use_encod;
   unsigned char cancelled;
-  long start_time;
 };
 
 struct cardmove_params
 {
   unsigned char dir_cur, dir_req;
   unsigned int rate_req, rate_cur;
+  unsigned int timer_ms;
   unsigned char handset_move;
   int start_ha;
-  long start_time;
 };
 
 struct tracking_params
@@ -115,15 +116,14 @@ static void check_motors(struct work_struct *work);
 unsigned char check_gotomove(void);
 unsigned char check_cardmove(void);
 unsigned char check_tracking(void);
-static char calc_direction(int targ_ha, int targ_dec);
-static char calc_direction_goto(int targ_ha, int targ_dec);
+static unsigned char calc_direction(int targ_ha, int targ_dec, unsigned char use_encod);
 static unsigned char get_dir_mask(unsigned char dir_mode);
-static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec);
+static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec, unsigned char use_encod);
 static unsigned int calc_rate(unsigned char dir, unsigned char speed, unsigned char tracking_on);
 static unsigned int calc_ramp_rate(unsigned int rate_cur, unsigned int rate_req);
 static void start_move(unsigned char dir, unsigned long rate_req);
 static void stop_move(void);
-static unsigned char check_soft_lims(int steps_ha, int steps_dec);
+static unsigned char check_soft_lims(void);
 static void send_direction(unsigned char dir);
 static unsigned char read_limits(void);
 static void send_steps(unsigned long steps);
@@ -141,6 +141,8 @@ static unsigned char G_alt_limits;
 static int G_motor_steps_ha;
 static int G_motor_steps_dec;
 static int G_last_motor_steps;
+static int G_encod_pulses_ha;
+static int G_encod_pulses_dec;
 /** Motor motion variable
  * \{ */
 static union move_params G_move_params;
@@ -159,6 +161,18 @@ static void (*G_status_update) (void) = NULL;
  /** \} */
 #endif
 
+/** Additional telescope limits
+ * \{ */
+#define TEL_ALT_LIM_MIN_DEC_STEPS 365634
+#define TEL_ALT_LIM_DEC_INC_STEPS 19068
+#define TEL_ALT_LIM_NUM_DIVS      11
+// tel_alt_limits specifies the maximum allowable hour-angle in minutes for a declination within the range corresponding to {(-10)-(-5), (-5)-0, 0-5, 5-10, 10-15, 15-20, 20-25, 25-30, 30-35, 35-40, 40-45} in degrees
+// in order for the telescope to remain above 10 degrees in altitude
+// static const int G_tel_alt_lim_dec_steps[TEL_ALT_LIM_NUM_DIVS] = {365634, 384702, 403770, 422838, 441906, 460974, 480042, 499110, 518178, 537246, 556314};
+static const int G_tel_alt_lim_W_steps[TEL_ALT_LIM_NUM_DIVS] = {-3520, 19677, 43880, 69600, 97474, 128323, 163334, 204335, 254504, 320569, 424189};
+static const int G_tel_alt_lim_E_steps[TEL_ALT_LIM_NUM_DIVS] = {1168912, 1145715, 1121512, 1095792, 1067917, 1037069, 1002058, 961057, 910888, 844823, 741203};
+/** \} */
+
 void motordrv_init(void (*stat_update)(void))
 {
   G_status = 0;
@@ -167,6 +181,8 @@ void motordrv_init(void (*stat_update)(void))
   G_motor_steps_ha = 0;
   G_motor_steps_dec = 0;
   G_last_motor_steps = 0;
+  G_encod_pulses_ha = 0;
+  G_encod_pulses_dec = 0;
   #ifdef MOTOR_SIM
   G_sim_motor_steps = 0;
   G_sim_speed = 0;
@@ -202,10 +218,9 @@ unsigned char get_motor_limits(void)
   return G_hard_limits | G_alt_limits;
 }
 
-/// TODO: Change return value when already at target coordinates
 int start_goto(struct motor_goto_cmd *cmd)
 {
-  char dir;
+  unsigned char dir;
   unsigned int rate;
   struct gotomove_params *params = &G_move_params.gotomove;
   
@@ -222,12 +237,23 @@ int start_goto(struct motor_goto_cmd *cmd)
   }
   
   // Check if target coordinates valid
-  dir = calc_direction_goto(cmd->targ_ha, cmd->targ_dec);
-  if (dir < 0)
+  if (cmd->use_encod)
   {
-    printk(KERN_ERR PRINTK_PREFIX "Target coordinates beyond limit.\n");
-    return -EINVAL;
+    if ((cmd->targ_dec < 0) || (cmd->targ_ha < 0) || (cmd->targ_dec > MOTOR_ENCOD_N_LIM) || (cmd->targ_ha > MOTOR_ENCOD_E_LIM))
+    {
+      printk(KERN_ERR PRINTK_PREFIX "Target coordinates beyond limit.\n");
+      return -EINVAL;
+    }
   }
+  else
+  {
+    if ((cmd->targ_dec < 0) || (cmd->targ_ha < 0) || (cmd->targ_dec > MOTOR_STEPS_N_LIM) || (cmd->targ_ha > MOTOR_STEPS_E_LIM))
+    {
+      printk(KERN_ERR PRINTK_PREFIX "Target coordinates beyond limit.\n");
+      return -EINVAL;
+    }
+  }
+  dir = calc_direction(cmd->targ_ha, cmd->targ_dec, cmd->use_encod);
   if (dir == 0)
   {
     printk(KERN_INFO PRINTK_PREFIX "Already at target coordinates.\n");
@@ -252,8 +278,9 @@ int start_goto(struct motor_goto_cmd *cmd)
   params->dir_cur = dir;
   params->rate_req = rate;
   params->rate_cur = (rate > RATE_MIN) ? rate : RATE_MIN;
+  params->timer_ms = 0;
+  params->use_encod = cmd->use_encod;
   params->cancelled = FALSE;
-  params->start_time = jiffies;
   
   start_move(dir, params->rate_cur);
   G_status |= MOTOR_STAT_GOTO;
@@ -269,6 +296,7 @@ void end_goto(void)
     printk(KERN_DEBUG PRINTK_PREFIX "No goto motion is currently underway. Not cancelling goto.\n");
     return;
   }
+//   printk(KERN_DEBUG PRINTK_PREFIX "Goto end requested.\n");
   params->rate_req = RATE_MIN;
   params->cancelled = TRUE;
   if (params->rate_cur >= RATE_MIN)
@@ -300,6 +328,7 @@ int start_card(struct motor_card_cmd *cmd)
   }
 
   // Check if requested direction valid
+//  printk(KERN_DEBUG PRINTK_PREFIX "start_card direction: %hhu\n", cmd->dir);
   dir = get_dir_mask(cmd->dir);
   if (dir == 0)
   {
@@ -329,9 +358,10 @@ int start_card(struct motor_card_cmd *cmd)
   if (G_status & MOTOR_STAT_CARD)
     return 0;
   params->dir_cur = params->dir_req;
+//  printk(KERN_DEBUG PRINTK_PREFIX "start_card dir_cur, dir_req: %hhu, %hhu\n", params->dir_cur, params->dir_req);
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
+  params->timer_ms = 0;
   params->handset_move = FALSE;
-  params->start_time = jiffies;
   
   start_move(params->dir_cur, params->rate_cur);
   G_status |= MOTOR_STAT_CARD;
@@ -431,6 +461,18 @@ void get_coord_motor(struct motor_tel_coord *coord)
     coord->tel_ha = 0;
   if (G_status & MOTOR_STAT_DEC_INIT)
     coord->tel_dec = G_motor_steps_dec;
+  else
+    coord->tel_dec = 0;
+}
+
+void get_coord_encod(struct motor_tel_coord *coord)
+{
+  if (G_status & MOTOR_STAT_HA_INIT)
+    coord->tel_ha = G_encod_pulses_ha;
+  else
+    coord->tel_ha = 0;
+  if (G_status & MOTOR_STAT_DEC_INIT)
+    coord->tel_dec = G_encod_pulses_dec;
   else
     coord->tel_dec = 0;
 }
@@ -548,8 +590,8 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   // Otherwise start cardinal move
   params->dir_cur = dir;
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
+  params->timer_ms = 0;
   params->handset_move = TRUE;
-  params->start_time = jiffies;
   
   if (dir != 0)
   {
@@ -657,7 +699,7 @@ void check_motors(struct work_struct *work)
     }
     G_hard_limits = new_limits;
   }
-  new_limits = check_soft_lims(G_motor_steps_ha, G_motor_steps_dec);
+  new_limits = check_soft_lims();
   if (new_limits != G_alt_limits)
   {
     printk(KERN_INFO PRINTK_PREFIX "Soft telescope limit reached (0x%x).\n", new_limits);
@@ -704,6 +746,7 @@ unsigned char check_gotomove(void)
   unsigned char dir_new;
   struct gotomove_params *params = &G_move_params.gotomove;
   
+//   printk(KERN_DEBUG PRINTK_PREFIX "Checking goto.\n");
   if ((G_hard_limits | G_alt_limits) & params->dir_cur)
   {
     printk(KERN_INFO PRINTK_PREFIX "Limit reached in move direction. Cancelling goto.\n");
@@ -715,9 +758,11 @@ unsigned char check_gotomove(void)
   
   if (params->cancelled)
   {
+//     printk(KERN_DEBUG PRINTK_PREFIX "Goto cancelled\n");
     if (params->rate_cur < RATE_MIN)
     {
       rate_new = calc_ramp_rate(params->rate_cur, RATE_MIN);
+//       printk(KERN_DEBUG PRINTK_PREFIX "Ramping down: %u\n", rate_new);
       send_rate(rate_new);
       params->rate_cur = rate_new;
       return FALSE;
@@ -729,17 +774,19 @@ unsigned char check_gotomove(void)
     return TRUE;
   }
   
+  params->timer_ms += MON_PERIOD_MSEC;
   if ((G_status & MOTOR_STAT_TRACKING) == 0)
     new_targ_ha = params->targ_ha;
+  else if (params->use_encod)
+    new_targ_ha = params->targ_ha - (params->timer_ms*HA_INCR_ENCOD_PULSES);
   else
-  {
-    printk(KERN_DEBUG PRINTK_PREFIX "Tracking catch-up %ld steps\n", ha_track_time(params->start_time));
-    new_targ_ha = params->targ_ha - ha_track_time(params->start_time);
-  }
+    new_targ_ha = params->targ_ha - (params->timer_ms*HA_INCR_MOTOR_STEPS);
   
-  dir_new = calc_direction_goto(new_targ_ha, params->targ_dec);
+  dir_new = calc_direction(new_targ_ha, params->targ_dec, params->use_encod);
+//   printk(KERN_DEBUG PRINTK_PREFIX "Goto track-adjusted coordinates,dir: %u %u 0x%x\n", new_targ_ha, params->targ_dec, dir_new);
   if ((dir_new == 0) && (params->rate_cur >= RATE_MIN))
   {
+//     printk(KERN_DEBUG PRINTK_PREFIX "Goto complete (HA %d; Dec %d).\n", params->use_encod ? G_encod_pulses_ha : G_motor_steps_ha, params->use_encod ? G_encod_pulses_dec : G_motor_steps_dec);
     G_status &= ~MOTOR_STAT_GOTO;
     stop_move();
     if ((G_status & MOTOR_STAT_TRACKING) != 0)
@@ -752,7 +799,7 @@ unsigned char check_gotomove(void)
     params->dir_cur = dir_new;
   }
   
-  if (calc_is_near_target(params->dir_cur, new_targ_ha, params->targ_dec))
+  if (calc_is_near_target(params->dir_cur, new_targ_ha, params->targ_dec, params->use_encod))
     rate_req = RATE_MIN;
   else
     rate_req = params->rate_req;
@@ -779,6 +826,20 @@ unsigned char check_cardmove(void)
     return FALSE;
   }
 
+  // If no motion in HA, increment timer so we can catch up later (if moving in HA, even if also moving in Dec, move rate will account for sidereal motion)
+/*  if ((params->start_ha == 0) && ((params->dir_cur & DIR_HA_MASK) == 0) && (G_status | MOTOR_STAT_TRACKING))
+  {
+//     printk(KERN_DEBUG PRINTK_PREFIX "Setting card move start hour angle.\n");
+    params->start_ha = G_motor_steps_ha;
+  }
+  else if ((params->start_ha != 0) && (((params->dir_cur & DIR_HA_MASK) != 0) || ((G_status | MOTOR_STAT_TRACKING) == 0)))
+  {
+//     printk(KERN_DEBUG PRINTK_PREFIX "Unsetting card move start hour angle.\n");
+    params->start_ha = 0;
+  }*/
+  if (params->start_ha != 0)
+    params->timer_ms += MON_PERIOD_MSEC;
+  
   // Calculate (and set) required rate
   rate_req = params->rate_req;
   if (params->dir_cur != params->dir_req)
@@ -788,6 +849,7 @@ unsigned char check_cardmove(void)
   if (rate_req != params->rate_cur)
   {
     unsigned int rate_new = calc_ramp_rate(params->rate_cur, rate_req);
+//     printk(KERN_DEBUG PRINTK_PREFIX "Ramping down for direction change (0x%x 0x%x %u)\n", params->dir_cur, params->dir_req, rate_req);
     send_rate(rate_new);
     params->rate_cur = rate_new;
   }
@@ -803,9 +865,11 @@ unsigned char check_cardmove(void)
     // If tracking is enabled, check if we need to catch up with sidereal motion (Western direction only)
     if (params->start_ha != 0)
     {
-      int new_targ_ha = params->start_ha - ha_track_time(params->start_time);
-      dir_new = calc_direction(new_targ_ha, G_motor_steps_dec) & DIR_WEST_MASK;
+      int new_targ_ha = params->start_ha - (params->timer_ms*HA_INCR_MOTOR_STEPS);
+      dir_new = calc_direction(new_targ_ha, G_motor_steps_dec, FALSE) & DIR_WEST_MASK;
+//       printk(KERN_DEBUG PRINTK_PREFIX "Tracking adjusted ha: %d (%d %d %d)\n", new_targ_ha, G_motor_steps_ha, params->timer_ms*HA_INCR_MOTOR_STEPS, params->start_ha);
     }
+//     printk(KERN_DEBUG PRINTK_PREFIX "Slow enough to stop (new dir: 0x%x 0x%x)\n", dir_new, params->dir_cur);
     if (dir_new == params->dir_cur)
       return FALSE;
     stop_move();
@@ -849,8 +913,16 @@ unsigned char check_tracking(void)
   dec_steps = G_motor_steps_dec - params->last_steps_dec;
   if ((params->dir_cur & DIR_HA_MASK) != 0)
     params->adj_ha_steps += ha_steps;
+/*  if (((params->dir_cur & DIR_WEST_MASK) && (ha_steps <= 0)) || ((params->dir_cur & DIR_EAST_MASK) && (ha_steps >= 0)))
+    params->adj_ha_steps -= ha_steps;
+  else if (params->dir_cur & DIR_HA_MASK)
+    printk(KERN_INFO PRINTK_PREFIX "HA tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", (params->dir_cur & DIR_HA_MASK), ha_steps);*/
   if ((params->dir_cur & DIR_DEC_MASK) != 0)
     params->adj_dec_steps += dec_steps;
+/*  if (((params->dir_cur & DIR_NORTH_MASK) && (dec_steps >= 0)) || ((params->dir_cur & DIR_SOUTH_MASK) && (dec_steps <= 0)))
+    params->adj_dec_steps -= dec_steps;
+  else if (params->dir_cur & DIR_DEC_MASK)
+    printk(KERN_INFO PRINTK_PREFIX "Dec tracking adjustment: number of steps do not agree with adjustment direction (dir %hhu, adj %d).\n", params->dir_cur & DIR_DEC_MASK), dec_steps);*/
   
   // Update steps stored in tracking parameters
   params->last_steps_ha = G_motor_steps_ha;
@@ -865,7 +937,7 @@ unsigned char check_tracking(void)
   
   ha_steps = G_motor_steps_ha + params->adj_ha_steps;
   dec_steps = G_motor_steps_dec + params->adj_dec_steps;
-  dir_new = calc_direction(ha_steps, dec_steps);
+  dir_new = calc_direction(ha_steps, dec_steps, FALSE);
   if (dir_new == params->dir_cur)
     return FALSE;
   params->dir_cur = dir_new;
@@ -885,59 +957,44 @@ unsigned char check_tracking(void)
   return FALSE;
 }
 
-static char calc_direction(int targ_ha, int targ_dec)
+static unsigned char calc_direction(int targ_ha, int targ_dec, unsigned char use_encod)
 {
   unsigned char dir = 0;
-  
-  if ((targ_dec < 0) || (targ_ha < 0))
-    return -1;
-  if ((targ_dec > MOTOR_STEPS_N_LIM) || (targ_ha > MOTOR_STEPS_E_LIM))
-    return -1;
-  dir = check_soft_lims(G_motor_steps_ha, G_motor_steps_dec);
-  if (dir != 0)
-    return -1;
-
-  if (abs(targ_dec-G_motor_steps_dec) > TOLERANCE_MOTOR_DEC_STEPS)
+  if (use_encod)
   {
-    if (targ_dec < G_motor_steps_dec)
-      dir |= DIR_SOUTH_MASK;
-    else
-      dir |= DIR_NORTH_MASK;
+    if (abs(targ_dec-G_encod_pulses_dec) > TOLERANCE_ENCOD_DEC_PULSES)
+    {
+      if (targ_dec > G_encod_pulses_dec)
+        dir |= DIR_SOUTH_MASK;
+      else
+        dir |= DIR_NORTH_MASK;
+    }
+    if (abs(targ_ha-G_encod_pulses_ha) > TOLERANCE_ENCOD_HA_PULSES)
+    {
+      if (targ_ha > G_encod_pulses_ha)
+        dir |= DIR_EAST_MASK;
+      else
+        dir |= DIR_WEST_MASK;
+    }
   }
-  if (abs(targ_ha-G_motor_steps_ha) > TOLERANCE_MOTOR_HA_STEPS)
+  else
   {
-    if (targ_ha > G_motor_steps_ha)
-      dir |= DIR_EAST_MASK;
-    else
-      dir |= DIR_WEST_MASK;
+    if (abs(targ_dec-G_motor_steps_dec) > TOLERANCE_MOTOR_DEC_STEPS)
+    {
+      if (targ_dec < G_motor_steps_dec)
+        dir |= DIR_SOUTH_MASK;
+      else
+        dir |= DIR_NORTH_MASK;
+    }
+    if (abs(targ_ha-G_motor_steps_ha) > TOLERANCE_MOTOR_HA_STEPS)
+    {
+      if (targ_ha > G_motor_steps_ha)
+        dir |= DIR_EAST_MASK;
+      else
+        dir |= DIR_WEST_MASK;
+    }
   }
   return dir;
-}
-
-static char calc_direction_goto(int targ_ha, int targ_dec)
-{
-  char dir;
-  
-  // Check if coordinates valid and we are not already at coordinates
-  dir = calc_direction(targ_ha, targ_dec);
-  if (dir <= 0)
-    return dir;
-  // If we only need to move in HA
-  if ((dir & (DIR_NORTH_MASK | DIR_SOUTH_MASK)) == 0)
-    return dir;
-  // If we only need to move in Dec
-  if ((dir & (DIR_EAST_MASK | DIR_WEST_MASK)) == 0)
-    return dir;
-  
-  // Which direction should we move in firt (in order to avoid soft limits)?
-  // Is Dec first safe?
-  if (check_soft_lims(G_motor_steps_ha, targ_dec) == 0)
-    return dir & (DIR_NORTH_MASK | DIR_SOUTH_MASK);
-  // Is HA first safe?
-  if (check_soft_lims(targ_ha, G_motor_steps_dec) == 0)
-    return dir & (DIR_EAST_MASK | DIR_WEST_MASK);
-  // Neither first is safe - this should never happen
-  return -1;
 }
 
 static unsigned char get_dir_mask(unsigned char dir_mode)
@@ -975,12 +1032,22 @@ static unsigned char get_dir_mask(unsigned char dir_mode)
   return ret;
 }
 
-static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec)
+static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec, unsigned char use_encod)
 {
-  if ((direction & (DIR_SOUTH_MASK | DIR_NORTH_MASK)) && (abs(targ_dec - G_motor_steps_dec) < FLOP_MOTOR_DEC_STEPS))
-    return TRUE;
-  if ((direction & (DIR_WEST_MASK | DIR_EAST_MASK)) && (abs(targ_ha - G_motor_steps_ha) < FLOP_MOTOR_HA_STEPS))
-    return TRUE;
+  if (use_encod)
+  {
+    if ((direction & (DIR_SOUTH_MASK | DIR_NORTH_MASK)) && (abs(targ_dec - G_encod_pulses_dec) < FLOP_ENCOD_DEC_PULSES))
+      return TRUE;
+    if ((direction & (DIR_WEST_MASK | DIR_EAST_MASK)) && (abs(targ_ha - G_encod_pulses_ha) < FLOP_ENCOD_HA_PULSES))
+      return TRUE;
+  }
+  else
+  {
+    if ((direction & (DIR_SOUTH_MASK | DIR_NORTH_MASK)) && (abs(targ_dec - G_motor_steps_dec) < FLOP_MOTOR_DEC_STEPS))
+      return TRUE;
+    if ((direction & (DIR_WEST_MASK | DIR_EAST_MASK)) && (abs(targ_ha - G_motor_steps_ha) < FLOP_MOTOR_HA_STEPS))
+      return TRUE;
+  }
   return FALSE;
 }
 
@@ -1023,7 +1090,7 @@ static unsigned int calc_ramp_rate(unsigned int rate_cur, unsigned int rate_req)
   unsigned int rate_new;
   if (rate_req < rate_cur)
   {
-    rate_new = (rate_cur)*3/4;
+    rate_new = (rate_cur)*4/5;
     if (rate_new < rate_req)
       rate_new = rate_req;
     if (rate_new < RATE_SLEW)
@@ -1033,7 +1100,7 @@ static unsigned int calc_ramp_rate(unsigned int rate_cur, unsigned int rate_req)
     rate_new = rate_req;
   else
   {
-    rate_new = rate_cur*4/3;
+    rate_new = rate_cur*5/4;
     if (rate_new > rate_req)
       rate_new = rate_req;
     if (rate_new > RATE_MIN)
@@ -1057,19 +1124,35 @@ static void stop_move(void)
   send_direction(0);
 }
 
-static unsigned char check_soft_lims(int steps_ha, int steps_dec)
+static unsigned char check_soft_lims(void)
 {
-  int idx, lim_W, lim_E;
-  unsigned char lim_dir = 0;
-  if (steps_dec < TEL_ALT_LIM_MIN_DEC_STEPS)
+  unsigned char idx=TEL_ALT_LIM_NUM_DIVS+1, lim_dir = 0;
+  int64_t grad_u, zerop, dec_l, tmp_div;
+  int tel_ha_lim_E = 0, tel_ha_lim_W = 0;
+  
+  if (G_motor_steps_dec < TEL_ALT_LIM_MIN_DEC_STEPS)
     return 0;
-  if (steps_dec >= MOTOR_STEPS_N_LIM)
+  idx = (G_motor_steps_dec - TEL_ALT_LIM_MIN_DEC_STEPS) / TEL_ALT_LIM_DEC_INC_STEPS;
+  if (idx >= TEL_ALT_LIM_NUM_DIVS-1)
     return DIR_NORTH_MASK | DIR_WEST_MASK | DIR_EAST_MASK;
-  idx = steps_dec-TEL_ALT_LIM_MIN_DEC_STEPS;
-  lim_W  = G_tel_alt_lim_W_steps[idx], lim_E=G_tel_alt_lim_E_steps[idx];
-  if (steps_ha < lim_W)
+  dec_l = TEL_ALT_LIM_MIN_DEC_STEPS + idx*TEL_ALT_LIM_DEC_INC_STEPS;
+  grad_u = (G_tel_alt_lim_W_steps[idx+1] - G_tel_alt_lim_W_steps[idx]);
+  tmp_div = grad_u * dec_l;
+  do_div(tmp_div,TEL_ALT_LIM_DEC_INC_STEPS);
+  zerop = G_tel_alt_lim_W_steps[idx] - tmp_div;
+  tmp_div = grad_u * G_motor_steps_dec;
+  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
+  tel_ha_lim_W = tmp_div + zerop;
+  grad_u *= -1;
+  tmp_div = grad_u*dec_l;
+  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
+  zerop = G_tel_alt_lim_E_steps[idx] - tmp_div;
+  tmp_div = grad_u * G_motor_steps_dec;
+  do_div(tmp_div, TEL_ALT_LIM_DEC_INC_STEPS);
+  tel_ha_lim_E = tmp_div + zerop;
+  if (G_motor_steps_ha < tel_ha_lim_W)
     lim_dir |= DIR_NORTH_MASK | DIR_WEST_MASK;
-  if (steps_ha > lim_E)
+  if (G_motor_steps_ha > tel_ha_lim_E)
     lim_dir |= DIR_NORTH_MASK | DIR_EAST_MASK;
   return lim_dir;
 }

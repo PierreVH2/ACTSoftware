@@ -1,6 +1,5 @@
 Current bugs/notes:
 
-In motor_driver/motor_intfce.c - change return value in start_goto when at target coordinates
 Determine proper treatment of SuperWASP cloud data
 act_environ - status light must remain red when weather data outdated
 DTI - Remove status from widget_new functions, rather set initial values with DTI initial signals

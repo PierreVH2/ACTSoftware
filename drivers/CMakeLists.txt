@@ -3,7 +3,7 @@ set(MODULE_HEADER_FILES     merlin_driver/merlin_driver.h merlin_driver/ccd_defs
                             time_driver/time_driver.h time_driver/parapin.h
                             plc_ldisc/plc_ldisc.h
                             act_plc/act_plc.h act_plc/plc_definitions.h
-                            motor_driver/motor_intfce.h motor_driver/motor_defs.h motor_driver/motor_driver.h motor_driver/soft_limits.h)
+                            motor_driver/motor_intfce.h motor_driver/motor_defs.h motor_driver/motor_driver.h)
 
 set(MODULE_SOURCE_FILES     merlin_driver/merlin_driver.c
                             pmt_driver/pmt_driver.c
@@ -21,8 +21,7 @@ set(MOTOR_DRIVER_INPUT_FILES   motor_driver/motor_driver.c
                                motor_driver/motor_driver.h
                                motor_driver/motor_intfce.c
                                motor_driver/motor_intfce.h
-                               motor_driver/motor_defs.h
-                               motor_driver/soft_limits.h)
+                               motor_driver/motor_defs.h)
 
 set(MOTOR_DRIVER_OUTPUT_FILES  motor_driver.mod.o
                                .motor_driver.ko.cmd

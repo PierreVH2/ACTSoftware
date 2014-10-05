@@ -557,15 +557,15 @@ static void read_motor_coord(gint motor_fd, struct hastruct *ha, struct decstruc
   struct motor_tel_coord coord;
   gint ret;
   double range_ha, range_dec;
-// #ifdef MOTOR_USE_ENCOD
-//   ret = ioctl(motor_fd, IOCTL_MOTOR_GET_ENCOD_POS, &coord);
-//   range_ha = MOTOR_ENCOD_E_LIM;
-//   range_dec = MOTOR_ENCOD_N_LIM;
-// #else
+#ifdef MOTOR_USE_ENCOD
+  ret = ioctl(motor_fd, IOCTL_MOTOR_GET_ENCOD_POS, &coord);
+  range_ha = MOTOR_ENCOD_E_LIM;
+  range_dec = MOTOR_ENCOD_N_LIM;
+#else
   ret = ioctl(motor_fd, IOCTL_MOTOR_GET_MOTOR_POS, &coord);
   range_ha = MOTOR_STEPS_E_LIM;
   range_dec = MOTOR_STEPS_N_LIM;
-// #endif
+#endif
   if (ret < 0)
   {
     act_log_error(act_log_msg("Failed to read telescope coordinates from motor driver - %s.", strerror(errno)));
@@ -592,15 +592,15 @@ static gint send_motor_goto(gint motor_fd, struct hastruct *ha, struct decstruct
   double dec_d = convert_DMS_D_dec(dec);
   
   struct motor_goto_cmd cmd;
-//   #ifdef MOTOR_USE_ENCOD
-//   cmd.targ_ha = (ha_h*3600000.0 - MOTOR_LIM_W_MSEC) * MOTOR_ENCOD_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
-//   cmd.targ_dec = (dec_d*3600.0 - MOTOR_LIM_S_ASEC) * MOTOR_ENCOD_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
-//   cmd.use_encod = TRUE;
-//   #else
+  #ifdef MOTOR_USE_ENCOD
+  cmd.targ_ha = (ha_h*3600000.0 - MOTOR_LIM_W_MSEC) * MOTOR_ENCOD_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
+  cmd.targ_dec = (dec_d*3600.0 - MOTOR_LIM_S_ASEC) * MOTOR_ENCOD_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
+  cmd.use_encod = TRUE;
+  #else
   cmd.targ_ha = (ha_h*3600000.0 - MOTOR_LIM_W_MSEC) * MOTOR_STEPS_E_LIM / (double)(MOTOR_LIM_E_MSEC-MOTOR_LIM_W_MSEC);
   cmd.targ_dec = (dec_d*3600.0 - MOTOR_LIM_S_ASEC) * MOTOR_STEPS_N_LIM / (double)(MOTOR_LIM_N_ASEC-MOTOR_LIM_S_ASEC);
-//  cmd.use_encod = FALSE;
-//   #endif
+  cmd.use_encod = FALSE;
+  #endif
   cmd.speed = motor_speed;
   cmd.tracking_on = is_sidereal;
   
@@ -695,6 +695,7 @@ GActTelcoord *gact_telcoord_new_telcoord (GActTelcoord *copy)
   memcpy(&objs->dec, &copy->dec, sizeof(struct decstruct));
   return objs;
 }
+
 
 void gact_telcoord_set (GActTelcoord *objs, struct hastruct *tel_ha, struct decstruct *tel_dec)
 {
