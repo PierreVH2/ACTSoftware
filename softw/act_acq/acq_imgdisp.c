@@ -746,7 +746,7 @@ gboolean mouse_move(GtkWidget* evb_ccdimg, GdkEventMotion* motdata, gpointer use
     img_dec = 89.0;
   double ra_offset_deg = (XAPERTURE - motdata->x) * ccdcntrl_get_ra_width() / ccdcntrl_get_max_width() / cos(convert_DEG_RAD(img_dec)) / 3600.0;
   if ((G_flip_img & IMG_FLIP_EW) != IMG_FLIP_EW)
-    ra_offset_deg *= -1,0;
+    ra_offset_deg *= -1.0;
   struct rastruct mouse_ra;
   convert_H_HMSMS_ra(convert_HMSMS_H_ra(&G_img_ra) + convert_DEG_H(ra_offset_deg), &mouse_ra);
   tmpstr = ra_to_str(&mouse_ra);

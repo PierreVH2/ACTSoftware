@@ -31,6 +31,8 @@ ADD_EXECUTABLE(motor_stat motor_stat.c ${ACT_DRV_SRC}/motor_driver/motor_driver.
 
 ADD_EXECUTABLE(motor_set_pos motor_set_pos.c ${ACT_DRV_SRC}/motor_driver/motor_driver.h)
 
+ADD_EXECUTABLE(motor_set_init motor_set_init.c ${ACT_DRV_SRC}/motor_driver/motor_driver.h)
+
 ADD_EXECUTABLE(motor_gen_soft_lim motor_gen_soft_lim.c)
 TARGET_LINK_LIBRARIES(motor_gen_soft_lim m)
 

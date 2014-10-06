@@ -113,6 +113,11 @@ struct motor_track_adj
 /// NOTE: This feature can be dangerous and may only be used if the user is ABSOLUTELY certain what position the telescope is pointing in
 #define IOCTL_MOTOR_SET_MOTOR_POS _IOW(MOTOR_IOCTL_NUM, 13, void *)
 
+/// IOCTL to SET the telescope's current initialisation state - paramater must be a bitmask of MOTOR_STAT_HA_INIT and MOTOR_STAT_DEC_INIT
+/// indicating which axis needs to be initialised. If the flag is ON, that axis will be INITIALISED and vice versa.
+/// NOTE: This feature is intended to address the issue of spontaneous Western limit switch triggers and to aid in the software workaround that
+///       was implemented in check_motors (motor_intfce.c) - see the comments in that function for further details.
+#define IOCTL_MOTOR_SET_INIT _IOW(MOTOR_IOCTL_NUM, 14, unsigned char)
 /** \} */
 
 #endif //MOTOR_DRIVER_H

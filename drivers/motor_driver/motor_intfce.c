@@ -3,6 +3,7 @@
 #include <linux/workqueue.h>
 #include <asm/div64.h>
 #include <linux/jiffies.h>
+#include <linux/rwsem.h>
 #include <act_plc/act_plc.h>
 #include "motor_intfce.h"
 #include "motor_defs.h"
@@ -67,6 +68,12 @@
 #define FLOP_MOTOR_DEC_STEPS        3177
 /** \} */
 
+/** Allow the telescope to be initialised if telescope is this close to where the limit switch SHOULD be (or if telescope is not yet initialised)
+ * \{ */
+#define HA_INIT_LIM_STEPS           45020
+#define DEC_INIT_LIM_STEPS          22416
+/** \} */
+
 /// Period (in milliseconds) for motor monitoring function
 #define MON_PERIOD_MSEC             50
 
@@ -75,7 +82,7 @@
 /// Hour angle encoder pulses increment per millisecond (used to adjust target ha move goto if tracking)
 // #define HA_INCR_ENCOD_PULSES        11/1000
 
-#define ha_track_time(start_time)   (((long)jiffies - (long)start_time) * 1000 / HZ) * MOTOR_STEPS_E_LIM / (MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC)
+#define ha_track_time(start_time)   ((long)jiffies - (long)start_time) * 1000 * MOTOR_STEPS_E_LIM / HZ  / (MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC)
 
 struct gotomove_params
 {
@@ -112,9 +119,9 @@ union move_params
 static void update_status(void);
 static void update_motor_coords(int reset_motor_steps);
 static void check_motors(struct work_struct *work);
-unsigned char check_gotomove(void);
-unsigned char check_cardmove(void);
-unsigned char check_tracking(void);
+unsigned char check_gotomove(struct gotomove_params *params);
+unsigned char check_cardmove(struct cardmove_params *params);
+unsigned char check_tracking(struct tracking_params *params);
 static char calc_direction(int targ_ha, int targ_dec);
 static char calc_direction_goto(int targ_ha, int targ_dec);
 static unsigned char get_dir_mask(unsigned char dir_mode);
@@ -136,15 +143,19 @@ static unsigned char G_status;
 static unsigned char G_hard_limits;
 static unsigned char G_alt_limits;
 /** \} */
-/** Motor position variables
- * \{ */
-static int G_motor_steps_ha;
-static int G_motor_steps_dec;
-static int G_last_motor_steps;
 /** Motor motion variable
  * \{ */
 static union move_params G_move_params;
 /** \} */
+/// Semaphore for reading/writing status, limits and move parameters
+static struct rw_semaphore G_stat_sem;
+/** Motor position variables
+ * \{ */
+static int G_motor_steps_ha;
+static int G_motor_steps_dec;
+/** \} */
+/// Semaphore for reading/writing raw coordinates
+static struct rw_semaphore G_coord_sem;
 /** Miscellaneous variables
  * \{ */
 static struct workqueue_struct *G_motordrv_workq;
@@ -164,9 +175,10 @@ void motordrv_init(void (*stat_update)(void))
   G_status = 0;
   G_hard_limits = 0;
   G_alt_limits = 0;
+  init_rwsem(&G_stat_sem);
   G_motor_steps_ha = 0;
   G_motor_steps_dec = 0;
-  G_last_motor_steps = 0;
+  init_rwsem(&G_coord_sem);
   #ifdef MOTOR_SIM
   G_sim_motor_steps = 0;
   G_sim_speed = 0;
@@ -194,31 +206,45 @@ void motordrv_finalise(void)
 
 unsigned char get_motor_stat(void)
 {
-  return G_status;
+  unsigned char ret;
+  down_read(&G_stat_sem);
+  ret = G_status;
+  up_read(&G_stat_sem);
+  return ret;
 }
 
 unsigned char get_motor_limits(void)
 {
-  return G_hard_limits | G_alt_limits;
+  unsigned char ret;
+  down_read(&G_stat_sem);
+  ret = G_hard_limits | G_alt_limits;
+  up_read(&G_stat_sem);
+  return ret;
 }
 
 /// TODO: Change return value when already at target coordinates
 int start_goto(struct motor_goto_cmd *cmd)
 {
+  int ret = 0;
   char dir;
   unsigned int rate;
-  struct gotomove_params *params = &G_move_params.gotomove;
+  struct gotomove_params *params;
+  
+  down_write(&G_stat_sem);
+  params = &G_move_params.gotomove;
   
   // Check if goto currently possible
   if (G_status & (MOTOR_STAT_MOVING | MOTOR_STAT_ALLSTOP))
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Received goto command, but motors are currently busy. Ignoring.\n");
-    return -EAGAIN;
+    ret = -EAGAIN;
+    goto finish;
   }
   if ((G_status & (MOTOR_STAT_HA_INIT | MOTOR_STAT_DEC_INIT)) == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Received goto command, but telescope has not been initialised.\n");
-    return -EPERM;
+    ret = -EPERM;
+    goto finish;
   }
   
   // Check if target coordinates valid
@@ -226,24 +252,28 @@ int start_goto(struct motor_goto_cmd *cmd)
   if (dir < 0)
   {
     printk(KERN_ERR PRINTK_PREFIX "Target coordinates beyond limit.\n");
-    return -EINVAL;
+    ret = -EINVAL;
+    goto finish;
   }
   if (dir == 0)
   {
     printk(KERN_INFO PRINTK_PREFIX "Already at target coordinates.\n");
-    return -EINVAL;
+    ret = -EINVAL;
+    goto finish;
   }
   if ((dir & (G_alt_limits | G_hard_limits)) > 0)
   {
     printk(KERN_INFO PRINTK_PREFIX "Telescope limit reached in requested direction.");
-    return -EINVAL;
+    ret = -EINVAL;
+    goto finish;
   }
   
   rate = calc_rate(dir, cmd->speed, 0);
   if (rate == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Invalid speed setting (%hhu).\n", cmd->speed);
-    return -EINVAL;
+    ret = -EINVAL;
+    goto finish;
   }
   
   // Set global variables appropriately
@@ -258,15 +288,23 @@ int start_goto(struct motor_goto_cmd *cmd)
   start_move(dir, params->rate_cur);
   G_status |= MOTOR_STAT_GOTO;
   update_status();
-  return 0;
+  
+  finish:
+  up_write(&G_stat_sem);
+  return ret;
 }
 
 void end_goto(void)
 {
-  struct gotomove_params *params = &G_move_params.gotomove;
+  unsigned char start_tracking = FALSE;
+  struct gotomove_params *params;
+  
+  down_write(&G_stat_sem);
+  params = &G_move_params.gotomove;
   if ((G_status & MOTOR_STAT_GOTO) == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "No goto motion is currently underway. Not cancelling goto.\n");
+    up_write(&G_stat_sem);
     return;
   }
   params->rate_req = RATE_MIN;
@@ -277,26 +315,35 @@ void end_goto(void)
     G_status &= ~MOTOR_STAT_MOVING;
     update_status();
     if (G_status & MOTOR_STAT_TRACKING)
-      toggle_tracking(TRUE);
+      start_tracking = TRUE;
   }
+  up_write(&G_stat_sem);
+  if (start_tracking)
+    toggle_tracking(TRUE);
 }
 
 int start_card(struct motor_card_cmd *cmd)
 {
+  int ret = 0;
   unsigned char dir;
   unsigned int rate;
-  struct cardmove_params *params = &G_move_params.cardmove;
+  struct cardmove_params *params;
   
+  down_write(&G_stat_sem);
+  params = &G_move_params.cardmove;
+
   // Check if goto currently possible
   if (G_status & (MOTOR_STAT_MOVING | MOTOR_STAT_ALLSTOP))
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Received goto command, but motors are currently busy. Ignoring.\n");
-    return -EAGAIN;
+    ret = -EAGAIN;
+    goto finish;
   }
   if ((G_status & (MOTOR_STAT_HA_INIT | MOTOR_STAT_DEC_INIT)) == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Received goto command, but telescope has not been initialised.\n");
-    return -EPERM;
+    ret = -EPERM;
+    goto finish;
   }
 
   // Check if requested direction valid
@@ -304,25 +351,32 @@ int start_card(struct motor_card_cmd *cmd)
   if (dir == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Start card: 0 direction specified.\n");
-    return -EINVAL;
+    ret = -EINVAL;
+    goto finish;
   }
   if ((dir & (G_alt_limits | G_hard_limits)) > 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Start card: invalid direction specified (0x%x 0x%x 0x%x).\n", dir, G_alt_limits, G_hard_limits);
-    return -EINVAL;
+    ret = -EINVAL;
+    goto finish;
   }
   
   rate = calc_rate(dir, cmd->speed, (G_status & MOTOR_STAT_TRACKING) > 0);
   if (rate == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Invalid speed setting (%hhu).\n", cmd->speed);
-    return -EINVAL;
+    ret = -EINVAL;
+    goto finish;
   }
   
   params->dir_req = dir;
   params->rate_req = rate;
   if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
+  {
+    down_read(&G_coord_sem);
     params->start_ha = G_motor_steps_ha;
+    up_read(&G_coord_sem);
+  }
   else
     params->start_ha = 0;
   // If cardinal move is already being done, only change requested direction and rate and let check_cardmove do the rest
@@ -336,15 +390,24 @@ int start_card(struct motor_card_cmd *cmd)
   start_move(params->dir_cur, params->rate_cur);
   G_status |= MOTOR_STAT_CARD;
   update_status();
-  return 0;
+  
+  finish:
+  up_write(&G_stat_sem);
+  return ret;
 }
 
 void end_card(void)
 {
-  struct cardmove_params *params = &G_move_params.cardmove;
+  unsigned char start_tracking = FALSE;
+  struct cardmove_params *params;
+  
+  down_write(&G_stat_sem);
+  params = &G_move_params.cardmove;
+  
   if (((G_status & MOTOR_STAT_CARD) == 0) || (params->handset_move))
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Not moving in cardinal direction or motion initiated by handset. Not ending motion.\n");
+    up_write(&G_stat_sem);
     return;
   }
   params->rate_req = RATE_MIN;
@@ -354,20 +417,26 @@ void end_card(void)
     stop_move();
     G_status &= ~MOTOR_STAT_MOVING;
     if (G_status & MOTOR_STAT_TRACKING)
-      toggle_tracking(TRUE);
+      start_tracking = TRUE;
     update_status();
   }
+  up_write(&G_stat_sem);
+  if (start_tracking)
+    toggle_tracking(TRUE);
 }
 
 void end_all(void)
 {
+  down_write(&G_stat_sem);
   stop_move();
   G_status &= ~(MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING);
   update_status();
+  up_write(&G_stat_sem);
 }
 
 void toggle_all_stop(unsigned char stop_on)
 {
+  down_write(&G_stat_sem);
   if (stop_on)
   {
     stop_move();
@@ -377,21 +446,23 @@ void toggle_all_stop(unsigned char stop_on)
   else
     G_status &= ~MOTOR_STAT_ALLSTOP;
   update_status();
+  up_write(&G_stat_sem);
 }
 
 void toggle_tracking(unsigned char tracking_on)
 {
+  down_write(&G_stat_sem);
   if (G_status & MOTOR_STAT_ALLSTOP)
   {
     if (tracking_on)
       printk(KERN_INFO PRINTK_PREFIX "Cannot activate tracking because all-stop is enabled.\n");
-    return;
+    goto finish;
   }
   if ((G_status & MOTOR_STAT_HA_INIT) == 0)
   {
     if (tracking_on)
       printk(KERN_INFO PRINTK_PREFIX "Cannot activate tracking because HA not initialised.\n");
-    return;
+    goto finish;
   }
   if (tracking_on)
     G_status |= MOTOR_STAT_TRACKING;
@@ -399,44 +470,60 @@ void toggle_tracking(unsigned char tracking_on)
     G_status &= ~MOTOR_STAT_TRACKING;
   update_status();
   if (G_status & MOTOR_STAT_MOVING)
-    return;
+    goto finish;
   if (tracking_on)
   {
     struct tracking_params *params = &G_move_params.tracking;
     params->adj_ha_steps = params->adj_dec_steps = 0;
     params->dir_cur = 0;
+    down_read(&G_coord_sem);
     params->last_steps_ha = G_motor_steps_ha;
     params->last_steps_dec = G_motor_steps_dec;
+    up_read(&G_coord_sem);
     start_move(DIR_WEST_MASK, RATE_SID);
   }
   else
     stop_move();
+  
+  finish:
+  up_write(&G_stat_sem);
 }
 
 void adjust_tracking(int adj_ha, int adj_dec)
 {
+  down_write(&G_stat_sem);
   if ((G_status & MOTOR_STAT_MOVING) || ((G_status & MOTOR_STAT_TRACKING) == 0))
-    return;
+    goto finish;
   if ((abs(adj_ha) < TOLERANCE_MOTOR_HA_STEPS) && (abs(adj_dec) < TOLERANCE_MOTOR_DEC_STEPS))
-    return;
+    goto finish;
   G_move_params.tracking.adj_ha_steps = adj_ha;
   G_move_params.tracking.adj_dec_steps = adj_dec;
+  
+  finish:
+  up_write(&G_stat_sem);
 }
 
 void get_coord_motor(struct motor_tel_coord *coord)
 {
+  down_read(&G_stat_sem);
   if (G_status & MOTOR_STAT_HA_INIT)
+  {
+    down_read(&G_stat_sem);
     coord->tel_ha = G_motor_steps_ha;
+    up_read(&G_stat_sem);
+  }
   else
     coord->tel_ha = 0;
   if (G_status & MOTOR_STAT_DEC_INIT)
     coord->tel_dec = G_motor_steps_dec;
   else
     coord->tel_dec = 0;
+  up_read(&G_stat_sem);
 }
 
 void set_coord_motor(struct motor_tel_coord *coord)
 {
+  down_write(&G_stat_sem);
   if (G_status & MOTOR_STAT_HA_INIT)
     printk(KERN_INFO PRINTK_PREFIX "Resetting HA motor steps to %d, currently %d.\n", coord->tel_ha, G_motor_steps_ha);
   else
@@ -453,13 +540,31 @@ void set_coord_motor(struct motor_tel_coord *coord)
     printk(KERN_INFO PRINTK_PREFIX "Setting HA motor steps to %d and flagging DEC initialised.\n", coord->tel_dec);
   }
   G_motor_steps_dec = coord->tel_dec;
+  up_write(&G_stat_sem);
+}
+
+void set_init_motor(unsigned char init_stat)
+{
+  down_write(&G_stat_sem);
+  if (init_stat & MOTOR_STAT_HA_INIT)
+    G_status |= MOTOR_STAT_HA_INIT;
+  else
+    G_status &= ~MOTOR_STAT_HA_INIT;
+  if (init_stat & MOTOR_STAT_DEC_INIT)
+    G_status |= MOTOR_STAT_DEC_INIT;
+  else
+    G_status &= ~MOTOR_STAT_DEC_INIT;
+  up_write(&G_stat_sem);
 }
 
 void handset_handler(unsigned char old_hs, unsigned char new_hs)
 {
   unsigned char dir, speed;
   unsigned int rate;
-  struct cardmove_params *params = &G_move_params.cardmove;
+  struct cardmove_params *params;
+  
+  down_write(&G_stat_sem);
+  params = &G_move_params.cardmove;
   
   // Check if all stop toggled
   if (((old_hs & HS_DIR_DEC_MASK) != HS_DIR_DEC_MASK) && ((new_hs & HS_DIR_DEC_MASK) == HS_DIR_DEC_MASK))
@@ -474,14 +579,14 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
       printk(KERN_INFO PRINTK_PREFIX "Enabling emergency stop (by handset).\n");
       toggle_all_stop(TRUE);
     }
-    return;
+    goto finish;
   }
   
   // Check for allstop
   if ((G_status & MOTOR_STAT_ALLSTOP) && ((new_hs & HS_DIR_MASK) > 0))
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Handset move requested, but all-stop is currently active.\n");
-    return;
+    goto finish;
   }
 
   // Check if tracking toggled
@@ -498,24 +603,24 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
       printk(KERN_DEBUG PRINTK_PREFIX "Enabling tracking (by handset).\n");
       toggle_tracking(TRUE);
     }
-    return;
+    goto finish;
   }
   
   // Double-check for handset change (first check should be in act_plc)
   if (old_hs == new_hs)
-    return;
+    goto finish;
   // Check for move command not initiated by handset
   if (((G_status & MOTOR_STAT_CARD) && (!params->handset_move)) || (G_status & MOTOR_STAT_GOTO))
   {
     printk(KERN_INFO PRINTK_PREFIX "Telescope is busy, cannot perform handset move.\n");
-    return;
+    goto finish;
   }
   
   // No direction buttons pressed, end move
   if (((new_hs & HS_DIR_MASK) == 0) && (G_status & MOTOR_STAT_CARD) && (params->handset_move))
   {
     params->dir_req = 0;
-    return;
+    goto finish;
   }
   
   // Find requested speed, direction and rate
@@ -539,12 +644,16 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   params->dir_req = dir;
   params->rate_req = rate;
   if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
+  {
+    down_read(&G_coord_sem);
     params->start_ha = G_motor_steps_ha;
+    up_read(&G_coord_sem);
+  }
   else
     params->start_ha = 0;
   // If handset cardinal move is already being done, only change requested direction and rate and let check_cardmove do the rest
   if (G_status & MOTOR_STAT_CARD)
-    return;
+    goto finish;
   // Otherwise start cardinal move
   params->dir_cur = dir;
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
@@ -557,6 +666,9 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
     G_status |= MOTOR_STAT_CARD;
     update_status();
   }
+  
+  finish:
+  up_write(&G_stat_sem);
 }
 
 #ifdef MOTOR_SIM
@@ -572,7 +684,6 @@ void set_sim_limits(unsigned char limits)
 
 unsigned long get_sim_steps(void)
 {
-//   return G_last_motor_steps;
   /// TODO: Unbreak this
   return 0;
 }
@@ -599,12 +710,15 @@ static void update_motor_coords(int reset_motor_steps)
   static int last_motor_steps = 0;
   int new_motor_steps = read_steps();
   unsigned char dir = 0;
+  down_read(&G_stat_sem);
   if (G_status & MOTOR_STAT_GOTO)
     dir = G_move_params.gotomove.dir_cur;
   else if (G_status & MOTOR_STAT_CARD)
     dir = G_move_params.cardmove.dir_cur;
   else if (G_status & MOTOR_STAT_TRACKING)
     dir = G_move_params.tracking.dir_cur != 0 ? G_move_params.tracking.dir_cur : DIR_WEST_MASK;
+  up_read(&G_stat_sem);
+  down_write(&G_coord_sem);
   if (dir & DIR_WEST_MASK)
     G_motor_steps_ha -= last_motor_steps - new_motor_steps;
   else if (dir & DIR_EAST_MASK)
@@ -613,19 +727,27 @@ static void update_motor_coords(int reset_motor_steps)
     G_motor_steps_dec += last_motor_steps - new_motor_steps;
   else if (dir & DIR_SOUTH_MASK)
     G_motor_steps_dec -= last_motor_steps - new_motor_steps;
+  up_write(&G_coord_sem);
   if (reset_motor_steps >= 0)
     last_motor_steps = reset_motor_steps;
   else
     last_motor_steps = new_motor_steps;
 }
 
+/// NOTE: Additional criteria were introduced for setting the telescope zero points. Before, the zero points were only being set when
+///       the corresponding electronic limit switch was triggered. However, this caused some problems due to the Western limit switch
+///       being triggered spontaneously. To overcome this, additional criteria were introduced in order for the zero points to be set;
+///       now the telescope MUST either be near the limit switch (according to the current coordinate system) or the telescope must
+///       not yet be initialised according to G_status.
 void check_motors(struct work_struct *work)
 {
   unsigned char new_limits, req_status_update = 0;
+  down_write(&G_stat_sem);
   
   if ((G_status & (MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING)) == 0)
   {
     queue_delayed_work(G_motordrv_workq, &G_motor_work, MON_PERIOD_MSEC * HZ / 1000);
+    up_write(&G_stat_sem);
     return;
   }
 
@@ -635,9 +757,13 @@ void check_motors(struct work_struct *work)
   {
     if (new_limits != 0)
       printk(KERN_INFO PRINTK_PREFIX "Hard telescope limit reached (0x%x).\n", new_limits);
-    if (new_limits & DIR_SOUTH_MASK)
+    down_write(&G_coord_sem);
+    // Only set zero point if near Southern limit or telescope not initialised
+    if ((new_limits & DIR_SOUTH_MASK) &&
+        ((G_motor_steps_dec < DEC_INIT_LIM_STEPS) || 
+         ((G_status & MOTOR_STAT_DEC_INIT) == 0)))
     {
-      printk(KERN_DEBUG PRINTK_PREFIX "Setting declination zero point at Southern limit.\n");
+      printk(KERN_INFO PRINTK_PREFIX "Setting declination zero point at Southern limit (currently at %d steps).\n", G_motor_steps_dec);
       G_motor_steps_dec = 0;
       if ((G_status & MOTOR_STAT_DEC_INIT) == 0)
       {
@@ -645,9 +771,14 @@ void check_motors(struct work_struct *work)
         req_status_update = TRUE;
       }
     }
-    if (new_limits & DIR_WEST_MASK)
+    else if (new_limits & DIR_SOUTH_MASK)
+      printk(KERN_INFO PRINTK_PREFIX "Southern limit reached, but not setting zero point (currently at %d steps).\n", G_motor_steps_dec);
+    // Only set zero point if near Western limit or telescope not initialised
+    if ((new_limits & DIR_WEST_MASK) &&
+        ((G_motor_steps_ha < HA_INIT_LIM_STEPS) || 
+        ((G_status & MOTOR_STAT_HA_INIT) == 0)))
     {
-      printk(KERN_DEBUG PRINTK_PREFIX "Setting hour angle zero point at Western limit.\n");
+      printk(KERN_DEBUG PRINTK_PREFIX "Setting hour angle zero point at Western limit (currently at %d steps).\n", G_motor_steps_ha);
       G_motor_steps_ha = 0;
       if ((G_status & MOTOR_STAT_HA_INIT) == 0)
       {
@@ -655,9 +786,14 @@ void check_motors(struct work_struct *work)
         req_status_update = TRUE;
       }
     }
+    else
+      printk(KERN_INFO PRINTK_PREFIX "Western limit reached, but not setting zero point (currently at %d steps).\n", G_motor_steps_ha);
     G_hard_limits = new_limits;
+    up_write(&G_coord_sem);
   }
+  down_read(&G_coord_sem);
   new_limits = check_soft_lims(G_motor_steps_ha, G_motor_steps_dec);
+  up_read(&G_coord_sem);
   if (new_limits != G_alt_limits)
   {
     printk(KERN_INFO PRINTK_PREFIX "Soft telescope limit reached (0x%x).\n", new_limits);
@@ -679,30 +815,30 @@ void check_motors(struct work_struct *work)
   
   if (G_status & MOTOR_STAT_GOTO)
   {
-    if (check_gotomove())
+    if (check_gotomove(&G_move_params.gotomove))
       req_status_update = TRUE;
   }
   else if (G_status & MOTOR_STAT_CARD)
   {
-    if (check_cardmove())
+    if (check_cardmove(&G_move_params.cardmove))
       req_status_update = TRUE;
   }
   else if (G_status & MOTOR_STAT_TRACKING)
   {
-    if (check_tracking())
+    if (check_tracking(&G_move_params.tracking))
       req_status_update = TRUE;
   }
   
+  up_write(&G_stat_sem);
   if (req_status_update)
     update_status();
   queue_delayed_work(G_motordrv_workq, &G_motor_work, MON_PERIOD_MSEC * HZ / 1000);
 }
 
-unsigned char check_gotomove(void)
+unsigned char check_gotomove(struct gotomove_params *params)
 {
   unsigned int rate_req, rate_new, new_targ_ha;
   unsigned char dir_new;
-  struct gotomove_params *params = &G_move_params.gotomove;
   
   if ((G_hard_limits | G_alt_limits) & params->dir_cur)
   {
@@ -765,9 +901,8 @@ unsigned char check_gotomove(void)
   return FALSE;
 }
 
-unsigned char check_cardmove(void)
+unsigned char check_cardmove(struct cardmove_params *params)
 {
-  struct cardmove_params *params = &G_move_params.cardmove;
   unsigned int rate_req;
   
   // Check limits - either hard limits or soft limits while not under handset control
@@ -831,9 +966,8 @@ unsigned char check_cardmove(void)
   return FALSE;
 }
 
-unsigned char check_tracking(void)
+unsigned char check_tracking(struct tracking_params *params)
 {
-  struct tracking_params *params = &G_move_params.tracking;
   int ha_steps, dec_steps;
   unsigned char dir_new;
   unsigned int rate_new;
@@ -845,6 +979,7 @@ unsigned char check_tracking(void)
     return TRUE;
   }
 
+  down_read(&G_coord_sem);
   ha_steps = params->last_steps_ha - G_motor_steps_ha - MON_PERIOD_MSEC*HA_INCR_MOTOR_STEPS;
   dec_steps = G_motor_steps_dec - params->last_steps_dec;
   if ((params->dir_cur & DIR_HA_MASK) != 0)
@@ -856,7 +991,10 @@ unsigned char check_tracking(void)
   params->last_steps_ha = G_motor_steps_ha;
   params->last_steps_dec = G_motor_steps_dec;
   if ((params->adj_ha_steps == 0) && (params->adj_dec_steps == 0) && (params->dir_cur == 0))
+  {
+    up_read(&G_coord_sem);
     return FALSE;
+  }
   // In order to prevent cumulative errors in the adjustments, zero them when we're close to 0
   if (abs(params->adj_ha_steps) <= TOLERANCE_MOTOR_HA_STEPS)
     params->adj_ha_steps = 0;
@@ -865,6 +1003,7 @@ unsigned char check_tracking(void)
   
   ha_steps = G_motor_steps_ha + params->adj_ha_steps;
   dec_steps = G_motor_steps_dec + params->adj_dec_steps;
+  up_read(&G_coord_sem);
   dir_new = calc_direction(ha_steps, dec_steps);
   if (dir_new == params->dir_cur)
     return FALSE;
@@ -893,9 +1032,13 @@ static char calc_direction(int targ_ha, int targ_dec)
     return -1;
   if ((targ_dec > MOTOR_STEPS_N_LIM) || (targ_ha > MOTOR_STEPS_E_LIM))
     return -1;
+  down_read(&G_coord_sem);
   dir = check_soft_lims(G_motor_steps_ha, G_motor_steps_dec);
   if (dir != 0)
+  {
+    up_read(&G_coord_sem);
     return -1;
+  }
 
   if (abs(targ_dec-G_motor_steps_dec) > TOLERANCE_MOTOR_DEC_STEPS)
   {
@@ -911,6 +1054,7 @@ static char calc_direction(int targ_ha, int targ_dec)
     else
       dir |= DIR_WEST_MASK;
   }
+  up_read(&G_coord_sem);
   return dir;
 }
 
@@ -931,13 +1075,17 @@ static char calc_direction_goto(int targ_ha, int targ_dec)
   
   // Which direction should we move in firt (in order to avoid soft limits)?
   // Is Dec first safe?
+  down_read(&G_coord_sem);
   if (check_soft_lims(G_motor_steps_ha, targ_dec) == 0)
-    return dir & (DIR_NORTH_MASK | DIR_SOUTH_MASK);
+    dir = dir & (DIR_NORTH_MASK | DIR_SOUTH_MASK);
   // Is HA first safe?
-  if (check_soft_lims(targ_ha, G_motor_steps_dec) == 0)
-    return dir & (DIR_EAST_MASK | DIR_WEST_MASK);
+  else if (check_soft_lims(targ_ha, G_motor_steps_dec) == 0)
+    dir = dir & (DIR_EAST_MASK | DIR_WEST_MASK);
   // Neither first is safe - this should never happen
-  return -1;
+  else
+    dir = -1;
+  up_read(&G_coord_sem);
+  return dir;
 }
 
 static unsigned char get_dir_mask(unsigned char dir_mode)
@@ -977,11 +1125,16 @@ static unsigned char get_dir_mask(unsigned char dir_mode)
 
 static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec)
 {
+  unsigned char ret;
+  down_read(&G_coord_sem);
   if ((direction & (DIR_SOUTH_MASK | DIR_NORTH_MASK)) && (abs(targ_dec - G_motor_steps_dec) < FLOP_MOTOR_DEC_STEPS))
-    return TRUE;
-  if ((direction & (DIR_WEST_MASK | DIR_EAST_MASK)) && (abs(targ_ha - G_motor_steps_ha) < FLOP_MOTOR_HA_STEPS))
-    return TRUE;
-  return FALSE;
+    ret = TRUE;
+  else if ((direction & (DIR_WEST_MASK | DIR_EAST_MASK)) && (abs(targ_ha - G_motor_steps_ha) < FLOP_MOTOR_HA_STEPS))
+    ret = TRUE;
+  else
+    ret = FALSE;
+  up_read(&G_coord_sem);
+  return ret;
 }
 
 static unsigned int calc_rate(unsigned char dir, unsigned char speed, unsigned char tracking_on)

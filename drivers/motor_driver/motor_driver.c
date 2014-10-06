@@ -284,6 +284,11 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
       }
       set_coord_motor(&user_data.coord);
       break;
+    
+    case IOCTL_MOTOR_SET_INIT:
+      set_init_motor(ioctl_param);
+      value = 0;
+      break;
 
     default:
       printk(KERN_DEBUG PRINTK_PREFIX "Invalid IOCTL number (%d).\n", ioctl_num);
