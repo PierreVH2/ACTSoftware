@@ -84,6 +84,15 @@
 
 #define ha_track_time(start_time)   ((long)jiffies - (long)start_time) * 1000 * MOTOR_STEPS_E_LIM / HZ  / (MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC)
 
+#define lock_stat_write    printk(KERN_DEBUG PRINTK_PREFIX "%pS trying to lock status write.\n", __builtin_return_address(0)); down_write(&G_stat_sem); printk(KERN_DEBUG PRINTK_PREFIX "%pS locked status write.\n", __builtin_return_address(0));
+#define lock_stat_read     printk(KERN_DEBUG PRINTK_PREFIX "%pS trying to lock status read.\n", __builtin_return_address(0)); down_read(&G_stat_sem); printk(KERN_DEBUG PRINTK_PREFIX "%pS locked status read.\n", __builtin_return_address(0));
+#define unlock_stat_write  printk(KERN_DEBUG PRINTK_PREFIX "%pS unlocking status write.\n", __builtin_return_address(0)); up_write(&G_stat_sem);
+#define unlock_stat_read   printk(KERN_DEBUG PRINTK_PREFIX "%pS unlocking status read.\n", __builtin_return_address(0)); up_read(&G_stat_sem);
+#define lock_coord_write   printk(KERN_DEBUG PRINTK_PREFIX "%pS trying to lock coord write.\n", __builtin_return_address(0)); down_write(&G_coord_sem); printk(KERN_DEBUG PRINTK_PREFIX "%pS locked coord write.\n", __builtin_return_address(0));
+#define lock_coord_read    printk(KERN_DEBUG PRINTK_PREFIX "%pS trying to lock coord read.\n", __builtin_return_address(0)); down_read(&G_coord_sem); printk(KERN_DEBUG PRINTK_PREFIX "%pS locked coord read.\n", __builtin_return_address(0));
+#define unlock_coord_write printk(KERN_DEBUG PRINTK_PREFIX "%pS unlocking coord write.\n", __builtin_return_address(0)); up_write(&G_coord_sem);
+#define unlock_coord_read  printk(KERN_DEBUG PRINTK_PREFIX "%pS unlocking coord read.\n", __builtin_return_address(0)); up_read(&G_coord_sem);
+
 struct gotomove_params
 {
   int targ_ha, targ_dec;
@@ -207,18 +216,18 @@ void motordrv_finalise(void)
 unsigned char get_motor_stat(void)
 {
   unsigned char ret;
-  down_read(&G_stat_sem);
+  lock_stat_read;
   ret = G_status;
-  up_read(&G_stat_sem);
+  unlock_stat_read;
   return ret;
 }
 
 unsigned char get_motor_limits(void)
 {
   unsigned char ret;
-  down_read(&G_stat_sem);
+  lock_stat_read;
   ret = G_hard_limits | G_alt_limits;
-  up_read(&G_stat_sem);
+  unlock_stat_read;
   return ret;
 }
 
@@ -230,7 +239,7 @@ int start_goto(struct motor_goto_cmd *cmd)
   unsigned int rate;
   struct gotomove_params *params;
   
-  down_write(&G_stat_sem);
+  lock_stat_write;
   params = &G_move_params.gotomove;
   
   // Check if goto currently possible
@@ -290,7 +299,7 @@ int start_goto(struct motor_goto_cmd *cmd)
   update_status();
   
   finish:
-  up_write(&G_stat_sem);
+  unlock_stat_write;
   return ret;
 }
 
@@ -299,12 +308,12 @@ void end_goto(void)
   unsigned char start_tracking = FALSE;
   struct gotomove_params *params;
   
-  down_write(&G_stat_sem);
+  lock_stat_write;
   params = &G_move_params.gotomove;
   if ((G_status & MOTOR_STAT_GOTO) == 0)
   {
     printk(KERN_DEBUG PRINTK_PREFIX "No goto motion is currently underway. Not cancelling goto.\n");
-    up_write(&G_stat_sem);
+    unlock_stat_write;
     return;
   }
   params->rate_req = RATE_MIN;
@@ -317,7 +326,7 @@ void end_goto(void)
     if (G_status & MOTOR_STAT_TRACKING)
       start_tracking = TRUE;
   }
-  up_write(&G_stat_sem);
+  unlock_stat_write;
   if (start_tracking)
     toggle_tracking(TRUE);
 }
@@ -329,7 +338,7 @@ int start_card(struct motor_card_cmd *cmd)
   unsigned int rate;
   struct cardmove_params *params;
   
-  down_write(&G_stat_sem);
+  lock_stat_write;
   params = &G_move_params.cardmove;
 
   // Check if goto currently possible
@@ -373,9 +382,9 @@ int start_card(struct motor_card_cmd *cmd)
   params->rate_req = rate;
   if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
   {
-    down_read(&G_coord_sem);
+    lock_coord_read;
     params->start_ha = G_motor_steps_ha;
-    up_read(&G_coord_sem);
+    unlock_coord_read;
   }
   else
     params->start_ha = 0;
@@ -392,7 +401,7 @@ int start_card(struct motor_card_cmd *cmd)
   update_status();
   
   finish:
-  up_write(&G_stat_sem);
+  unlock_stat_write;
   return ret;
 }
 
@@ -401,13 +410,13 @@ void end_card(void)
   unsigned char start_tracking = FALSE;
   struct cardmove_params *params;
   
-  down_write(&G_stat_sem);
+  lock_stat_write;
   params = &G_move_params.cardmove;
   
   if (((G_status & MOTOR_STAT_CARD) == 0) || (params->handset_move))
   {
     printk(KERN_DEBUG PRINTK_PREFIX "Not moving in cardinal direction or motion initiated by handset. Not ending motion.\n");
-    up_write(&G_stat_sem);
+    unlock_stat_write;
     return;
   }
   params->rate_req = RATE_MIN;
@@ -420,23 +429,23 @@ void end_card(void)
       start_tracking = TRUE;
     update_status();
   }
-  up_write(&G_stat_sem);
+  unlock_stat_write;
   if (start_tracking)
     toggle_tracking(TRUE);
 }
 
 void end_all(void)
 {
-  down_write(&G_stat_sem);
+  lock_stat_write;
   stop_move();
   G_status &= ~(MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING);
   update_status();
-  up_write(&G_stat_sem);
+  unlock_stat_write;
 }
 
 void toggle_all_stop(unsigned char stop_on)
 {
-  down_write(&G_stat_sem);
+  lock_stat_write;
   if (stop_on)
   {
     stop_move();
@@ -446,12 +455,12 @@ void toggle_all_stop(unsigned char stop_on)
   else
     G_status &= ~MOTOR_STAT_ALLSTOP;
   update_status();
-  up_write(&G_stat_sem);
+  unlock_stat_write;
 }
 
 void toggle_tracking(unsigned char tracking_on)
 {
-  down_write(&G_stat_sem);
+  lock_stat_write;
   if (G_status & MOTOR_STAT_ALLSTOP)
   {
     if (tracking_on)
@@ -476,22 +485,22 @@ void toggle_tracking(unsigned char tracking_on)
     struct tracking_params *params = &G_move_params.tracking;
     params->adj_ha_steps = params->adj_dec_steps = 0;
     params->dir_cur = 0;
-    down_read(&G_coord_sem);
+    lock_coord_read;
     params->last_steps_ha = G_motor_steps_ha;
     params->last_steps_dec = G_motor_steps_dec;
-    up_read(&G_coord_sem);
+    unlock_coord_read;
     start_move(DIR_WEST_MASK, RATE_SID);
   }
   else
     stop_move();
   
   finish:
-  up_write(&G_stat_sem);
+  unlock_stat_write;
 }
 
 void adjust_tracking(int adj_ha, int adj_dec)
 {
-  down_write(&G_stat_sem);
+  lock_stat_write;
   if ((G_status & MOTOR_STAT_MOVING) || ((G_status & MOTOR_STAT_TRACKING) == 0))
     goto finish;
   if ((abs(adj_ha) < TOLERANCE_MOTOR_HA_STEPS) && (abs(adj_dec) < TOLERANCE_MOTOR_DEC_STEPS))
@@ -500,17 +509,17 @@ void adjust_tracking(int adj_ha, int adj_dec)
   G_move_params.tracking.adj_dec_steps = adj_dec;
   
   finish:
-  up_write(&G_stat_sem);
+  unlock_stat_write;
 }
 
 void get_coord_motor(struct motor_tel_coord *coord)
 {
-  down_read(&G_stat_sem);
+  lock_stat_read;
   if (G_status & MOTOR_STAT_HA_INIT)
   {
-    down_read(&G_stat_sem);
+    lock_stat_read;
     coord->tel_ha = G_motor_steps_ha;
-    up_read(&G_stat_sem);
+    unlock_stat_read;
   }
   else
     coord->tel_ha = 0;
@@ -518,12 +527,12 @@ void get_coord_motor(struct motor_tel_coord *coord)
     coord->tel_dec = G_motor_steps_dec;
   else
     coord->tel_dec = 0;
-  up_read(&G_stat_sem);
+  unlock_stat_read;
 }
 
 void set_coord_motor(struct motor_tel_coord *coord)
 {
-  down_write(&G_stat_sem);
+  lock_stat_write;
   if (G_status & MOTOR_STAT_HA_INIT)
     printk(KERN_INFO PRINTK_PREFIX "Resetting HA motor steps to %d, currently %d.\n", coord->tel_ha, G_motor_steps_ha);
   else
@@ -540,12 +549,12 @@ void set_coord_motor(struct motor_tel_coord *coord)
     printk(KERN_INFO PRINTK_PREFIX "Setting HA motor steps to %d and flagging DEC initialised.\n", coord->tel_dec);
   }
   G_motor_steps_dec = coord->tel_dec;
-  up_write(&G_stat_sem);
+  unlock_stat_write;
 }
 
 void set_init_motor(unsigned char init_stat)
 {
-  down_write(&G_stat_sem);
+  lock_stat_write;
   if (init_stat & MOTOR_STAT_HA_INIT)
     G_status |= MOTOR_STAT_HA_INIT;
   else
@@ -554,7 +563,7 @@ void set_init_motor(unsigned char init_stat)
     G_status |= MOTOR_STAT_DEC_INIT;
   else
     G_status &= ~MOTOR_STAT_DEC_INIT;
-  up_write(&G_stat_sem);
+  unlock_stat_write;
 }
 
 void handset_handler(unsigned char old_hs, unsigned char new_hs)
@@ -563,7 +572,7 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   unsigned int rate;
   struct cardmove_params *params;
   
-  down_write(&G_stat_sem);
+  lock_stat_write;
   params = &G_move_params.cardmove;
   
   // Check if all stop toggled
@@ -645,9 +654,9 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   params->rate_req = rate;
   if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
   {
-    down_read(&G_coord_sem);
+    lock_coord_read;
     params->start_ha = G_motor_steps_ha;
-    up_read(&G_coord_sem);
+    unlock_coord_read;
   }
   else
     params->start_ha = 0;
@@ -668,7 +677,7 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   }
   
   finish:
-  up_write(&G_stat_sem);
+  unlock_stat_write;
 }
 
 #ifdef MOTOR_SIM
@@ -710,15 +719,15 @@ static void update_motor_coords(int reset_motor_steps)
   static int last_motor_steps = 0;
   int new_motor_steps = read_steps();
   unsigned char dir = 0;
-  down_read(&G_stat_sem);
+  lock_stat_read;
   if (G_status & MOTOR_STAT_GOTO)
     dir = G_move_params.gotomove.dir_cur;
   else if (G_status & MOTOR_STAT_CARD)
     dir = G_move_params.cardmove.dir_cur;
   else if (G_status & MOTOR_STAT_TRACKING)
     dir = G_move_params.tracking.dir_cur != 0 ? G_move_params.tracking.dir_cur : DIR_WEST_MASK;
-  up_read(&G_stat_sem);
-  down_write(&G_coord_sem);
+  unlock_stat_read;
+  lock_coord_write;
   if (dir & DIR_WEST_MASK)
     G_motor_steps_ha -= last_motor_steps - new_motor_steps;
   else if (dir & DIR_EAST_MASK)
@@ -727,7 +736,7 @@ static void update_motor_coords(int reset_motor_steps)
     G_motor_steps_dec += last_motor_steps - new_motor_steps;
   else if (dir & DIR_SOUTH_MASK)
     G_motor_steps_dec -= last_motor_steps - new_motor_steps;
-  up_write(&G_coord_sem);
+  unlock_coord_write;
   if (reset_motor_steps >= 0)
     last_motor_steps = reset_motor_steps;
   else
@@ -742,12 +751,12 @@ static void update_motor_coords(int reset_motor_steps)
 void check_motors(struct work_struct *work)
 {
   unsigned char new_limits, req_status_update = 0;
-  down_write(&G_stat_sem);
+  lock_stat_write;
   
   if ((G_status & (MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING)) == 0)
   {
     queue_delayed_work(G_motordrv_workq, &G_motor_work, MON_PERIOD_MSEC * HZ / 1000);
-    up_write(&G_stat_sem);
+    unlock_stat_write;
     return;
   }
 
@@ -757,7 +766,7 @@ void check_motors(struct work_struct *work)
   {
     if (new_limits != 0)
       printk(KERN_INFO PRINTK_PREFIX "Hard telescope limit reached (0x%x).\n", new_limits);
-    down_write(&G_coord_sem);
+    lock_coord_write;
     // Only set zero point if near Southern limit or telescope not initialised
     if ((new_limits & DIR_SOUTH_MASK) &&
         ((G_motor_steps_dec < DEC_INIT_LIM_STEPS) || 
@@ -789,11 +798,11 @@ void check_motors(struct work_struct *work)
     else
       printk(KERN_INFO PRINTK_PREFIX "Western limit reached, but not setting zero point (currently at %d steps).\n", G_motor_steps_ha);
     G_hard_limits = new_limits;
-    up_write(&G_coord_sem);
+    unlock_coord_write;
   }
-  down_read(&G_coord_sem);
+  lock_coord_read;
   new_limits = check_soft_lims(G_motor_steps_ha, G_motor_steps_dec);
-  up_read(&G_coord_sem);
+  unlock_coord_read;
   if (new_limits != G_alt_limits)
   {
     printk(KERN_INFO PRINTK_PREFIX "Soft telescope limit reached (0x%x).\n", new_limits);
@@ -829,7 +838,7 @@ void check_motors(struct work_struct *work)
       req_status_update = TRUE;
   }
   
-  up_write(&G_stat_sem);
+  unlock_stat_write;
   if (req_status_update)
     update_status();
   queue_delayed_work(G_motordrv_workq, &G_motor_work, MON_PERIOD_MSEC * HZ / 1000);
@@ -979,7 +988,7 @@ unsigned char check_tracking(struct tracking_params *params)
     return TRUE;
   }
 
-  down_read(&G_coord_sem);
+  lock_coord_read;
   ha_steps = params->last_steps_ha - G_motor_steps_ha - MON_PERIOD_MSEC*HA_INCR_MOTOR_STEPS;
   dec_steps = G_motor_steps_dec - params->last_steps_dec;
   if ((params->dir_cur & DIR_HA_MASK) != 0)
@@ -992,7 +1001,7 @@ unsigned char check_tracking(struct tracking_params *params)
   params->last_steps_dec = G_motor_steps_dec;
   if ((params->adj_ha_steps == 0) && (params->adj_dec_steps == 0) && (params->dir_cur == 0))
   {
-    up_read(&G_coord_sem);
+    unlock_coord_read;
     return FALSE;
   }
   // In order to prevent cumulative errors in the adjustments, zero them when we're close to 0
@@ -1003,7 +1012,7 @@ unsigned char check_tracking(struct tracking_params *params)
   
   ha_steps = G_motor_steps_ha + params->adj_ha_steps;
   dec_steps = G_motor_steps_dec + params->adj_dec_steps;
-  up_read(&G_coord_sem);
+  unlock_coord_read;
   dir_new = calc_direction(ha_steps, dec_steps);
   if (dir_new == params->dir_cur)
     return FALSE;
@@ -1032,11 +1041,11 @@ static char calc_direction(int targ_ha, int targ_dec)
     return -1;
   if ((targ_dec > MOTOR_STEPS_N_LIM) || (targ_ha > MOTOR_STEPS_E_LIM))
     return -1;
-  down_read(&G_coord_sem);
+  lock_coord_read;
   dir = check_soft_lims(G_motor_steps_ha, G_motor_steps_dec);
   if (dir != 0)
   {
-    up_read(&G_coord_sem);
+    unlock_coord_read;
     return -1;
   }
 
@@ -1054,7 +1063,7 @@ static char calc_direction(int targ_ha, int targ_dec)
     else
       dir |= DIR_WEST_MASK;
   }
-  up_read(&G_coord_sem);
+  unlock_coord_read;
   return dir;
 }
 
@@ -1075,7 +1084,7 @@ static char calc_direction_goto(int targ_ha, int targ_dec)
   
   // Which direction should we move in firt (in order to avoid soft limits)?
   // Is Dec first safe?
-  down_read(&G_coord_sem);
+  lock_coord_read;
   if (check_soft_lims(G_motor_steps_ha, targ_dec) == 0)
     dir = dir & (DIR_NORTH_MASK | DIR_SOUTH_MASK);
   // Is HA first safe?
@@ -1084,7 +1093,7 @@ static char calc_direction_goto(int targ_ha, int targ_dec)
   // Neither first is safe - this should never happen
   else
     dir = -1;
-  up_read(&G_coord_sem);
+  unlock_coord_read;
   return dir;
 }
 
@@ -1126,14 +1135,14 @@ static unsigned char get_dir_mask(unsigned char dir_mode)
 static unsigned char calc_is_near_target(unsigned char direction, int targ_ha, int targ_dec)
 {
   unsigned char ret;
-  down_read(&G_coord_sem);
+  lock_coord_read;
   if ((direction & (DIR_SOUTH_MASK | DIR_NORTH_MASK)) && (abs(targ_dec - G_motor_steps_dec) < FLOP_MOTOR_DEC_STEPS))
     ret = TRUE;
   else if ((direction & (DIR_WEST_MASK | DIR_EAST_MASK)) && (abs(targ_ha - G_motor_steps_ha) < FLOP_MOTOR_HA_STEPS))
     ret = TRUE;
   else
     ret = FALSE;
-  up_read(&G_coord_sem);
+  unlock_coord_read;
   return ret;
 }
 
