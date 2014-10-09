@@ -81,11 +81,12 @@
 
 /// Hour angle motor steps increment per millisecond (used to adjust target ha during move if tracking)
 #define HA_INCR_MOTOR_STEPS         31/1000
-/// Hour angle encoder pulses increment per millisecond (used to adjust target ha move goto if tracking)
-// #define HA_INCR_ENCOD_PULSES        11/1000
+
+/// Number of motor steps in a second of Hour Angle (1000 * MOTOR_STEPS_E_LIM / (MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC))
+#define HA_MOTOR_STEPS_PER_SEC      31 
 
 /// Number of motor steps to catch up if tracking during goto / card move
-#define ha_track_time(start_time) ((long)jiffies - (long)start_time) * 1000 * MOTOR_STEPS_E_LIM / HZ / (MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC)
+#define ha_track_time(start_time) (((long)jiffies - (long)start_time) * HA_MOTOR_STEPS_PER_SEC / HZ)
 
 struct gotomove_params
 {
@@ -777,7 +778,8 @@ unsigned char check_gotomove(struct gotomove_params *params)
     new_targ_ha = params->targ_ha;
   else
   {
-    printk(KERN_DEBUG PRINTK_PREFIX "Tracking catch-up %ld steps\n", ha_track_time(params->start_time));
+    long tmpjif = jiffies, start_time=params->start_time;
+    printk(KERN_DEBUG PRINTK_PREFIX "Tracking catch-up %ld steps (%ld %ld %ld %ld %ld %ld %ld)\n", ha_track_time(params->start_time), tmpjif, start_time, tmpjif-start_time, (tmpjif-start_time)*31, (tmpjif-start_time)*31/HZ, (tmpjif-start_time)*(1000/HZ)*MOTOR_STEPS_E_LIM, (tmpjif-start_time)*(1000/HZ)*(MOTOR_STEPS_E_LIM/(MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC)));
     new_targ_ha = params->targ_ha - ha_track_time(params->start_time);
   }
   
