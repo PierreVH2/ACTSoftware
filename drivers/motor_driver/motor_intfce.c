@@ -777,11 +777,7 @@ unsigned char check_gotomove(struct gotomove_params *params)
   if ((G_status & MOTOR_STAT_TRACKING) == 0)
     new_targ_ha = params->targ_ha;
   else
-  {
-    long tmpjif = jiffies, start_time=params->start_time;
-    printk(KERN_DEBUG PRINTK_PREFIX "Tracking catch-up %ld steps (%ld %ld %ld %ld %ld %ld %ld)\n", ha_track_time(params->start_time), tmpjif, start_time, tmpjif-start_time, (tmpjif-start_time)*31, (tmpjif-start_time)*31/HZ, (tmpjif-start_time)*(1000/HZ)*MOTOR_STEPS_E_LIM, (tmpjif-start_time)*(1000/HZ)*(MOTOR_STEPS_E_LIM/(MOTOR_LIM_W_MSEC - MOTOR_LIM_E_MSEC)));
     new_targ_ha = params->targ_ha - ha_track_time(params->start_time);
-  }
   
   dir_new = calc_direction_goto(new_targ_ha, params->targ_dec);
   if ((dir_new == 0) && (params->rate_cur >= RATE_MIN))
