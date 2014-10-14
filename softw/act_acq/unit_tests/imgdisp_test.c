@@ -85,8 +85,8 @@ int main(int argc, char **argv)
   ccd_img_set_window(img, 0, 0, width, height, 1, 1);
   struct rastruct ra;
   struct decstruct dec;
-  convert_H_HMSMS_ra(0, &ra);
-  convert_D_DMS_dec(0.0, &dec);
+  convert_H_HMSMS_ra(0.001, &ra);
+  convert_D_DMS_dec(-89.9, &dec);
   ccd_img_set_tel_pos(img, &ra, &dec);
   ccd_img_set_pixel_size(img, 1.5, 1.5);
   gfloat img_data[width * height];
@@ -101,19 +101,19 @@ int main(int argc, char **argv)
   }
   ccd_img_set_img_data(img, width*height, img_data);
   imgdisp_set_img(imgdisp, img);
-  gtk_widget_set_size_request(imgdisp, width*2, height*2);
+  gtk_widget_set_size_request(imgdisp, width*1.5, height*1.5);
   imgdisp_set_window(imgdisp, 0, 0, width, height);
   imgdisp_set_flip_ew(imgdisp, TRUE);
-  imgdisp_set_grid(imgdisp, IMGDISP_GRID_EQUAT);
+  imgdisp_set_grid(imgdisp, IMGDISP_GRID_EQUAT, 60.0, 60.0);
   
-  GtkWidget *scl_faint = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);
+/*  GtkWidget *scl_faint = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);
   gtk_range_set_value(GTK_RANGE(scl_faint), 0.0);
   g_signal_connect(G_OBJECT(scl_faint), "value-changed", G_CALLBACK(faint_changed), imgdisp);
   gtk_box_pack_start(GTK_BOX(box_main), scl_faint, 0, 0, 0);
   GtkWidget *scl_bright = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);
   gtk_range_set_value(GTK_RANGE(scl_bright), 1.0);
   g_signal_connect(G_OBJECT(scl_bright), "value-changed", G_CALLBACK(bright_changed), imgdisp);
-  gtk_box_pack_start(GTK_BOX(box_main), scl_bright, 0, 0, 0);
+  gtk_box_pack_start(GTK_BOX(box_main), scl_bright, 0, 0, 0);*/
   
   GtkWidget* btn_flip_ns = gtk_button_new_with_label("N");
   gtk_button_set_image(GTK_BUTTON(btn_flip_ns), gtk_image_new_from_stock(GTK_STOCK_GO_UP,GTK_ICON_SIZE_BUTTON));

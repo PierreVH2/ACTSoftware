@@ -77,6 +77,7 @@ struct _Imgdisp
   gboolean flip_ns, flip_ew;
   gfloat bright_lim, faint_lim;
   guchar grid_type;
+  gfloat grid_spacing_x, grid_spacing_y;
   Imglut *lut;
   CcdImg *img;
   guint img_gl_name, lut_gl_name;
@@ -95,7 +96,7 @@ void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew);
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_faint_lim(GtkWidget *imgdisp, gfloat lim);
 void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut);
-void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid);
+void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid, gfloat spacing_x, gfloat spacing_y);
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img);
 void imgdisp_set_window(GtkWidget *imgdisp, glong start_x, glong start_y, gulong width, gulong height);
 gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);

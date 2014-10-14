@@ -292,9 +292,12 @@ void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut)
   imgdisp_redraw(imgdisp);
 }
 
-void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid)
+void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid, gfloat spacing_x, gfloat spacing_y)
 {
-  IMGDISP(imgdisp)->grid_type = new_grid;
+  Imgdisp *objs = IMGDISP(imgdisp);
+  objs->grid_type = new_grid;
+  objs->grid_spacing_x = spacing_x;
+  objs->grid_spacing_y = spacing_y;
   imgdisp_redraw(imgdisp);
 }
 
@@ -392,7 +395,7 @@ gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
     img_dec = 89.99;
   struct rastruct ra;
   ccd_img_get_tel_pos(objs->img, &ra, NULL);
-  return convert_HMSMS_H_ra(&ra) + (img_x - ccd_img_get_img_width(objs->img)/2.0) * ccd_img_get_pixel_size_ra(objs->img) / cos(convert_DEG_RAD(img_dec)) / 3600.0;
+  return convert_HMSMS_H_ra(&ra) + (img_x - ccd_img_get_img_width(objs->img)/2.0) * ccd_img_get_pixel_size_ra(objs->img) / 15.0 / cos(convert_DEG_RAD(img_dec)) / 3600.0;
 }
 
 gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
@@ -419,6 +422,8 @@ static void imgdisp_instance_init(GtkWidget *imgdisp)
   
   objs->bright_lim = 1.0;
   objs->faint_lim = 0.0;
+  objs->grid_type = 0;
+  objs->grid_spacing_x = objs->grid_spacing_y = 10.0;
   objs->img_gl_name = objs->lut_gl_name = 0;
   objs->glsl_prog = 0;
   objs->lut = imglut_new (2, NULL);
@@ -687,170 +692,75 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
     }
     case IMGDISP_GRID_EQUAT:
     {
-      double ra_rad = convert_H_RAD(3.0);
-      double dec_rad = convert_DEG_RAD(-50.0);
-      double img_height_dec = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
-      double img_width_ra = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/cos(dec_rad);
+//      double ra_rad = convert_H_RAD(3.0);
+//      double dec_rad = convert_DEG_RAD(-50.0);
+      struct rastruct tel_ra;
+      struct decstruct tel_dec;
+      ccd_img_get_tel_pos(objs->img, &tel_ra, &tel_dec);
+      double ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&tel_ra)), dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&tel_dec));
+      double img_height_rad = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
+      double img_width_rad = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
+      double ra_cent, dec_cent;
       double ra_low, ra_high, dec_low, dec_high;
-      double dec_inc, ra_ing;
-      dec_low = dec_rad - img_height_dec / 2.0;
-      dec_high = dec_rad + img_height_dec / 2.0;
-      ra_low = 
-      dec_inc = 1.0 / 60.0, ra_inc = round(1.0 / cos(dec_rad)) / 60.0;
+      double dec_inc, ra_inc, num_divs;
       
-      dec_low = dec_rad - ceil(img_height_dec / 2.0 / dec_inc)*dec_inc, dec_high = dec_rad + ceil(img_height_dec / 2.0 / dec_inc)*dec_inc;
-      if ((fabs(dec_low) >= ONEPI/2.0) || (fabs(dec_high) >= ONEPI/2.0))
+      dec_inc = convert_DEG_RAD(objs->grid_spacing_y/3600.0);
+      num_divs = ceil(img_height_rad / dec_inc) + 1.0;
+      dec_cent = dec_rad - fmod(dec_rad, dec_inc);
+      dec_low = dec_cent - num_divs*dec_inc;
+      dec_high = dec_cent + num_divs*dec_inc;
+      // Check if we're straddling the pole
+      if ((fabs(dec_low) >= ONEPI/2) != (fabs(dec_high) >= ONEPI/2))
       {
-        if (fabs(dec_low) >= ONEPI/2.0)
-          dec_low = ONEPI/2.0 * dec_low/fabs(dec_low);
-        if (fabs(dec_high) >= ONEPI/2.0)
-          dec_high = ONEPI/2.0 * dec_high/fabs(dec_high);
+        // Set the dec that exceeds the pole to the dec of the pole.
+        if (fabs(dec_high) >= ONEPI/2)
+          dec_high = ONEPI/2 * (dec_high < 0.0 ? -1.0 : 1.0);
+        else
+          dec_low = ONEPI/2 * (dec_low < 0.0 ? -1.0 : 1.0);
+        num_divs = ceil(img_width_rad / convert_DEG_RAD(objs->grid_spacing_x/3600.0)) * 2.0;
+        ra_inc = TWOPI / num_divs;
         ra_low = 0.0;
-        ra_high = TWOPI;
+        ra_high = TWOPI + ra_inc/10.0;
       }
       else
       {
-        ra_low = ra_rad - ceil(img_width_ra / 2.0 / ra_inc)*ra_inc;
-        ra_high = ra_rad + ceil(img_width_ra / 2.0 / ra_inc)*ra_inc;
+        ra_inc = objs->grid_spacing_x / cos(dec_rad);
+        ra_inc -= fmod(ra_inc, objs->grid_spacing_x);
+        ra_inc = convert_DEG_RAD(ra_inc/3600.0);
+        if (fabs(dec_low) < fabs(dec_high))
+          num_divs = ceil(img_width_rad / ra_inc / cos(dec_high)) + 1.0;
+        else
+          num_divs = ceil(img_width_rad / ra_inc / cos(dec_low)) + 1.0;
+        ra_cent = ra_rad - fmod(ra_rad, ra_inc);
+        ra_low = ra_cent - num_divs*ra_inc;
+        ra_high = ra_cent + num_divs*ra_inc;
       }
       
       glMatrixMode(GL_MODELVIEW);
       glLoadIdentity();
-//       glScaled(2.0/sin(img_width_ra), 2.0/sin(img_height_dec), 1.0);
-//       glScaled(2, 2, 1.0);
-//       glRotated(-90.0,1.0,0.0,0.0);
-//       glRotated(0,0.0,1.0,0.0);
-//       double ra_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/2.0;
-//       double dec_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_dec(objs->img)/3600.0)/2.0;
-      double ra_range = img_width_ra/10.0, dec_range=img_dec_height/10.0;
-      glScaled(1/sin(img_width_ra), 1/sin(img_height_dec), 1.0);
-      glRotated(dec_d,1.0,0.0,0.0);
-      glRotated(-ra_h*15.0,0.0,1.0,0.0);
-      double dec, ra;
-/*      glColor3f(1.0, 0.0, 0.0);
-      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
-          glVertex3d(cos(ra)*cos(dec),sin(ra)*cos(dec),sin(dec));
-        glEnd();
-      }
-      glColor3f(0.0, 1.0, 0.0);
-      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
-          glVertex3d(cos(ra)*cos(dec),sin(dec),sin(ra)*cos(dec));
-        glEnd();
-      }
-      glColor3f(0.0, 0.0, 1.0);
-      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
-          glVertex3d(sin(ra)*cos(dec),cos(ra)*cos(dec),sin(dec));
-        glEnd();
-      }
-      glColor3f(1.0, 1.0, 0.0);
-      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
-          glVertex3d(sin(dec),cos(ra)*cos(dec),sin(ra)*cos(dec));
-        glEnd();
-      }*/
-//       glColor3f(1.0, 0.0, 1.0);
-      for (dec=dec_d*ONEPI/180.0-dec_range; dec<dec_d*ONEPI/180.0+dec_range; dec+=dec_range/20.0)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (ra=ra_h*ONEPI/12.0-ra_range; ra<ra_h*ONEPI/12.0+ra_range; ra+=ra_range/20.0)
-          glVertex3d(sin(ra)*cos(dec),sin(dec),cos(ra)*cos(dec));
-        glEnd();
-      }
-      for (ra=ra_h*ONEPI/12.0-ra_range; ra<ra_h*ONEPI/12.0+ra_range; ra+=ra_range/20.0)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (dec=dec_d*ONEPI/180.0-dec_range; dec<dec_d*ONEPI/180.0+dec_range; dec+=dec_range/20.0)
-          glVertex3d(sin(ra)*cos(dec),sin(dec),cos(ra)*cos(dec));
-        glEnd();
-      }
-/*      glColor3f(0.0, 1.0, 1.0);
-      for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
-          glVertex3d(sin(dec),sin(ra)*cos(dec),cos(ra)*cos(dec));
-        glEnd();
-      }*/
+      glScaled(2.0/sin(img_width_rad), -2.0/sin(img_height_rad), 1.0);
+      glRotated(convert_RAD_DEG(dec_rad), 1.0, 0.0, 0.0);
+      glRotated(-convert_RAD_DEG(ra_rad), 0.0, 1.0, 0.0);
 
-/*      for (ra=-ra_range; ra<ra_range; ra+=ra_range/20.0)
+      double line_ra, line_dec;
+      glColor3f(0.0,0.0,1.0);
+      for (line_ra=ra_low; line_ra<=ra_high; line_ra+=ra_inc)
       {
         glBegin(GL_LINE_STRIP);
-        for (dec=-dec_range; dec<dec_range; dec+=dec_range/20.0)
-          glVertex3d(sin(ra)*sin(dec),cos(dec),sin(ra)*cos(dec));
-        glEnd();
-      }*/
-/*      struct rastruct ra;
-      struct decstruct dec;
-      ccd_img_get_tel_pos(objs->img, &ra, &dec);
-      double img_height_dec = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
-      double img_width_ra = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
-//       glScaled(100/sin(img_width_ra), 100/sin(img_height_dec), 1.0);
-      glScaled(1000.0, 1000.0, 1.0);
-      glRotated(-convert_DMS_D_dec(&dec),1.0,0.0,0.0);
-      glRotated(-convert_H_DEG(convert_HMSMS_H_ra(&ra)),0.0,1.0,0.0);
-      double ra_spacing = convert_DEG_RAD(round(GRID_SPACING_PIXEL*ccd_img_get_pixel_size_ra(objs->img)/cos(convert_DEG_RAD(convert_DMS_D_dec(&dec)))/60.0)/60.0);
-      double dec_spacing = convert_DEG_RAD(round(GRID_SPACING_PIXEL*ccd_img_get_pixel_size_dec(objs->img)/60.0)/60.0);
-      double ra_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0)/2.0;
-      double dec_range = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_dec(objs->img)/3600.0)/2.0*100.0;
-      double ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&ra)), dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&dec));
-      double ra_line, dec_line;
-      printf("%f %f %f %f %f %f %f %f\n", img_width_ra, img_height_dec, ra_spacing, dec_spacing, ra_range, dec_range, ra_rad, dec_rad);
-      for (dec_line=dec_rad-dec_range; dec_line<dec_rad+dec_range; dec_line+=dec_spacing)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (ra_line=ra_rad-ra_range; ra_line<ra_rad+ra_range; ra_line+=ra_spacing)
-          glVertex3d(sin(ra_line)*cos(dec_line),sin(ra_line)*sin(dec_line),cos(dec_line));
-//         glVertex3d(sin(ra_line)*cos(dec_line),sin(ra_line)*sin(dec_line),cos(dec_line));
-//         glVertex3d(sin(dec_line)*sin(ra_line),cos(dec_line),sin(dec_line)*cos(ra_line));
-        glEnd();
-      }*/
-
-/*      double ra_lim_low, ra_lim_high, ra_spacing, dec_lim_low, dec_lim_high;
-      double dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&dec));
-      double ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&ra));
-      dec_lim_low = GRID_SPACING_EQUAT*floor(dec_rad / GRID_SPACING_EQUAT) - GRID_SPACING_EQUAT*ceil(dec_height_rad / GRID_SPACING_EQUAT);
-      dec_lim_high = GRID_SPACING_EQUAT*ceil(dec_rad / GRID_SPACING_EQUAT) + GRID_SPACING_EQUAT*ceil(dec_height_rad / GRID_SPACING_EQUAT);
-      ra_spacing = GRID_SPACING_EQUAT * round(GRID_SPACING_EQUAT / fabs(cos(dec_rad)) / ONEARCMIN_RAD);
-      ra_lim_low = GRID_SPACING_EQUAT * floor(ra_rad / GRID_SPACING_EQUAT) - GRID_SPACING_EQUAT * ceil(ra_width_rad/cos(dec_rad) / GRID_SPACING_EQUAT);
-      if (ra_lim_low < -ONEPI)
-        ra_lim_low = -ONEPI;
-      if (ra_lim_low > TWOPI)
-        ra_lim_low = 0.0;
-      ra_lim_high = GRID_SPACING_EQUAT * ceil(ra_rad / GRID_SPACING_EQUAT) + GRID_SPACING_EQUAT * ceil(ra_width_rad/cos(dec_rad) / GRID_SPACING_EQUAT);
-      if ((ra_lim_high < 0.0) || (ra_lim_high > TWOPI))
-        ra_lim_high = TWOPI;
-      if ((ra_lim_high-ra_lim_low)/ra_spacing > 30.0)
-        ra_spacing = (ra_lim_high-ra_lim_low) / 30.0;
-      if (ra_spacing > 15.0 * 60.0 * GRID_SPACING_EQUAT)
-        ra_spacing = 15.0 * 60.0 * GRID_SPACING_EQUAT;
-      double cur_dec, cur_ra;
-      for (cur_dec=dec_lim_low; cur_dec<dec_lim_high; cur_dec+=GRID_SPACING_EQUAT)
-      {
-        glBegin(GL_LINE_STRIP);
-        for (cur_ra=ra_lim_low; cur_ra<ra_lim_high; cur_ra+=ra_spacing)
-          glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
-        glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
+        glVertex3d(sin(line_ra)*cos(dec_low),sin(dec_low),cos(line_ra)*cos(dec_low));
+        glVertex3d(sin(line_ra)*cos(dec_high),sin(dec_high),cos(line_ra)*cos(dec_high));
         glEnd();
       }
-      for (cur_ra=ra_lim_low; cur_ra<ra_lim_high; cur_ra+=ra_spacing)
+      
+      glColor3f(0.0,1.0,0.0);
+      for (line_dec=dec_low; line_dec<=dec_high; line_dec+=dec_inc)
       {
         glBegin(GL_LINE_STRIP);
-        for (cur_dec=dec_lim_low; cur_dec<dec_lim_high; cur_dec+=GRID_SPACING_EQUAT)
-          glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
-        glVertex3d(sin(cur_dec+0.5*ONEPI)*sin(cur_ra),cos(cur_dec+0.5*ONEPI),sin(cur_dec+0.5*ONEPI)*cos(cur_ra));
+        for (line_ra=ra_low; line_ra<=ra_high; line_ra+=ra_inc/10.0)
+          glVertex3d(sin(line_ra)*cos(line_dec),sin(line_dec),cos(line_ra)*cos(line_dec));
         glEnd();
-      }*/
+      }
+
       break;
     }
   }
