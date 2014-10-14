@@ -102,7 +102,7 @@ struct cardmove_params
   unsigned char dir_cur, dir_req;
   unsigned int rate_req, rate_cur;
   unsigned char handset_move;
-  int start_ha;
+  int final_ha;
   long start_time;
 };
 
@@ -345,10 +345,7 @@ int start_card(struct motor_card_cmd *cmd)
   params->dir_req = dir;
   params->dir_cur = params->dir_req;
   params->rate_req = rate;
-  if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
-    params->start_ha = G_motor_steps_ha;
-  else
-    params->start_ha = 0;
+  params->final_ha = 0;
   params->rate_cur = (rate > RATE_MIN) ? rate : RATE_MIN;;
   params->handset_move = FALSE;
   params->start_time = jiffies;
@@ -368,14 +365,8 @@ void end_card(void)
   }
   params->rate_req = RATE_MIN;
   params->dir_req = 0;
-  if ((params->dir_cur == 0) || (params->rate_cur >= RATE_MIN))
-  {
-    stop_move();
-    G_status &= ~MOTOR_STAT_MOVING;
-    if (G_status & MOTOR_STAT_TRACKING)
-      toggle_tracking(TRUE);
-    update_status();
-  }
+  if (G_status & MOTOR_STAT_TRACKING)
+    params->final_ha = G_motor_steps_ha;
 }
 
 void end_all(void)
@@ -552,6 +543,8 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   if (((new_hs & HS_DIR_MASK) == 0) && (G_status & MOTOR_STAT_CARD) && (params->handset_move))
   {
     params->dir_req = 0;
+    if (G_status & MOTOR_STAT_TRACKING)
+      params->final_ha = G_motor_steps_ha;
     return;
   }
   
@@ -586,10 +579,7 @@ void handset_handler(unsigned char old_hs, unsigned char new_hs)
   // Otherwise start cardinal move
   params->dir_req = dir;
   params->rate_req = rate;
-  if (((dir & DIR_HA_MASK) == 0) && ((G_status & MOTOR_STAT_TRACKING) > 0))
-    params->start_ha = G_motor_steps_ha;
-  else
-    params->start_ha = 0;
+  params->final_ha = 0;
   params->dir_cur = dir;
   params->rate_cur = rate > RATE_MIN ? rate : RATE_MIN;
   params->handset_move = TRUE;
@@ -708,7 +698,7 @@ void check_motors(struct work_struct *work)
         req_status_update = TRUE;
       }
     }
-    else
+    else if (new_limits & DIR_WEST_MASK)
       printk(KERN_INFO PRINTK_PREFIX "Western limit reached, but not setting zero point (currently at %d steps).\n", G_motor_steps_ha);
     G_hard_limits = new_limits;
   }
@@ -817,7 +807,14 @@ unsigned char check_cardmove(struct cardmove_params *params)
     printk(KERN_INFO PRINTK_PREFIX "Limit reached in move direction. Cancelling cardinal move.\n");
     stop_move();
     G_status &= ~(MOTOR_STAT_MOVING | MOTOR_STAT_TRACKING);
-    return FALSE;
+    return TRUE;
+  }
+  if (params->dir_cur == 0)
+  {
+    printk(KERN_DEBUG PRINTK_PREFIX "Cardinal move is under way, but current direction is 0. Cancelling cardinal move.\n");
+    stop_move();
+    G_status &= ~MOTOR_STAT_CARD;
+    return TRUE;
   }
 
   // Calculate (and set) required rate
@@ -842,12 +839,12 @@ unsigned char check_cardmove(struct cardmove_params *params)
   {
     unsigned char dir_new = 0;
     // If tracking is enabled, check if we need to catch up with sidereal motion (Western direction only)
-    if (params->start_ha != 0)
+    if (params->final_ha != 0)
     {
-      int new_targ_ha = params->start_ha - ha_track_time(params->start_time);
+      int new_targ_ha = params->final_ha - ha_track_time(params->start_time);
       dir_new = calc_direction(new_targ_ha, G_motor_steps_dec) & DIR_WEST_MASK;
     }
-    if (dir_new == params->dir_cur)
+    if ((dir_new != 0) && (dir_new == params->dir_cur))
       return FALSE;
     stop_move();
     if (dir_new != 0)
