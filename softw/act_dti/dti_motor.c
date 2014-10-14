@@ -510,20 +510,20 @@ static guchar check_warn(Dtimotor *objs)
 
 static void pointing_model_sky_tel(struct hastruct *ha, struct decstruct *dec)
 {
-/*  corr_atm_refract_sky_tel_equat(ha, dec);
+//  corr_atm_refract_sky_tel_equat(ha, dec);
   double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
-//   POINTING_MODEL_ST(ha_h,dec_d);
+  POINTING_MODEL_ST(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
-  convert_D_DMS_dec(dec_d, dec);*/
+  convert_D_DMS_dec(dec_d, dec);
 }
 
 static void pointing_model_tel_sky(struct hastruct *ha, struct decstruct *dec)
 {
-/*  double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
-//   POINTING_MODEL_TS(ha_h,dec_d);
+  double ha_h = convert_HMSMS_H_ha(ha), dec_d = convert_DMS_D_dec(dec);
+  POINTING_MODEL_TS(ha_h,dec_d);
   convert_H_HMSMS_ha(ha_h, ha);
   convert_D_DMS_dec(dec_d, dec);
-  corr_atm_refract_tel_sky_equat(ha, dec);*/
+//  corr_atm_refract_tel_sky_equat(ha, dec);
 }
 
 static gint read_motor_stat(gint motor_fd, guchar *motor_stat)

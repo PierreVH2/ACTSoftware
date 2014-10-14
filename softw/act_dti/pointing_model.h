@@ -223,6 +223,7 @@ model 2013/12/04
 
 // model 2014/04/20
 
+/*
 #define TS_NP    -0.009232
 #define TS_DAF   -0.025123
 #define TS_DAB    0.020236
@@ -258,5 +259,22 @@ model 2013/12/04
 
 #define PRINT_MODEL(str) \
   sprintf(str, "[HA: (TS_NP : %.2f) ; (TS_DAF : %.2f) ; (TS_DAB : %.2f)] [Dec: (TS_ID : %.2f) ; (TS_PDH : %.2f) ; (TS_PDH2 : %.2f)]", TS_NP, TS_DAF, TS_DAB, TS_ID, TS_PDH, TS_PDH2);
+*/
+  
+// model 2014/01/20
+
+#define IH     -729.67
+#define NP     -918.01
+
+#define POINTING_MODEL_TS(ha_h, dec_d) \
+  POINTING_APPLY_IH(ha_h,dec_d,IH); \
+  POINTING_APPLY_NP(ha_h,dec_d,NP);
+
+#define POINTING_MODEL_ST(ha_h, dec_d) \
+  POINTING_APPLY_NP(ha_h,dec_d,-NP); \
+  POINTING_APPLY_IH(ha_h,dec_d,-IH);
+
+#define PRINT_MODEL(str) \
+  sprintf(str, "(IH : %.2f) => (NP : %0.2f)", IH, NP);
 
 #endif
