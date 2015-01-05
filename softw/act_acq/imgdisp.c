@@ -6,6 +6,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <gtk/gtkgl.h>
 #include <GL/gl.h>
+#include <GL/glu.h>
 #include <act_log.h>
 #include <act_site.h>
 #include "acq_marshallers.h"
@@ -388,14 +389,46 @@ gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
     act_log_debug(act_log_msg("No image available, cannot calculate mouse RA."));
     return 0.0;
   }
+
+  GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
+  GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
+
+  if (!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
+  {
+    act_log_error(act_log_msg("Could not access GTK drawable GL context to draw GL scene."));
+    return TRUE;
+  }
+
+  GLint viewport[4];
+  GLdouble modelview[16];
+  GLdouble projection[16];
+  GLfloat winX, winY, winZ;
+  GLdouble posX, posY, posZ;
   
-  long img_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
+  glMatrixMode(GL_MODELVIEW_MATRIX);
+  glPopMatrix();
+  glGetDoublev (GL_MODELVIEW_MATRIX, modelview);
+  glGetDoublev (GL_PROJECTION_MATRIX, projection);
+  glGetIntegerv (GL_VIEWPORT, viewport);
+ 
+  winX = (float) imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
+  winY = (float) viewport[3] - (float)imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+  glReadPixels ((int)winX, (int)winY, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &winZ);
+ 
+  gluUnProject (winX, winY, winZ, modelview, projection, viewport, &posX, &posY, &posZ);
+  glPushMatrix();
+ 
+  gdk_gl_drawable_gl_end (gldrawable);
+  
+  return posX;
+
+/*  long img_x = imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
   double img_dec = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
   if (fabs(img_dec) > 89.99)
     img_dec = 89.99;
   struct rastruct ra;
   ccd_img_get_tel_pos(objs->img, &ra, NULL);
-  return convert_HMSMS_H_ra(&ra) + (img_x - ccd_img_get_img_width(objs->img)/2.0) * ccd_img_get_pixel_size_ra(objs->img) / 15.0 / cos(convert_DEG_RAD(img_dec)) / 3600.0;
+  return convert_HMSMS_H_ra(&ra) + (img_x - ccd_img_get_img_width(objs->img)/2.0) * ccd_img_get_pixel_size_ra(objs->img) / 15.0 / cos(convert_DEG_RAD(img_dec)) / 3600.0;*/
 }
 
 gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
@@ -592,6 +625,13 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   gulong dra_width = objs->dra_ccdimg->allocation.width, dra_height = objs->dra_ccdimg->allocation.height;
   gulong img_width = ccd_img_get_img_width(objs->img), img_height = ccd_img_get_img_height(objs->img);
   
+  struct rastruct tel_ra;
+  struct decstruct tel_dec;
+  ccd_img_get_tel_pos(objs->img, &tel_ra, &tel_dec);
+  gdouble ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&tel_ra)), dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&tel_dec));
+  gdouble img_height_rad = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
+  gdouble img_width_rad = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
+  
   GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
   GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
 
@@ -614,8 +654,15 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   if (objs->flip_ew)
     glScalef(-1.0, 1.0, 1.0);
   
-  // Draw the image from the CCD
   glMatrixMode(GL_MODELVIEW);
+  // Set up the matrix for drawing in spherical coordinates and push it for later use (drawing equatorial grid, picking RA and Dec coordinates) 
+  glLoadIdentity();
+  glScaled(2.0/sin(img_width_rad), -2.0/sin(img_height_rad), 1.0);
+  glRotated(convert_RAD_DEG(dec_rad), 1.0, 0.0, 0.0);
+  glRotated(-convert_RAD_DEG(ra_rad), 0.0, 1.0, 0.0);
+  glPushMatrix();
+
+  // Draw the image from the CCD
   glLoadIdentity();
   glTranslated(-1.0,-1.0,0.0);
   glScalef(2./dra_width, 2./dra_height, 1.0);
@@ -653,9 +700,6 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
         break;
       }
       glMatrixMode(GL_MODELVIEW);
-//       glLoadIdentity();
-//       glScalef(2.0/(float)ccdcntrl_get_max_width(), -2.0/(float)ccdcntrl_get_max_height(), 1.0);
-//       glTranslated(-(float)ccdcntrl_get_max_width()/2.0, -(float)ccdcntrl_get_max_height()/2.0, 1.0);
       float cur_line;
       glBegin (GL_LINES);
       for (cur_line = 0.0; cur_line < (float)img_width; cur_line += GRID_SPACING_PIXEL)
@@ -692,14 +736,6 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
     }
     case IMGDISP_GRID_EQUAT:
     {
-//      double ra_rad = convert_H_RAD(3.0);
-//      double dec_rad = convert_DEG_RAD(-50.0);
-      struct rastruct tel_ra;
-      struct decstruct tel_dec;
-      ccd_img_get_tel_pos(objs->img, &tel_ra, &tel_dec);
-      double ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&tel_ra)), dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&tel_dec));
-      double img_height_rad = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
-      double img_width_rad = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
       double ra_cent, dec_cent;
       double ra_low, ra_high, dec_low, dec_high;
       double dec_inc, ra_inc, num_divs;
@@ -737,10 +773,7 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
       }
       
       glMatrixMode(GL_MODELVIEW);
-      glLoadIdentity();
-      glScaled(2.0/sin(img_width_rad), -2.0/sin(img_height_rad), 1.0);
-      glRotated(convert_RAD_DEG(dec_rad), 1.0, 0.0, 0.0);
-      glRotated(-convert_RAD_DEG(ra_rad), 0.0, 1.0, 0.0);
+      glPopMatrix();
 
       double line_ra, line_dec;
       glColor3f(0.0,0.0,1.0);
@@ -760,6 +793,8 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
           glVertex3d(sin(line_ra)*cos(line_dec),sin(line_dec),cos(line_ra)*cos(line_dec));
         glEnd();
       }
+      
+      glPushMatrix();
 
       break;
     }
