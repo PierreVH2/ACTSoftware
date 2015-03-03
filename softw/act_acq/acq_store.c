@@ -5,8 +5,10 @@
 #include <pwd.h>
 #include <errno.h>
 #include <string.h>
+#include <math.h>
 #include <act_log.h>
 #include <act_ipc.h>
+#include <act_positastro.h>
 #include "acq_store.h"
 
 #define STAT_STORING      0x01
@@ -39,11 +41,11 @@ enum
 static guint acq_store_signals[LAST_SIGNAL] = { 0 };
 
 
+// static void acq_store_instance_init(GObject *acq_store);
+// static void acq_store_class_init(CcdImgClass *klass);
+// static void acq_store_instance_dispose(GObject *acq_store);
 static void acq_store_instance_init(GObject *acq_store);
-static void acq_store_class_init(CcdImgClass *klass);
-static void acq_store_instance_dispose(GObject *acq_store);
-static void acq_store_instance_init(GObject *acq_store);
-static void acq_store_class_init(CcdImgClass *klass);
+static void acq_store_class_init(AcqStoreClass *klass);
 static void acq_store_instance_dispose(GObject *acq_store);
 static void *store_pending_img(void *acq_store);
 static void store_next_img(AcqStore *objs);
@@ -90,12 +92,18 @@ AcqStore *acq_store_new(gchar const *sqlhost)
     act_log_error(act_log_msg("Error initialising MySQL image storage connection handler - %s.", mysql_error(store_conn)));
     return NULL;
   }
-  if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(store_conn, "localhost", "root", "nsW3", "tmp_sep", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);
     return NULL;
   }
+//   if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+//   {
+//     act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
+//     mysql_close(store_conn);
+//     return NULL;
+//   }
   
   act_log_debug(act_log_msg("Creating general MySQL connection."));
   MYSQL *genl_conn;
@@ -106,13 +114,20 @@ AcqStore *acq_store_new(gchar const *sqlhost)
     mysql_close(store_conn);
     return NULL;
   }
-  if (mysql_real_connect(genl_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(genl_conn, "localhost", "root", "nsW3", "tmp_sep", 0, NULL, 0) == NULL)
   {
-    act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(genl_conn)));
+    act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);
     mysql_close(genl_conn);
     return NULL;
   }
+//   if (mysql_real_connect(genl_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+//   {
+//     act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(genl_conn)));
+//     mysql_close(store_conn);
+//     mysql_close(genl_conn);
+//     return NULL;
+//   }
   
   // create object
   AcqStore *objs = g_object_new (acq_store_get_type(), NULL);
@@ -372,12 +387,114 @@ gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdc
   return TRUE;
 }
 
+PointList *acq_store_get_tycho_pattern(AcqStore *objs, struct rastruct *ra, struct decstruct *dec, float epoch, float radius_deg)
+{
+  if (objs->genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("MySQL connection not available."));
+    return FALSE;
+  }
+  double ra_d = convert_H_DEG(convert_HMSMS_H_ra(ra));
+  double dec_d = convert_DMS_D_dec(dec);
+  double ra_radius = radius_deg / cos(convert_DEG_RAD(dec_d));
+  gchar qrystr[256];
+  gchar quad_shift = 0;
+  if (dec_d + radius_deg >= 90.0)
+  {
+    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<90.0", ra_d-radius_deg);
+    quad_shift = 0;
+  }
+  else if (dec_d - radius_deg <= -90.0)
+  {
+    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg>-90.0", ra_d+radius_deg);
+    quad_shift = 0;
+  }
+  else if (ra_d - ra_radius < 0.0)
+  {
+    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg<%lf OR RAmdeg>%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d+ra_radius, ra_d-ra_radius+360.0);
+    quad_shift = -1;
+  }
+  else if (ra_d + ra_radius >= 360.0)
+  {
+    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg>%lf OR RAmdeg<%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius-360.0);
+    quad_shift = 1;
+  }
+  else
+  {
+    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND RAmdeg>%lf AND RAmdeg<%lf", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius);
+    quad_shift = 0;
+  }
+  act_log_debug(act_log_msg("SQL query: %s\n", qrystr));
+  
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(objs->genl_conn,qrystr);
+  result = mysql_store_result(objs->genl_conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Could not retrieve star catalog entries - %s.", mysql_error(objs->genl_conn)));
+    return NULL;
+  }
+  int rowcount = mysql_num_rows(result);
+  if ((rowcount <= 0) || (mysql_num_fields(result) != 4))
+  {
+    act_log_error(act_log_msg("Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return NULL;
+  }
+  act_log_debug(act_log_msg("%d objects to retrieve.", rowcount));
+  
+  PointList *list = point_list_new_with_length(rowcount);
+  if (list == NULL)
+  {
+    act_log_error(act_log_msg("Failed to create point list for star catalog entries."));
+    mysql_free_result(result);
+    return NULL;
+  }
+  
+  double point_ra, point_dec;
+  double point_pmra, point_pmdec;
+  struct rastruct orig_ra, prec_ra;
+  struct decstruct orig_dec, prec_dec;
+  while ((row = mysql_fetch_row(result)) != NULL)
+  {
+    int ret = 0;
+    ret += sscanf(row[0], "%lf", &point_ra);
+    ret += sscanf(row[1], "%lf", &point_dec);
+    ret += sscanf(row[2], "%lf", &point_pmra);
+    ret += sscanf(row[3], "%lf", &point_pmdec);
+    if (ret != 4)
+    {
+      act_log_error(act_log_msg("Failed to extract all parameters for point from database."));
+      continue;
+    }
+/*    point_ra += point_pmra * (epoch-2000.0) / 1000.0;
+    point_dec += point_pmdec * (epoch-2000.0) / 1000.0;
+    convert_H_HMSMS_ra(convert_DEG_H(point_ra), &orig_ra);
+    convert_D_DMS_dec(point_dec, &orig_dec);
+    precess_coord(&orig_ra, &orig_dec, 2000.0, epoch, &prec_ra, &prec_dec);
+    point_ra = convert_H_DEG(convert_HMSMS_H_ra(&prec_ra));
+    point_dec = convert_DMS_D_dec(&prec_dec);
+    if ((quad_shift < 0) && (point_ra > 360.0))
+      point_ra -= 360.0;
+    if ((quad_shift > 0) && (point_ra < 360.0))
+      point_ra += 360.0;*/
+    point_list_append(list, (point_ra-ra_d)*3600.0, (point_dec-dec_d)*3600.0);
+  }
+  act_log_debug(act_log_msg("Stars retrieved from database: %u", point_list_get_num_used(list)));
+  if (point_list_get_num_used(list) != (guint)rowcount)
+    act_log_normal(act_log_msg("Not all catalog stars extracted from database (%u should be %d).", point_list_get_num_used(list), rowcount));
+  return list;
+}
+
 void acq_store_append_image(AcqStore *objs, CcdImg *new_img)
 {
   int ret = pthread_mutex_lock(&objs->img_list_mutex);
   if (ret != 0)
-    /// TODO: Error message
-    act_log_error(act_log_msg("Failed to obtain mutex lock on pending images list - %d", ret));
+  {
+    act_log_error(act_log_msg("Failed to obtain mutex lock on pending images list - %d. New image will be lost", ret));
+    return;
+  }
   objs->img_pend = g_slist_append(objs->img_pend, G_OBJECT(new_img));
   g_object_ref(G_OBJECT(new_img));
   ret = pthread_mutex_unlock(&objs->img_list_mutex);
@@ -420,7 +537,7 @@ static void acq_store_instance_init(GObject *acq_store)
   objs->img_pend = NULL;
 }
 
-static void acq_store_class_init(CcdImgClass *klass)
+static void acq_store_class_init(AcqStoreClass *klass)
 {
   acq_store_signals[STATUS_UPDATE] = g_signal_new("store-status-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
   G_OBJECT_CLASS(klass)->dispose = acq_store_instance_dispose;
@@ -738,7 +855,7 @@ static gboolean store_reconnect(AcqStore *objs)
     act_log_error(act_log_msg("Error initialising MySQL image storage connection handler - %s.", mysql_error(store_conn)));
     return FALSE;
   }
-  if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(store_conn, objs->sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);

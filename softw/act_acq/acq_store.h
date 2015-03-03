@@ -1,11 +1,13 @@
-#ifndef __DOMESHUTTER_H__
-#define __DOMESHUTTER_H__
+#ifndef __ACQ_STORE_H__
+#define __ACQ_STORE_H__
 
 #include <glib.h>
 #include <glib-object.h>
 #include <pthread.h>
 #include <mysql/mysql.h>
 #include "acq_ccdcntrl.h"
+#include "ccd_img.h"
+#include "point_list.h"
 
 G_BEGIN_DECLS
 
@@ -43,6 +45,7 @@ gchar *acq_store_get_targ_name(AcqStore *objs, gulong targ_id);
 glong acq_store_search_user_id(AcqStore *objs, gchar const *user_name_pat);
 gchar *acq_store_get_user_name(AcqStore *objs, gulong user_id);
 gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdcap);
+PointList *acq_store_get_tycho_pattern(AcqStore *objs, struct rastruct *ra, struct decstruct *dec, float epoch, float radius_deg);
 void acq_store_append_image(AcqStore *objs, CcdImg *new_img);
 gboolean acq_store_idle(AcqStore *objs);
 gboolean acq_store_storing(AcqStore *objs);
@@ -51,4 +54,4 @@ gboolean acq_store_error_no_recov(AcqStore *objs);
 
 G_END_DECLS
 
-#endif   /* __DOMESHUTTER_H__ */
+#endif   /* __ACQ_STORE_H__ */
