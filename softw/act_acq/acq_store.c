@@ -41,9 +41,6 @@ enum
 static guint acq_store_signals[LAST_SIGNAL] = { 0 };
 
 
-// static void acq_store_instance_init(GObject *acq_store);
-// static void acq_store_class_init(CcdImgClass *klass);
-// static void acq_store_instance_dispose(GObject *acq_store);
 static void acq_store_instance_init(GObject *acq_store);
 static void acq_store_class_init(AcqStoreClass *klass);
 static void acq_store_instance_dispose(GObject *acq_store);
@@ -468,8 +465,8 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, struct rastruct *ra, stru
       act_log_error(act_log_msg("Failed to extract all parameters for point from database."));
       continue;
     }
-/*    point_ra += point_pmra * (epoch-2000.0) / 1000.0;
-    point_dec += point_pmdec * (epoch-2000.0) / 1000.0;
+    point_ra += point_pmra * (epoch-2000.0) / 1000.0 / 3600.0;
+    point_dec += point_pmdec * (epoch-2000.0) / 1000.0 / 3600.0;
     convert_H_HMSMS_ra(convert_DEG_H(point_ra), &orig_ra);
     convert_D_DMS_dec(point_dec, &orig_dec);
     precess_coord(&orig_ra, &orig_dec, 2000.0, epoch, &prec_ra, &prec_dec);
@@ -478,7 +475,7 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, struct rastruct *ra, stru
     if ((quad_shift < 0) && (point_ra > 360.0))
       point_ra -= 360.0;
     if ((quad_shift > 0) && (point_ra < 360.0))
-      point_ra += 360.0;*/
+      point_ra += 360.0;
     point_list_append(list, (point_ra-ra_d)*3600.0, (point_dec-dec_d)*3600.0);
   }
   act_log_debug(act_log_msg("Stars retrieved from database: %u", point_list_get_num_used(list)));
