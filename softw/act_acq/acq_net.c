@@ -101,28 +101,102 @@ AcqNet *acq_net_new (const gchar *host, const gchar *port)
 
 gboolean acq_net_targset_pending(AcqNet *acq_net)
 {
-  return acq_net->targset_msg != NULL;
+  return ((struct act_msg *)acq_net->pending_msg)->mtype == MT_TARG_SET;
 }
 
 gint acq_net_send_targset_response(AcqNet *acq_net, gdouble adj_ra_d, gdouble adj_dec_d, gboolean targ_cent)
 {
   if (!acq_net_targset_pending(acq_net))
   {
-    act_log_error(act_log_msg("Target set message response requested, but no message is pending."));
+    act_log_error(act_log_msg("Target set message response requested, but no target set message is pending."));
     return -1;
   }
-  struct act_msg_targset *targset_msg = &((struct act_msg *)acq_net->targset_msg).msg_targset;
-  targset_msg->adj_ra_h = convert_DEG_H(adj_ra_d/15.0);
-  targset_msg->adj_dec_d = adj_dec_d;
-  targset_msg->targ_cent = targ_cent;
-  int ret = acq_net_send(acq_net->net_chan, (struct act_msg *)acq_net->targset_msg);
+  struct act_msg *msg = (struct act_msg *)acq_net->pending_msg;
+  msg->msg_targset.adj_ra_h = convert_DEG_H(adj_ra_d/15.0);
+  msg->msg_targset.adj_dec_d = adj_dec_d;
+  msg->msg_targset.targ_cent = targ_cent;
+  int ret = acq_net_send(acq_net->net_chan, msg);
   if (ret < 0)
     act_log_error(act_log_msg("Failed to send target set response.");
   else
+    msg->mtype = 0;
+  return ret;
+}
+
+void acq_net_set_status(AcqNet *acq_net, gchar new_stat)
+{
+  acq_net->status = new_stat;
+}
+
+gchar acq_net_get_status(AcqNet *acq_net)
+{
+  return acq_net->status;
+}
+
+void acq_net_set_ccdcap_ready(AcqNet *acq_net, gboolean ready)
+{
+  struct act_msg *msg = (struct act_msg *)acq_net->dataccd_msg;
+  msg->mtype = ready ? MT_CCD_CAP : 0;
+}
+
+void acq_net_set_min_exp_t_s(AcqNet *acq_net, exp_t)
+{
+  struct act_msg *msg = (struct act_msg *)acq_net->dataccd_msg;
+  msg->msg_ccdcap.min_exp_t_s = exp_t;
+}
+
+void acq_net_set_max_exp_t_s(AcqNet *acq_net, exp_t)
+{
+  struct act_msg *msg = (struct act_msg *)acq_net->dataccd_msg;
+  msg->msg_ccdcap.max_exp_t_s = exp_t;
+}
+
+void acq_net_set_ccd_id(AcqNet *acq_net, const gchar *ccd_id)
+{
+  struct act_msg *msg = (struct act_msg *)acq_net->dataccd_msg;
+  snprintf(msg->msg_ccdcap.ccd_id, IPC_MAX_INSTRID_LEN-1, "%s", ccd_id);
+}
+
+gboolean acq_net_add_filter(AcqNet *acq_net, const gchar *name, guchar slot, gint db_id)
+{
+  struct act_msg *msg = (struct act_msg *)acq_net->dataccd_msg;
+  int i;
+  gboolean ret = FALSE;
+  for (i=0; i<IPC_MAX_NUM_FILTAPERS; i++)
   {
-    free(acq_net->targset_msg);
-    acq_net->targset_msg = NULL;
+    struct filtaper *filt = &msg.msg_ccdcap.filters[i];
+    if (filt->slot != 0)
+      continue;
+    filt->slot = slot;
+    filt->db_id = db_id;
+    snprintf(filt->name, IPC_MAX_FILTAPER_NAME_LEN-1, "%s", name);
+    ret = TRUE;
+    break;
   }
+  if (!ret)
+    act_log_debug(act_log_msg("Failed to add filter %s to filters list - no free space in array.", name));
+  return ret;
+}
+
+gboolean acq_net_dataccd_pending(AcqNet *acq_net)
+{
+  return ((struct act_msg *)acq_net->pending_msg)->mtype == MT_DATA_CCD;
+}
+
+gint acq_net_send_dataccd_response(AcqNet *acq_net, gchar status)
+{
+  if (!acq_net_dataccd_pending(acq_net))
+  {
+    act_log_error(act_log_msg("Data CCD message response requested, but no data CCD message is pending."));
+    return -1;
+  }
+  struct act_msg *msg = (struct act_msg *)acq_net->pending_msg;
+  msg->msg_dataccd.status = status;
+  int ret = acq_net_send(acq_net->net_chan, msg);
+  if (ret < 0)
+    act_log_error(act_log_msg("Failed to send data CCD response.");
+  else
+    msg->mtype = 0;
   return ret;
 }
 
@@ -133,21 +207,9 @@ static void acq_net_class_init(AcqNetClass *klass)
   acq_net_signals[CHANGE_USER] = g_signal_new("change-user", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__ULONG_STRING, G_TYPE_NONE, 2, G_TYPE_ULONG, G_TYPE_DOUBLE);
   acq_net_signals[CHANGE_TARG] = g_signal_new("change-target", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__ULONG_STRING, G_TYPE_NONE, 2, G_TYPE_ULONG, G_TYPE_DOUBLE);
   acq_net_signals[TARGSET_MSG_RECV] = g_signal_new("targset-msg", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
-  acq_net_signals[DATACCD] = g_signal_new("data-ccd", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__DOUBLE_DOUBLE, G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  acq_net_signals[DATACCD] = g_signal_new("data-ccd", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__OBJECT, G_TYPE_NONE, 1, G_TYPE_OBJECT);
   
   G_OBJECT_CLASS(klass)->dispose = acq_net_instance_dispose;
-  
-  
-  
-  STATREQ = 0,
-  TELCOORD,
-  GUISOCK,
-  CHANGE_USER,
-  CHANGE_TARG,
-  TARGSET_MSG_RECV,
-  CCDCAP,
-  DATACCD,
-  
 }
 
 static void acq_net_instance_init(GObject *acq_net)
@@ -155,7 +217,12 @@ static void acq_net_instance_init(GObject *acq_net)
   AcqNet *objs = ACQ_NET(acq_net);
   objs->net_chan = NULL;
   objs->net_watch_id = 0;
-  objs->targset_msg = NULL;
+  objs->pending_msg = malloc(sizeof(struct act_msg));
+  ((struct act_msg *)objs->pending_msg)->mtype = 0;
+  objs->status = PROGSTAT_STARTUP;
+  objs->dataccd_msg = malloc(sizeof(struct act_msg));
+  ((struct act_msg *)objs->dataccd_msg)->mtype = 0;
+  objs->ccdcap_pending = FALSE;
 }
 
 static void acq_net_instance_dispose(GObject *acq_net)
@@ -170,6 +237,16 @@ static void acq_net_instance_dispose(GObject *acq_net)
   {
     g_io_channel_unref(objs->net_chan);
     objs->net_chan = NULL;
+  }
+  if (objs->pending_msg != NULL)
+  {
+    free(objs->pending_msg);
+    objs->pending_msg = NULL;
+  }
+  if (objs->dataccd_msg != NULL)
+  {
+    free(objs->dataccd_msg);
+    objs->dataccd_msg = NULL;
   }
   G_OBJECT_CLASS(acq_net)->dispose(acq_net);
 }
@@ -228,13 +305,14 @@ static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer
   switch(msgbuf.mtype)
   {
     case MT_QUIT:
-      // call gtk quit
+      // Quit the main programme loop
+      gtk_main_quit();
       break;
     case MT_CAP:
       // fill in, respond
       break;
     case MT_STAT:
-      // signal?
+      // signal, generate response
       break;
     case MT_COORD:
       // signal, no response
@@ -243,7 +321,7 @@ static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer
       // signal, no response
       break;
     case MT_TIME:
-      // ignore
+      // signal, no response
       break;
     case MT_ENVIRON:
       // ignore
@@ -261,7 +339,7 @@ static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer
       // ignore
       break;
     case MT_CCD_CAP:
-      // signal
+      // signal, no response
       break;
     case MT_DATA_CCD:
       // signal
