@@ -8,10 +8,14 @@
 
 enum
 {
-  CHANGE_USER = 0,
+  STATREQ = 0,
+  TELCOORD,
+  GUISOCK,
+  CHANGE_USER,
   CHANGE_TARG,
-  COORD_MSG_RECV,
   TARGSET_MSG_RECV,
+  CCDCAP,
+  DATACCD,
   LAST_SIGNAL
 };
 
@@ -21,7 +25,7 @@ static guint acq_net_signals[LAST_SIGNAL] = { 0 };
 static void acq_net_class_init(DtiNetClass *klass);
 static void acq_net_instance_init(GObject *dti_net);
 static void acq_net_instance_dispose(GObject *dti_net);
-// static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer dti_net);
+static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer dti_net);
 
 
 GType acq_net_get_type (void)
@@ -122,21 +126,28 @@ gint acq_net_send_targset_response(AcqNet *acq_net, gdouble adj_ra_d, gdouble ad
   return ret;
 }
 
-gint acq_net_send_coord_corr(AcqNet *acq_net, gdouble adj_ra_h, gdouble adj_dec_d)
-{
-}
-
-// gint acq_net_send(AcqNet *acq_net, AcqMsg *msg)
-// {
-// }
-
 static void acq_net_class_init(AcqNetClass *klass)
 {
+  acq_net_signals[TELCOORD] = g_signal_new("coord-received", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__DOUBLE_DOUBLE, G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  acq_net_signals[GUISOCK] = g_signal_new("gui-socket", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__ULONG_STRING, G_TYPE_NONE, 2, G_TYPE_ULONG, G_TYPE_STRING);
   acq_net_signals[CHANGE_USER] = g_signal_new("change-user", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__ULONG_STRING, G_TYPE_NONE, 2, G_TYPE_ULONG, G_TYPE_DOUBLE);
   acq_net_signals[CHANGE_TARG] = g_signal_new("change-target", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__ULONG_STRING, G_TYPE_NONE, 2, G_TYPE_ULONG, G_TYPE_DOUBLE);
-  acq_net_signals[COORD_MSG_RECV] = g_signal_new("coord-received", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__DOUBLE_DOUBLE, G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
   acq_net_signals[TARGSET_MSG_RECV] = g_signal_new("targset-msg", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
+  acq_net_signals[DATACCD] = g_signal_new("data-ccd", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__DOUBLE_DOUBLE, G_TYPE_NONE, 2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+  
   G_OBJECT_CLASS(klass)->dispose = acq_net_instance_dispose;
+  
+  
+  
+  STATREQ = 0,
+  TELCOORD,
+  GUISOCK,
+  CHANGE_USER,
+  CHANGE_TARG,
+  TARGSET_MSG_RECV,
+  CCDCAP,
+  DATACCD,
+  
 }
 
 static void acq_net_instance_init(GObject *acq_net)
@@ -187,6 +198,84 @@ static gint acq_net_send(GIOChannel *channel, struct act_msg *msg)
   }
   return num_bytes;
 }
+
+static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer acq_net)
+{
+  (void) cond;
+  (void) acq_net;
+  struct act_msg msgbuf;
+  unsigned int num_bytes;
+  int status;
+  GError *error = NULL;
+  status = g_io_channel_read_chars (net_chan, (gchar *)&msgbuf, sizeof(msgbuf), &num_bytes, &error);
+  if (error != NULL)
+  {
+    act_log_error(act_log_msg("An error occurred while attempting to read message from network - ", error->message));
+    g_error_free(error);
+    return TRUE;
+  }
+  if (status != G_IO_STATUS_NORMAL)
+  {
+    act_log_error(act_log_msg("Incorrect status returned while attempting to read message from network."));
+    return TRUE;
+  }
+  if (num_bytes != sizeof(msgbuf))
+  {
+    act_log_error(act_log_msg("Received message has invalid length: %d", num_bytes));
+    return TRUE;
+  }
+  
+  switch(msgbuf.mtype)
+  {
+    case MT_QUIT:
+      // call gtk quit
+      break;
+    case MT_CAP:
+      // fill in, respond
+      break;
+    case MT_STAT:
+      // signal?
+      break;
+    case MT_COORD:
+      // signal, no response
+      break;
+    case MT_GUISOCK:
+      // signal, no response
+      break;
+    case MT_TIME:
+      // ignore
+      break;
+    case MT_ENVIRON:
+      // ignore
+      break;
+    case MT_TARG_CAP:
+      // ignore
+      break;
+    case MT_TARG_SET:
+      // signal
+      break;
+    case MT_PMT_CAP:
+      // ignore
+      break;
+    case MT_DATA_PMT:
+      // ignore
+      break;
+    case MT_CCD_CAP:
+      // signal
+      break;
+    case MT_DATA_CCD:
+      // signal
+      break;
+    default:
+  }
+  
+  
+  
+  DtiMsg *msg = dti_msg_new(&msgbuf, 0);
+  g_signal_emit(G_OBJECT(dti_net), dti_net_signals[MSG_RECV_SIGNAL], 0, msg);
+  return TRUE;
+}
+
 
 // 
 // static void dti_msg_instance_init(GObject *dti_msg);
