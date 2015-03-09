@@ -23,7 +23,7 @@ struct _AcqNet
   void *pending_msg;
   
   gchar status;
-  void *dataccd_msg;
+  void *ccdcap_msg;
   gboolean ccdcap_pending;
 };
 

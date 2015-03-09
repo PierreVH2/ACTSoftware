@@ -375,8 +375,6 @@ struct act_msg_targset
   int targ_id;
   //! Human-readable name for target
   char targ_name[MAX_TARGID_LEN];
-  //! Star (FALSE) or Sky (TRUE)
-  char sky;
   //! Right-ascension of target
   struct rastruct targ_ra;
   //! Declination of target
