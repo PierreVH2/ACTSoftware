@@ -40,8 +40,8 @@ gint acq_net_send_targset_response(AcqNet *acq_net, gdouble adj_ra_h, gdouble ad
 void acq_net_set_status(AcqNet *acq_net, gchar new_stat);
 gchar acq_net_get_status(AcqNet *acq_net);
 void acq_net_set_ccdcap_ready(AcqNet *acq_net, gboolean ready);
-void acq_net_set_min_exp_t_s(AcqNet *acq_net, exp_t);
-void acq_net_set_max_exp_t_s(AcqNet *acq_net, exp_t);
+void acq_net_set_min_exp_t_s(AcqNet *acq_net, gfloat exp_t);
+void acq_net_set_max_exp_t_s(AcqNet *acq_net, gfloat exp_t);
 void acq_net_set_ccd_id(AcqNet *acq_net, const gchar *ccd_id);
 gboolean acq_net_add_filter(AcqNet *acq_net, const gchar *name, guchar slot, gint db_id);
 gboolean acq_net_dataccd_pending(AcqNet *acq_net);

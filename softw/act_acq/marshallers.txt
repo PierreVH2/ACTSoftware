@@ -1,0 +1,6 @@
+# acq_ccdcntrl - acq-stat-update
+VOID:UCHAR,FLOAT
+# acq_net - coord-received, targset-start
+VOID:DOUBLE,DOUBLE
+# acq_net - change-target
+VOID:ULONG,STRING
