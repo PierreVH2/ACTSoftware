@@ -5,10 +5,8 @@
 #include <act_log.h>
 #include "acq_net.h"
 #include "ccd_img.h"
-#include "acq_ccdcntrl.h"
+#include "ccd_cntrl.h"
 #include "marshallers.h"
-
-/// TODO: Change targset_msg so coordinates are reported with signal
 
 #define PENDING_MSG_TARGSET(objs)  (&((struct act_msg *)objs->pending_msg)->content.msg_targset)
 #define PENDING_MSG_DATACCD(objs)  (&((struct act_msg *)objs->pending_msg)->content.msg_dataccd)
@@ -124,8 +122,6 @@ gint acq_net_send_targset_response(AcqNet *objs, gdouble adj_ra_d, gdouble adj_d
     act_log_error(act_log_msg("Target set message response requested, but no target set message is pending."));
     return -1;
   }
-//   struct act_msg *msg = (struct act_msg *)objs->pending_msg;
-//   struct act_msg_targset *msg_targset = &msg->content.msg_targset;
   PENDING_MSG_TARGSET(objs)->adj_ra_h = convert_DEG_H(adj_ra_d/15.0);
   PENDING_MSG_TARGSET(objs)->adj_dec_d = adj_dec_d;
   PENDING_MSG_TARGSET(objs)->targ_cent = targ_cent;
@@ -245,6 +241,32 @@ static void acq_net_instance_init(GObject *acq_net)
 static void acq_net_instance_dispose(GObject *acq_net)
 {
   AcqNet *objs = ACQ_NET(acq_net);
+  if (objs->ccdcap_msg != NULL)
+  {
+    free(objs->ccdcap_msg);
+    objs->ccdcap_msg = NULL;
+  }
+  if (objs->pending_msg != NULL)
+  {
+    gboolean pending_response = FALSE;
+    if ((acq_net_targset_pending(objs) && (objs->net_chan != NULL))
+    {
+      pending_response = TRUE;
+      PENDING_MSG_TARGSET(objs)->status = OBSNSTAT_CANCEL;
+    }
+    else if ((acq_net_dataccd_pending(objs) && (objs->net_chan != NULL))
+    {
+      pending_response = TRUE;
+      PENDING_MSG_DATACCD(objs)->status = OBSNSTAT_CANCEL;
+    }
+    if (pending_response)
+    {
+      if (acq_net_send(objs->net_chan, (struct act_msg *)objs->pending_msg) < 0)
+        act_log_error(act_log_msg("Object being destroyed while messages pending, but failed to send response."));
+    }
+    free(objs->pending_msg);
+    objs->pending_msg = NULL;
+  }
   if (objs->net_watch_id != 0)
   {
     g_source_remove(objs->net_watch_id);
@@ -254,16 +276,6 @@ static void acq_net_instance_dispose(GObject *acq_net)
   {
     g_io_channel_unref(objs->net_chan);
     objs->net_chan = NULL;
-  }
-  if (objs->pending_msg != NULL)
-  {
-    free(objs->pending_msg);
-    objs->pending_msg = NULL;
-  }
-  if (objs->ccdcap_msg != NULL)
-  {
-    free(objs->ccdcap_msg);
-    objs->ccdcap_msg = NULL;
   }
   G_OBJECT_CLASS(acq_net)->dispose(acq_net);
 }

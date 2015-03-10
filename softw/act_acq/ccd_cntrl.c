@@ -8,8 +8,8 @@
 #include <ccd_defs.h>
 #include <act_log.h>
 #include <act_positastro.h>
-#include "acq_ccdcntrl.h"
-#include "acq_marshallers.h"
+#include "ccdcntrl.h"
+#include "marshallers.h"
 
 #define DATETIME_TO_SEC 60
 #define TEL_POS_TO_SEC 60
@@ -314,6 +314,26 @@ CcdCntrl *ccd_cntrl_new (void)
   return objs;
 }
 
+gfloat ccd_cntrl_get_min_exp_t_sec(CcdCntrl *objs)
+{
+  return objs->min_exp_t_s;
+}
+
+gfloat ccd_cntrl_get_max_exp_t_sec(CcdCntrl *objs)
+{
+  return objs->max_exp_t_s;
+}
+
+gushort ccd_cntrl_get_max_width(CcdCntrl *objs)
+{
+  return objs->max_width_px;
+}
+
+gushort ccd_cntrl_get_max_height(CcdCntrl *objs)
+{
+  return objs->max_height_px;
+}
+
 gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
 {
   if (objs->max_exp_t_s == objs->min_exp_t_s)
@@ -363,14 +383,10 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
   if (objs->tel_pos_to_id == 0)
   {
     act_log_error(act_log_msg("Telescope RA and Dec not available. Storing dummy RA and Dec in image header."));
-    struct rastruct tmp_ra;
-    struct decstruct tmp_dec;
-    convert_H_HMSMS_ra(0.0, &tmp_ra);
-    convert_D_DMS_dec(0.0, &tmp_dec);
-    ccd_img_set_tel_pos(new_img, &tmp_ra, &tmp_dec);
+    ccd_img_set_tel_pos(new_img, 0.0, 0.0);
   }
   else
-    ccd_img_set_tel_pos(new_img, &objs->tel_ra, &objs->tel_dec);
+    ccd_img_set_tel_pos(new_img, objs->ra_d, objs->dec_d);
   ccd_img_set_img_type(new_img, cmd->img_type);
   ccd_img_set_exp_t(new_img, cmd->exp_t_s);
   ccd_img_set_window(new_img, cmd->win_start_x, cmd->win_start_y, cmd->win_width, cmd->win_height, cmd->prebin_x, cmd->prebin_y);
@@ -442,31 +458,10 @@ gboolean ccd_cntrl_stat_readout(guchar status)
   return (status & CCD_READING_OUT) > 0;
 }
 
-void ccd_cntrl_set_datetime(CcdCntrl *objs, struct datestruct const *unid, struct timestruct const *unit)
+void ccd_cntrl_set_tel_pos(CcdCntrl *objs, gfloat tel_ra_d, gfloat tel_dec_d)
 {
-  if ((unid == NULL) || (unit == NULL))
-  {
-    act_log_error(act_log_msg("Invalid input parameters."));
-    return;
-  }
-  memcpy(&objs->unid, unid, sizeof(struct datestruct));
-  memcpy(&objs->unit, unit, sizeof(struct timestruct));
-  if (objs->datetime_to_id != 0)
-  {
-    g_source_remove(objs->datetime_to_id);
-    objs->datetime_to_id = g_timeout_add_seconds(DATETIME_TO_SEC, datetime_timeout, objs);
-  }
-}
-
-void ccd_cntrl_set_tel_pos(CcdCntrl *objs, struct rastruct const *ra, struct decstruct const *dec)
-{
-  if ((ra == NULL) || (dec == NULL))
-  {
-    act_log_error(act_log_msg("Invalid input parameters."));
-    return;
-  }
-  memcpy(&objs->tel_ra, ra, sizeof(struct rastruct));
-  memcpy(&objs->tel_dec, dec, sizeof(struct decstruct));
+  objs->ra_d = tel_ra_d;
+  objs->dec_d = tel_dec_d;
   if (objs->tel_pos_to_id != 0)
   {
     g_source_remove(objs->tel_pos_to_id);
@@ -484,12 +479,8 @@ static void ccd_cntrl_instance_init(GObject *ccd_cntrl)
   objs->win_width = objs->win_height = 0;
   objs->prebin_x = objs->prebin_y = 0;
   
-  memset(&objs->unid, 0, sizeof(struct datestruct));
-  memset(&objs->unit, 0, sizeof(struct timestruct));
-  objs->datetime_to_id = 0;
-  
-  memset(&objs->tel_ra, 0, sizeof(struct rastruct));
-  memset(&objs->tel_dec, 0, sizeof(struct decstruct));
+  objs->ra_d = 0.0;
+  objs->dec_d = 0.0;
   objs->tel_pos_to_id = 0;
   
   objs->ccd_id = NULL;

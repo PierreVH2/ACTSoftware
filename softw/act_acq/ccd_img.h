@@ -44,8 +44,7 @@ struct _CcdImg
   /// The length of the exposure
   gfloat exp_t_s;
   /// Starting date and time of exposure
-  struct datestruct start_unid;
-  struct timestruct start_unit;
+  glong start_sec, start_nanosec;
   /// Target name and DB id
   gchar *targ_name;
   gulong targ_id;
@@ -53,8 +52,7 @@ struct _CcdImg
   gchar *user_name;
   gulong user_id;
   /// Telescope coordinates at exposure start
-  struct rastruct tel_ra;
-  struct decstruct tel_dec;
+  gfloat ra_d, dec_d;
   /// Size of pixels in arcseconds
   gfloat pix_size_ra;
   gfloat pix_size_dec;
@@ -86,16 +84,16 @@ void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, 
 void ccd_img_set_pixel_size(CcdImg *objs, gfloat size_ra_asec, gfloat size_dec_asec);
 gfloat ccd_img_get_pixel_size_ra(CcdImg const *objs);
 gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs);
-void ccd_img_get_start_datetime(CcdImg const *objs, struct datestruct *start_unid, struct timestruct *start_unit);
-void ccd_img_set_start_datetime(CcdImg *objs, struct datestruct const *start_unid, struct timestruct const *start_unit);
+void ccd_img_get_start_datetime(CcdImg const *objs, glong *img_start_sec, glong *img_start_nanosec);
+void ccd_img_set_start_datetime(CcdImg *objs, glong img_start_sec, glong img_start_nanosec);
 gchar const *ccd_img_get_targ_name(CcdImg const *objs);
 gulong ccd_img_get_targ_id(CcdImg const *objs);
 void ccd_img_set_target(CcdImg *objs, gulong targ_id, gchar const *targ_name);
 gchar const *ccd_img_get_user_name(CcdImg const *objs);
 gulong ccd_img_get_user_id(CcdImg const *objs);
 void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name);
-void ccd_img_get_tel_pos(CcdImg const *objs, struct rastruct *tel_ra, struct decstruct *tel_dec);
-void ccd_img_set_tel_pos(CcdImg *objs, struct rastruct const *tel_ra, struct decstruct const *tel_dec);
+void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat tel_dec_d);
+void ccd_img_set_tel_pos(CcdImg *objs, gfloat tel_ra_d, gfloat tel_dec_d);
 gulong ccd_img_get_img_len(CcdImg const *objs);
 gfloat const *ccd_img_get_img_data(CcdImg const *objs);
 void ccd_img_set_img_data(CcdImg *objs, gulong img_len, gfloat const *img_data);

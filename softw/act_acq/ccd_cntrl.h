@@ -9,6 +9,8 @@
 
 G_BEGIN_DECLS
 
+/// TODO: Add cancelled status
+
 #define CCD_CMD_TYPE                (ccd_cmd_get_type())
 #define CCD_CMD(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCD_CMD_TYPE, CcdCmd))
 #define CCD_CMD_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCD_CMD_TYPE, CcdCmdClass))
@@ -95,12 +97,7 @@ struct _CcdCntrl
   gushort max_width_px, max_height_px;
   gushort ra_width_asec, dec_height_asec;
 
-  struct datestruct unid;
-  struct timestruct unit;
-  gint datetime_to_id;
-  
-  struct rastruct tel_ra;
-  struct decstruct tel_dec;
+  gfloat ra_d, dec_d;
   gint tel_pos_to_id;
   
   CcdImg *cur_img;
@@ -124,6 +121,10 @@ struct _CcdCntrlClass
 GType ccd_cntrl_get_type (void);
 CcdCntrl *ccd_cntrl_new (void);
 // gint ccd_cntrl_set_window(CcdCntrl *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y);
+gfloat ccd_cntrl_get_min_exp_t_sec(CcdCntrl *objs);
+gfloat ccd_cntrl_get_max_exp_t_sec(CcdCntrl *objs);
+gushort ccd_cntrl_get_max_width(CcdCntrl *objs);
+gushort ccd_cntrl_get_max_height(CcdCntrl *objs);
 gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd);
 void ccd_cntrl_cancel_exp(CcdCntrl *objs);
 gfloat ccd_cntrl_get_integ_trem(CcdCntrl *objs);
@@ -133,7 +134,7 @@ gboolean ccd_cntrl_stat_err_retry(guchar status);
 gboolean ccd_cntrl_stat_err_no_recov(guchar status);
 gboolean ccd_cntrl_stat_integrating(guchar status);
 gboolean ccd_cntrl_stat_readout(guchar status);
-void ccd_cntrl_set_datetime(CcdCntrl *objs, struct datestruct const *unid, struct timestruct const *unit);
+void ccd_cntrl_set_tel_pos(CcdCntrl *objs, gfloat tel_ra_d, gfloat tel_dec_d);
 
 G_END_DECLS
 

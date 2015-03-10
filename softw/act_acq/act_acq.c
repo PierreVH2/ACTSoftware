@@ -286,150 +286,76 @@ int main(int argc, char** argv)
   port = portarg->sval[0];
   arg_freetable(argtable,sizeof(argtable)/sizeof(argtable[0]));
   
-  if ((G_netsock_fd = setup_net(host, port)) < 0)
+  CcdCntrl *cntrl = ccd_cntrl_new();
+  if (cntrl == NULL)
   {
-    act_log_error(act_log_msg("Error setting up network connection."));
+    act_log_error(act_log_msg("Failed to create CCD control object"));
     return 1;
   }
-  fcntl(G_netsock_fd, F_SETOWN, getpid());
-  int oflags = fcntl(G_netsock_fd, F_GETFL);
-  fcntl(G_netsock_fd, F_SETFL, oflags | FASYNC);
   
-  GIOChannel *gio_signal_in = g_io_channel_unix_new(G_signal_pipe[0]);
-  GError *error = NULL;
-  g_io_channel_set_encoding(gio_signal_in, NULL, &error);
-  if (error != NULL)
-  {
-    act_log_error(act_log_msg("Failed to set g_io_channel encoding"));
-    return 1;
-  }
-  g_io_channel_set_flags(gio_signal_in, g_io_channel_get_flags(gio_signal_in) | G_IO_FLAG_NONBLOCK, &error);
-  if (error != NULL)
-  {
-    act_log_error(act_log_msg("Failed to set IO flags for g_io_channel - %s", error->message));
-    return 1;
-  }
-  int iowatch_id = g_io_add_watch_full (gio_signal_in, G_PRIORITY_HIGH, G_IO_IN | G_IO_PRI, process_signal, NULL, NULL);
-
   AcqStore *store = acq_store_new(host);
+  if (store == NULL)
+  {
+    act_log_error(act_log_msg("Failed to create database storage link"));
+    g_object_unref(cntrl);
+    return 1;
+  }
+  
+  AcqNet *net = acq_net_new(host, port);
+  if (net == NULL)
+  {
+    act_log_error(act_log_msg("Failed to establish network connection."));
+    g_object_unref(cntrl);
+    g_object_unref(store);
+    return 1;
+  }
+  
+  // Create GUI
+  GtkWidget *box_main = gtk_vbox_new(FALSE, TABLE_PADDING);
+  GtkWidget *imgdisp  = imgdisp_new();
+  gtk_box_pack_start(GTK_BOX(box_main), imgdisp, TRUE, TRUE, TABLE_PADDING);
+  GtkWidget* box_controls = gtk_table_new(3,3,TRUE);
+  gtk_box_pack_start(GTK_BOX(box_main), box_controls, TRUE, TRUE, TABLE_PADDING);
+  
+  gtk_widget_set_size_request(imgdisp, ccd_cntrl_get_max_width(cntrl), ccd_cntrl_get_max_height(cntrl));
+  imgdisp_set_window(imgdisp, 0, 0, ccd_cntrl_get_max_width(cntrl), ccd_cntrl_get_max_height(cntrl));
+  
+  GtkWidget *lbl_mouse_view = gtk_label_new("");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_mouse_view, 0,1,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *lbl_mouse_equat = gtk_label_new("");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_mouse_equat, 1,2,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *btn_view_param = gtk_button_new_with_label("View...");
+  gtk_table_attach(GTK_TABLE(box_controls), btn_view_param, 2,3,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  
+  GtkWidget *evb_ccd_stat = gtk_event_box_new();
+  gtk_table_attach(GTK_TABLE(box_controls), evb_ccd_stat, 0,1,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *lbl_ccd_stat = gtk_label_new("IDLE");
+  gtk_container_add(GTK_CONTAINER(evb_ccd_stat), lbl_ccd_stat);
+  GtkWidget *lbl_exp_trem = gtk_label_new("");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_trem, 1,2,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *evb_exp_reprem = gtk_label_new("");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_reprem, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  
+  GtkWidget *lbl_auto = gtk_label_new("Manual");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_auto, 0,1,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *btn_expose = gtk_button_new_with_label("Expose...");
+  gtk_table_attach(GTK_TABLE(box_controls), btn_expose, 1,2,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *btn_cancel = gtk_button_new_with_label("Cancel");
+  gtk_table_attach(GTK_TABLE(box_controls), btn_cancel, 2,3,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  
+  // Connect signals
   
   
-  act_log_normal(act_log_msg("Entering main loop."));
+  act_log_debug(act_log_msg("Entering main loop."));
   if (GUICHECK_LOOP_PERIOD % 1000 == 0)
     guicheck_to_id = g_timeout_add_seconds(GUICHECK_LOOP_PERIOD/1000, guicheck_timeout, box_main);
   else
     guicheck_to_id = g_timeout_add(GUICHECK_LOOP_PERIOD, guicheck_timeout, box_main);
   gtk_main();
   
-  
-  g_source_remove(guicheck_to_id);
-  g_source_remove(iowatch_id);
-  close(G_netsock_fd);
   act_log_normal(act_log_msg("Exiting"));
-  
-  
-  
-  
-
-  memset(&G_form_objs, 0, sizeof(struct formobjects));
-  GtkWidget* box_main = gtk_table_new(2,5,TRUE);
-  G_form_objs.box_main = box_main;
-  g_object_ref(box_main);
-  
-  GtkWidget *btn_loctd = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_loctd = gtk_bin_get_child(GTK_BIN(btn_loctd));
-  G_form_objs.lbl_big_loctd = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_loctd, 0,1,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_loctd), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_loctd);
-  
-  GtkWidget *btn_unitd = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_unitd = gtk_bin_get_child(GTK_BIN(btn_unitd));
-  G_form_objs.lbl_big_unitd = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_unitd, 1,2,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_unitd), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_unitd);
-  
-  GtkWidget *btn_sidt = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_sidt = gtk_bin_get_child(GTK_BIN(btn_sidt));
-  G_form_objs.lbl_big_sidt = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_sidt, 2,3,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_sidt), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_sidt);
-  
-  GtkWidget *btn_gjd = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_gjd = gtk_bin_get_child(GTK_BIN(btn_gjd));
-  G_form_objs.lbl_big_gjd = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_gjd, 3,4,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_gjd), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_gjd);
-  
-  GtkWidget *btn_hjd = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_hjd = gtk_bin_get_child(GTK_BIN(btn_hjd));
-  G_form_objs.lbl_big_hjd = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_hjd, 4,5,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_hjd), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_hjd);
-  
-  GtkWidget *btn_ra = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_ra = gtk_bin_get_child(GTK_BIN(btn_ra));
-  G_form_objs.lbl_big_ra = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_ra, 0,1,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_ra), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_ra);
-  
-  GtkWidget *btn_ha = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_ha = gtk_bin_get_child(GTK_BIN(btn_ha));
-  G_form_objs.lbl_big_ha = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_ha, 1,2,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_ha), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_ha);
-  
-  GtkWidget *btn_dec = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_dec = gtk_bin_get_child(GTK_BIN(btn_dec));
-  G_form_objs.lbl_big_dec = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_dec, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_dec), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_dec);
-  
-  GtkWidget *btn_alt = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_alt = gtk_bin_get_child(GTK_BIN(btn_alt));
-  G_form_objs.lbl_big_alt = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_alt, 3,4,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_alt), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_alt);
-  
-  GtkWidget *btn_azm = gtk_toggle_button_new_with_label("N/A");
-  G_form_objs.lbl_azm = gtk_bin_get_child(GTK_BIN(btn_azm));
-  G_form_objs.lbl_big_azm = NULL;
-  gtk_table_attach(GTK_TABLE(box_main), btn_azm, 4,5,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, 3,3);
-  g_signal_connect(G_OBJECT(btn_azm), "toggled", G_CALLBACK(create_big_dialog), &G_form_objs.lbl_big_azm);
-  
-  sigset_t sigset;
-  sigemptyset(&sigset);
-  struct sigaction sa = { .sa_handler=pipe_signals, .sa_mask=sigset, .sa_flags=0, .sa_restorer=NULL };
-  if (sigaction(SIGIO, &sa, NULL) != 0)
-  {
-    act_log_error(act_log_msg("Could not attach signal handler to SIGIO."));
-    act_log_error(act_log_msg("Exiting"));
-    return 1;
-  }
-  if (pipe(G_signal_pipe)) 
-  {
-    act_log_error(act_log_msg("Error creating UNIX pipe for signal processing pipeline"));
-    return 1;
-  }
-  oflags = fcntl(G_signal_pipe[1], F_GETFL);
-  fcntl(G_signal_pipe[1], F_SETFL, oflags | O_NONBLOCK);
-  
-  act_log_normal(act_log_msg("Entering main loop."));
-  int disptimes_to_id = g_timeout_add(DISPTIMES_LOOP_PERIOD, disptimes_timeout, NULL);
-  struct timeout_objects to_objs;
-  to_objs.timeout_period=DEFAULT_LOOP_PERIOD;
-  to_objs.timeout_id = g_timeout_add (to_objs.timeout_period, timeout, &to_objs);
-  int guicheck_to_id;
-  if (GUICHECK_LOOP_PERIOD % 1000 == 0)
-    guicheck_to_id = g_timeout_add_seconds(GUICHECK_LOOP_PERIOD/1000, guicheck_timeout, box_main);
-  else
-    guicheck_to_id = g_timeout_add(GUICHECK_LOOP_PERIOD, guicheck_timeout, box_main);
-  gtk_main();
-  g_source_remove(disptimes_to_id);
-  g_source_remove(to_objs.timeout_period);
-  g_source_remove(guicheck_to_id);
-  g_source_remove(iowatch_id);
-  close(G_netsock_fd);
-  close(G_time_fd);
-  act_log_normal(act_log_msg("Exiting"));
+  g_object_unref(net);
+  g_object_unref(store);
+  g_object_unref(cntrl);
   return 0;
 }

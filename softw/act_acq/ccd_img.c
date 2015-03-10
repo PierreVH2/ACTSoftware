@@ -122,18 +122,18 @@ gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs)
   return objs->pix_size_dec;
 }
 
-void ccd_img_get_start_datetime(CcdImg const *objs, struct datestruct *start_unid, struct timestruct *start_unit)
+void ccd_img_get_start_datetime(CcdImg const *objs, glong *img_start_sec, glong *img_start_nanosec)
 {
-  if (start_unid != NULL)
-    memcpy(start_unid, &objs->start_unid, sizeof(struct datestruct));
-  if (start_unit != NULL)
-    memcpy(start_unit, &objs->start_unit, sizeof(struct timestruct));
+  if (img_start_sec != NULL)
+    *img_start_sec = objs->start_sec;
+  if (img_start_nanosec != NULL)
+    *img_start_nanosec = objs->start_nanosec;
 }
 
-void ccd_img_set_start_datetime(CcdImg *objs, struct datestruct const *start_unid, struct timestruct const *start_unit)
+void ccd_img_set_start_datetime(CcdImg *objs, glong img_start_sec, glong img_start_nanosec)
 {
-  memcpy(&objs->start_unid, start_unid, sizeof(struct datestruct));
-  memcpy(&objs->start_unit, start_unit, sizeof(struct timestruct));
+  objs->start_sec = img_start_sec;
+  objs->start_nanosec = img_start_nanosec;
 }
 
 gchar const *ccd_img_get_targ_name(CcdImg const *objs)
@@ -172,18 +172,18 @@ void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name)
   objs->user_name = g_strdup(user_name);
 }
 
-void ccd_img_get_tel_pos(CcdImg const *objs, struct rastruct *tel_ra, struct decstruct *tel_dec)
+void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat tel_dec_d)
 {
-  if (tel_ra != NULL)
-    memcpy(tel_ra, &objs->tel_ra, sizeof(struct rastruct));
-  if (tel_dec != NULL)
-    memcpy(tel_dec, &objs->tel_dec, sizeof(struct decstruct));
+  if (tel_ra_d != NULL)
+    *tel_ra_d = objs->ra_d;
+  if (tel_dec_d != NULL)
+    *tel_dec_d = objs->dec_d;
 }
 
-void ccd_img_set_tel_pos(CcdImg *objs, struct rastruct const *tel_ra, struct decstruct const *tel_dec)
+void ccd_img_set_tel_pos(CcdImg *objs, gfloat tel_ra_d, gfloat tel_dec_d)
 {
-  memcpy(&objs->tel_ra, tel_ra, sizeof(struct rastruct));
-  memcpy(&objs->tel_dec, tel_dec, sizeof(struct decstruct));
+  objs->ra_d = tel_ra_d;
+  objs->dec_d = tel_dec_d;
 }
 
 gulong ccd_img_get_img_len(CcdImg const *objs)
@@ -212,14 +212,14 @@ static void ccd_img_instance_init(GObject *ccd_img)
   objs->win_start_x = objs->win_start_y = 0;
   objs->win_width = objs->win_height = 0;
   objs->exp_t_s = 0.0;
-  memset(&objs->start_unid, 0, sizeof(struct datestruct));
-  memset(&objs->start_unit, 0, sizeof(struct timestruct));
+  objs->start_sec = 0;
+  objs->start_nanosec = 0;
   objs->targ_name = NULL;
   objs->targ_id = 0;
   objs->user_name = NULL;
   objs->user_id = 0;
-  memset(&objs->tel_ra, 0, sizeof(struct rastruct));
-  memset(&objs->tel_dec, 0, sizeof(struct decstruct));
+  objs->ra_d = 0.0;
+  objs->dec_d = 0.0;
   objs->pix_size_ra = objs->pix_size_dec = 0.0;
   objs->img_len = 0;
   objs->img_data = NULL;

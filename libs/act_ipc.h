@@ -203,17 +203,6 @@ enum
 /// PMT photon tagging available
 #define IPC_PMT_MODE_PHOTTAG       0x02
 
-/// CCD frame type enumeration
-enum
-{
-  IPC_FRAME_TYPE_OBJECT = 1,
-  IPC_FRAME_TYPE_BIAS,
-  IPC_FRAME_TYPE_DARK,
-  IPC_FRAME_TYPE_FLAT
-};
-/** \} */
-
-
 /*! \name Filter/Aperture info struct
  */
 struct filtaper
@@ -379,8 +368,6 @@ struct act_msg_targset
   struct rastruct targ_ra;
   //! Declination of target
   struct decstruct targ_dec;
-  //! Epoch of target in fractional years since 0 AD.
-  float targ_epoch;
   //! Adjustment in ra
   double adj_ra_h;
   //! Adjustment in declination from dec
@@ -428,11 +415,9 @@ struct act_msg_datapmt
   //! Star (FALSE) or Sky (TRUE)
   char sky;
   //! Right-ascension of target.
-  struct rastruct targ_ra;
+//   struct rastruct targ_ra;
   //! Declination of target.
-  struct decstruct targ_dec;
-  //! Epoch of target coordinates in fractional years since 0 AD.
-  float targ_epoch;
+//   struct decstruct targ_dec;
   //! PMT mode (must have been defined in pmt_mode in pmtcap message).
   unsigned char pmt_mode;
   //! Sample period in nanoseconds.
@@ -471,8 +456,6 @@ struct act_msg_dataccd
   unsigned short dataccd_stage;
   //! Automatic/robotic mode
   unsigned char mode_auto;
-  //! Frame type - must be one of defined enum types
-  unsigned char frame_type;
   //! Internal identifier for user
   int user_id;
   //! Internal target identifier.
