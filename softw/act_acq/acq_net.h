@@ -35,6 +35,7 @@ struct _AcqNetClass
 
 GType acq_net_get_type (void);
 AcqNet *acq_net_new (const gchar *host, const gchar *port);
+gboolean acq_net_request_guisocket(AcqNet *acq_net);
 gboolean acq_net_targset_pending(AcqNet *acq_net);
 gint acq_net_send_targset_response(AcqNet *acq_net, gdouble adj_ra_h, gdouble adj_dec_d, gboolean targ_cent);
 void acq_net_set_status(AcqNet *acq_net, gchar new_stat);

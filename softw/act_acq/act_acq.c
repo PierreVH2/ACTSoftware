@@ -1,3 +1,38 @@
+#include <gtk/gtk.h>
+#include "imgdisp.h"
+#include "acq_net.h"
+#include "acq_store.h"
+#include "ccd_cntrl.h"
+#include "ccd_img.h"
+
+enum
+{
+  MODE_IDLE,
+  MODE_MANUAL_EXP,
+  MODE_TARGSET_EXP,
+  MODE_TARGSET_CENT,
+  MODE_DATACCD_EXP
+};
+
+struct acq_objects
+{
+  gint mode;
+  CcdCntrl *cntrl;
+  AcqStore *store;
+  AcqNet *net;
+  
+  GtkWidget *box_main;
+  GtkWidget *imgdisp;
+  
+  GtkWidget *prog_stat;
+  GtkWidget *lbl_ccd_stat;
+  GtkWidget *lbl_exp_rem;
+  
+  GtkWidget *lbl_store_stat;
+  GtkWidget *btn_expose;
+  GtkWidget *btn_cancel;
+};
+
 /** \brief Callback when main plug containing all GUI objects is destroyed.
  * \param plug GTK plug object.
  * \param user_data Contents of GTK plug.
@@ -209,14 +244,6 @@ gboolean process_signal(GIOChannel *source, GIOCondition cond, gpointer user_dat
   return TRUE;
 }
 
-gboolean guicheck_timeout(gpointer user_data)
-{
-  unsigned char main_embedded = gtk_widget_get_parent(GTK_WIDGET(user_data)) != NULL;
-  if (!main_embedded)
-    request_guisock();
-  return TRUE;
-}
-
 /** \brief Main programme loop.
  * \param user_data Pointer to struct formobjects which contains all data relevant to this function.
  * \return Return FALSE if main loop should not be called again, otherwise always return TRUE.
@@ -245,6 +272,54 @@ to_objs->timeout_period = DEFAULT_LOOP_PERIOD - G_msg_time.loct.milliseconds;
 g_timeout_add(to_objs->timeout_period, timeout, user_data);
 return FALSE;
 }*/
+  return TRUE;
+}
+
+
+
+
+
+
+
+
+gboolean imgdisp_mouse_move_equat(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_mouse_view)
+{
+  gfloat ra_h = imgdisp_coord_ra(imgdisp, motdata->x, motdata->y);
+  gfloat dec_d = imgdisp_coord_dec(imgdisp, motdata->x, motdata->y);
+  
+  struct rastruct ra;
+  convert_H_HMSMS_ra(ra_h, &ra);
+  char *ra_str = ra_to_str(&ra);
+  struct decstruct dec;
+  convert_D_DMS_dec(dec_d, &dec);
+  char *dec_str = dec_to_str(&dec);
+  
+  char str[256];
+  sprintf(str, "RA: %10s\nDec: %10s", ra_str, dec_str);
+  gtk_label_set_text(GTK_LABEL(lbl_coord), str);
+  free(ra_str);
+  free(dec_str);
+  
+  return FALSE;
+}
+
+gboolean imgdisp_mouse_move_view(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_mouse_equat)
+{
+  glong pixel_x = imgdisp_coord_pixel_x(imgdisp, motdata->x, motdata->y);
+  glong pixel_y = imgdisp_coord_pixel_y(imgdisp, motdata->x, motdata->y);
+  gchar str[256];
+  sprintf(str, "X: %10lu\nY: %10lu", pixel_x, pixel_y);
+  gtk_label_set_text(GTK_LABEL(mouse_view), str);
+  return FALSE;
+}
+
+gboolean guicheck_timeout(gpointer user_data)
+{
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  unsigned char main_embedded = gtk_widget_get_parent(GTK_WIDGET(objs->box_main)) != NULL;
+  
+  if (!main_embedded)
+    request_guisock();
   return TRUE;
 }
 
@@ -320,37 +395,64 @@ int main(int argc, char** argv)
   gtk_widget_set_size_request(imgdisp, ccd_cntrl_get_max_width(cntrl), ccd_cntrl_get_max_height(cntrl));
   imgdisp_set_window(imgdisp, 0, 0, ccd_cntrl_get_max_width(cntrl), ccd_cntrl_get_max_height(cntrl));
   
-  GtkWidget *lbl_mouse_view = gtk_label_new("");
+  GtkWidget *lbl_mouse_view = gtk_label_new("X:           \nY:           ");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_mouse_view, 0,1,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
-  GtkWidget *lbl_mouse_equat = gtk_label_new("");
+  GtkWidget *lbl_mouse_equat = gtk_label_new("RA:           \nDec:           ");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_mouse_equat, 1,2,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *btn_view_param = gtk_button_new_with_label("View...");
   gtk_table_attach(GTK_TABLE(box_controls), btn_view_param, 2,3,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
-  GtkWidget *evb_ccd_stat = gtk_event_box_new();
-  gtk_table_attach(GTK_TABLE(box_controls), evb_ccd_stat, 0,1,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
-  GtkWidget *lbl_ccd_stat = gtk_label_new("IDLE");
-  gtk_container_add(GTK_CONTAINER(evb_ccd_stat), lbl_ccd_stat);
-  GtkWidget *lbl_exp_trem = gtk_label_new("");
-  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_trem, 1,2,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
-  GtkWidget *evb_exp_reprem = gtk_label_new("");
-  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_reprem, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *lbl_prog_stat = gtk_label_new("IDLE");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_prog_stat, 0,1,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *lbl_ccd_stat = gtk_label_new("CCD OK");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_ccd_stat, 1,2,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *lbl_exp_rem = gtk_label_new("");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_trem, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
-  GtkWidget *lbl_auto = gtk_label_new("Manual");
+  GtkWidget *lbl_store_stat = gtk_label_new("Store OK");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_auto, 0,1,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *btn_expose = gtk_button_new_with_label("Expose...");
   gtk_table_attach(GTK_TABLE(box_controls), btn_expose, 1,2,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *btn_cancel = gtk_button_new_with_label("Cancel");
   gtk_table_attach(GTK_TABLE(box_controls), btn_cancel, 2,3,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
-  // Connect signals
+  void acq_net_set_ccdcap_ready(AcqNet *acq_net, gboolean ready);
+  void acq_net_set_min_exp_t_s(AcqNet *acq_net, gfloat exp_t);
+  void acq_net_set_max_exp_t_s(AcqNe *acq_net, gfloat exp_t);
+  void acq_net_set_ccd_id(AcqNet *acq_net, const gchar *ccd_id);
   
+  
+  struct acq_objects objs = {
+    .box_main = box_main,
+    .imgdisp = imgdisp,
+    .lbl_prog_stat = lbl_prog_stat,
+    .lbl_ccd_stat = lbl_ccd_stat,
+    .lbl_exp_rem = lbl_exp_rem,
+    .lbl_store_stat = lbl_store_stat,
+    .btn_expose = btn_expose;
+    .btn_cancel = btn_cancel;
+  };
+  
+  // Connect signals
+  g_signal_connect (G_OBJECT(btn_view_param), "click", G_CALLBACK (view_param_click), imgdisp);
+  g_signal_connect (G_OBJECT(btn_expose), "click", G_CALLBACK(expose_click), &objs);
+  g_signal_connect (G_OBJECT(btn_cancel), "click", G_CALLBACK(cancel_click), &objs);
+  g_signal_connect (G_OBJECT(imgdisp), "motion-notify-event", G_CALLBACK (imgdisp_mouse_move_view), lbl_mouse_view);
+  g_signal_connect (G_OBJECT(imgdisp), "motion-notify-event", G_CALLBACK (imgdisp_mouse_move_equat), lbl_mouse_equat);
+  g_signal_connect (G_OBJECT(ccd_cntrl), "ccd-stat-update", G_CALLBACK (ccd_stat_update), &objs);
+  g_signal_connect (G_OBJECT(ccd_cntrl), "ccd-new-image", G_CALLBACK (ccd_new_image), &objs);
+  g_signal_connect (G_OBJECT(acq_store), "store-status-update", G_CALLBACK(store_stat_update), lbl_store_stat);
+  g_signal_connect (G_OBJECT(acq_net), "coord-received", G_CALLBACK(coord_received), ccd_cntrl);
+  g_signal_connect (G_OBJECT(acq_net), "gui-socket", G_CALLBACK(guisock_received), box_main);
+  g_signal_connect (G_OBJECT(acq_net), "change-user", G_CALLBACK(change_user), &objs);
+  g_signal_connect (G_OBJECT(acq_net), "change-target", G_CALLBACK(change_target), &objs);
+  g_signal_connect (G_OBJECT(acq_net), "targset-start", G_CALLBACK(targset_start), &objs);
+  g_signal_connect (G_OBJECT(acq_net), "targset-stop", G_CALLBACK(targset-stop), &objs);
+  g_signal_connect (G_OBJECT(acq_net), "data-ccd-start", G_CALLBACK(data_ccd_start), &objs);
+  g_signal_connect (G_OBJECT(acq_net), "data-ccd-stop", G_CALLBACK(data_ccd_stop), &objs);
+  guicheck_to_id = g_timeout_add(GUICHECK_LOOP_PERIOD, guicheck_timeout, &objs);
   
   act_log_debug(act_log_msg("Entering main loop."));
-  if (GUICHECK_LOOP_PERIOD % 1000 == 0)
-    guicheck_to_id = g_timeout_add_seconds(GUICHECK_LOOP_PERIOD/1000, guicheck_timeout, box_main);
-  else
-    guicheck_to_id = g_timeout_add(GUICHECK_LOOP_PERIOD, guicheck_timeout, box_main);
   gtk_main();
   
   act_log_normal(act_log_msg("Exiting"));

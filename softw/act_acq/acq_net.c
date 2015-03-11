@@ -110,6 +110,19 @@ AcqNet *acq_net_new (const gchar *host, const gchar *port)
   return objs;
 }
 
+gboolean acq_net_request_guisocket(AcqNet *objs)
+{
+  struct act_msg msgbuf;
+  memset(&msgbuf, 0, sizeof(struct act_msg));
+  msgbuf.mtype = MT_GUISOCK;
+  if (acq_net_send(objs->net_chan, &msg) < 0)
+  {
+    act_log_error(act_log_msg("Failed to send GUI socket request message."));
+    return FALSE;
+  }
+  return TRUE;
+}
+
 gboolean acq_net_targset_pending(AcqNet *objs)
 {
   return ((struct act_msg *)objs->pending_msg)->mtype == MT_TARG_SET;
