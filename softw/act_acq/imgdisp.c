@@ -228,16 +228,31 @@ GtkWidget *imgdisp_new (void)
   return GTK_WIDGET(g_object_new (imgdisp_get_type(), NULL));
 }
 
+gboolean imgdisp_get_flip_ns(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->flip_ns;
+}
+
 void imgdisp_set_flip_ns(GtkWidget *imgdisp, gboolean flip_ns)
 {
   IMGDISP(imgdisp)->flip_ns = flip_ns;
   imgdisp_redraw(imgdisp);
 }
 
+gboolean imgdisp_get_flip_ew(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->flip_ew;
+}
+
 void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew)
 {
   IMGDISP(imgdisp)->flip_ew = flip_ew;
   imgdisp_redraw(imgdisp);
+}
+
+gfloat imgdisp_get_bright_lim(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->bright_lim;
 }
 
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim)
@@ -249,6 +264,11 @@ void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim)
   imgdisp_redraw(imgdisp);
 }
 
+gfloat imgdisp_get_faint_lim(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->faint_lim;
+}
+
 void imgdisp_set_faint_lim(GtkWidget *imgdisp, gfloat lim)
 {
   Imgdisp *objs = IMGDISP(imgdisp);
@@ -256,6 +276,11 @@ void imgdisp_set_faint_lim(GtkWidget *imgdisp, gfloat lim)
   
   update_colour_transl(objs);
   imgdisp_redraw(imgdisp);
+}
+
+Imglut * imgdisp_get_lut(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->lut;
 }
 
 void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut)
@@ -291,6 +316,21 @@ void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut)
   imgdisp_redraw(imgdisp);
 }
 
+guchar imgdisp_get_grid_type(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->grid_type;
+}
+
+gfloat imgdisp_get_grid_spacing_x(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->grid_spacing_x;
+}
+
+gfloat imgdisp_get_grid_spacing_y(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->grid_spacing_y;
+}
+
 void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid, gfloat spacing_x, gfloat spacing_y)
 {
   Imgdisp *objs = IMGDISP(imgdisp);
@@ -298,6 +338,11 @@ void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid, gfloat spacing_x, gfl
   objs->grid_spacing_x = spacing_x;
   objs->grid_spacing_y = spacing_y;
   imgdisp_redraw(imgdisp);
+}
+
+CcdImg * imgdisp_get_img(GtkWidget *imgdisp)
+{
+  return IMGDISP(imgdisp)->img;
 }
 
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img)

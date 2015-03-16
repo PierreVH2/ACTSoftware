@@ -91,12 +91,21 @@ struct _ImgdispClass
 
 GType imgdisp_get_type (void);
 GtkWidget *imgdisp_new (void);
+gboolean imgdisp_get_flip_ns(GtkWidget *imgdisp);
 void imgdisp_set_flip_ns(GtkWidget *imgdisp, gboolean flip_ns);
+gboolean imgdisp_get_flip_ew(GtkWidget *imgdisp);
 void imgdisp_set_flip_ew(GtkWidget *imgdisp, gboolean flip_ew);
+gfloat imgdisp_get_bright_lim(GtkWidget *imgdisp);
 void imgdisp_set_bright_lim(GtkWidget *imgdisp, gfloat lim);
+gfloat imgdisp_get_faint_lim(GtkWidget *imgdisp);
 void imgdisp_set_faint_lim(GtkWidget *imgdisp, gfloat lim);
+Imglut * imgdisp_get_lut(GtkWidget *imgdisp);
 void imgdisp_set_lut(GtkWidget *imgdisp, Imglut *lut);
+guchar imgdisp_get_grid_type(GtkWidget *imgdisp);
+gfloat imgdisp_get_grid_spacing_x(GtkWidget *imgdisp);
+gfloat imgdisp_get_grid_spacing_y(GtkWidget *imgdisp);
 void imgdisp_set_grid(GtkWidget *imgdisp, guchar new_grid, gfloat spacing_x, gfloat spacing_y);
+CcdImg * imgdisp_get_img(GtkWidget *imgdisp);
 void imgdisp_set_img(GtkWidget *imgdisp, CcdImg *img);
 void imgdisp_set_window(GtkWidget *imgdisp, glong start_x, glong start_y, gulong width, gulong height);
 gfloat imgdisp_coord_viewport_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
