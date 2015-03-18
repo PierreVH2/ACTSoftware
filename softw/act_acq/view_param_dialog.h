@@ -33,7 +33,7 @@ struct _ViewParamDialog
   GtkWidget *cmb_grid_type;
   GtkWidget *scl_grid_x, *scl_grid_y;
   GtkWidget *cmb_lut;
-  GtkWidget *scl_faint, *scl_bright
+  GtkWidget *scl_faint, *scl_bright;
 };
 
 struct _ViewParamDialogClass

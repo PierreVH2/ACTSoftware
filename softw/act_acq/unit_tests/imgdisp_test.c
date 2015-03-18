@@ -117,7 +117,7 @@ int main(int argc, char **argv)
   gtk_widget_set_size_request(imgdisp, width*1.5, height*1.5);
   imgdisp_set_window(imgdisp, 0, 0, width, height);
   imgdisp_set_flip_ew(imgdisp, TRUE);
-  imgdisp_set_grid(imgdisp, IMGDISP_GRID_EQUAT, 60.0, 60.0);
+  imgdisp_set_grid(imgdisp, IMGDISP_GRID_EQUAT, 1.0, 1.0);
   
 /*  GtkWidget *scl_faint = gtk_hscale_new_with_range(0.0, 1.0, 1./255.);
   gtk_range_set_value(GTK_RANGE(scl_faint), 0.0);

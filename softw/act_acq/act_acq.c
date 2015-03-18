@@ -282,6 +282,198 @@ return FALSE;
 
 
 
+
+
+
+
+
+
+
+g_signal_connect (G_OBJECT(btn_expose), "click", G_CALLBACK(expose_click), &objs);
+g_signal_connect (G_OBJECT(btn_cancel), "click", G_CALLBACK(cancel_click), &objs);
+
+g_signal_connect (G_OBJECT(acq_net), "coord-received", G_CALLBACK(coord_received), ccd_cntrl);
+void ccd_cntrl_set_tel_pos(CcdCntrl *objs, gfloat tel_ra_d, gfloat tel_dec_d);
+
+g_signal_connect (G_OBJECT(acq_net), "change-user", G_CALLBACK(change_user), &objs);
+g_signal_connect (G_OBJECT(acq_net), "change-target", G_CALLBACK(change_target), &objs);
+g_signal_connect (G_OBJECT(acq_net), "targset-start", G_CALLBACK(targset_start), &objs);
+g_signal_connect (G_OBJECT(acq_net), "targset-stop", G_CALLBACK(targset-stop), &objs);
+g_signal_connect (G_OBJECT(acq_net), "data-ccd-start", G_CALLBACK(data_ccd_start), &objs);
+g_signal_connect (G_OBJECT(acq_net), "data-ccd-stop", G_CALLBACK(data_ccd_stop), &objs);
+
+
+void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
+{
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  gchar stat_str[100];
+  if (ccd_cntrl_stat_err_retry(new_stat))
+  {
+    sprintf(stat_str, "RETRY");
+    ccd_stat_err_retry(objs);
+  }
+  else if (ccd_cntrl_stat_err_no_recov(new_stat))
+  {
+    sprintf(stat_str, "ERR");
+    ccd_stat_err_no_recov(objs);
+  }
+  else if (ccd_cntrl_stat_integrating(new_stat))
+  {
+    sprintf(stat_str, "%5.1f s / %lu", ccd_cntrl_get_integ_trem(objs->cntrl), ccd_cntrl_get_rpt_rem(objs->cntrl));
+    gtk_label_set_text(GTK_LABEL(objs->lbl_exp_trem), stat_str);
+    sprintf(stat_str, "INTEG");
+  }
+  else if (ccd_cntrl_stat_readout(new_stat))
+  {
+    sprintf(stat_str, "READ");
+  }
+  else
+    sprintf(stat_str, "IDLE");
+  gtk_label_set_text(GTK_LABEL(objs->lbl_ccd_stat), stat_str);
+  
+    
+  gboolean ccd_cntrl_stat_readout(guchar status);
+  
+  MODE_IDLE,
+  MODE_MANUAL_EXP,
+  MODE_TARGSET_EXP,
+  MODE_TARGSET_CENT,
+  MODE_DATACCD_EXP
+
+  // Update status indicator
+  // Update integration time remaining
+  // In case of error, cancel integration and report accordingly
+  if ()
+}
+
+void ccd_stat_err_retry(struct acq_objects *objs)
+{
+  switch (objs->mode)
+  {
+    case MODE_IDLE:
+      // do nothing
+      break;
+    case MODE_MANUAL_EXP:
+      // show retry error dialog
+      break;
+    case MODE_TARGSET_EXP:
+      // Send error message
+      break;
+    case MODE_TARGSET_CENT:
+      // This should not happen, only log error
+      break;
+    case MODE_DATACCD_EXP:
+      // Send retry error message
+      break;
+    default:
+      act_log_debug(act_log_msg("CCD raised recoverable error, but an invalid ACQ mode is in operation. Ignoring."));
+  }
+}
+
+void ccd_stat_err_no_recov(struct acq_objects *objs)
+{
+  switch (objs->mode)
+  {
+    case MODE_IDLE:
+      // do nothing
+      break;
+    case MODE_MANUAL_EXP:
+      // show error dialog
+      break;
+    case MODE_TARGSET_EXP:
+      // Send error message
+      break;
+    case MODE_TARGSET_CENT:
+      // This should not happen, only log error
+      break;
+    case MODE_DATACCD_EXP:
+      // Send error message
+      break;
+    default:
+      act_log_debug(act_log_msg("CCD raised recoverable error, but an invalid ACQ mode is in operation. Ignoring."));
+  }
+}
+
+struct acq_objects
+{
+  gint mode;
+  CcdCntrl *cntrl;
+  AcqStore *store;
+  AcqNet *net;
+  
+  GtkWidget *box_main;
+  GtkWidget *imgdisp;
+  
+  GtkWidget *prog_stat;
+  GtkWidget *lbl_ccd_stat;
+  GtkWidget *lbl_exp_rem;
+  
+  GtkWidget *lbl_store_stat;
+  GtkWidget *btn_expose;
+  GtkWidget *btn_cancel;
+};
+
+void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
+{
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  imgdisp_set_img(objs->imgdisp, CCD_IMG(img));
+  
+  // Check for auto target set, if so extract stars, calculate offset etc
+  
+  acq_store_append_image(objs->store, CCD_IMG(img));
+}
+
+void store_stat_update(GObject *acq_store, gpointer lbl_store_stat)
+{
+  AcqStore *store = ACQ_STORE(acq_store);
+  gchar stat_str[100];
+  if (acq_store_idle(store))
+    sprintf(stat_str, "IDLE");
+  else if (acq_store_storing(store))
+    sprintf(stat_str, "BUSY");
+  else if (acq_store_error_retry(store))
+  {
+    act_log_error(act_log_msg("An error occurred in the database storage system. Retrying."));
+    sprintf(stat_str, "RETRY");
+  }
+  else if acq_store_error_no_recov(store))
+  {
+    act_log_error(act_log_msg("An unrecoverable error occurred in the database storage system."));
+    sprintf(stat_str, "ERROR");
+  }
+  else
+  {
+    act_log_debug(act_log_msg("Unknown error occurred on database storage system."));
+    sprintf(stat_str, "UNKNWON");
+  }
+  gtk_label_set_text(GTK_LABEL(lbl_store_stat), stat_str);
+}
+
+void acq_net_init(AcqNet *net, CcdCntrl *cntrl)
+{
+  acq_net_set_min_exp_t_s(net, ccd_cntrl_get_min_exp_t_sec(cntrl));
+  acq_net_set_max_exp_t_s(net, ccd_cntrl_get_max_exp_t_sec(cntrl));
+  gchar *ccd_id = ccd_cntrl_get_ccd_id(cntrl);
+  acq_net_set_ccd_id(net, ccd_id);
+  g_free(ccd_id);
+  acq_net_set_ccdcap_ready(net, TRUE);
+}
+
+void view_param_response(GtkWidget *view_param_dialog, gint response_id)
+{
+  if (response_id == GTK_RESPONSE_CANCEL)
+    view_param_dialog_revert(dialog);
+  else
+    gtk_widget_destroy(dialog);
+}
+
+void view_param_click(GtkWidget *btn_view_param, gpointer imgdisp)
+{
+  GtkWidget *dialog = view_param_dialog_new(gtk_widget_get_toplevel(btn_view_param), GTK_WIDGET(imgdisp));
+  g_signal_connect(G_OBJECT(dialog), "response", G_CALLBACK(view_param_response), NULL);
+  gtk_widget_show_all(dialog);
+}
+
 gboolean imgdisp_mouse_move_equat(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_mouse_view)
 {
   gfloat ra_h = imgdisp_coord_ra(imgdisp, motdata->x, motdata->y);
@@ -321,6 +513,25 @@ gboolean guicheck_timeout(gpointer user_data)
   if (!main_embedded)
     request_guisock();
   return TRUE;
+}
+
+void guisock_received(GObject *acq_net, gulong win_id, gpointer box_main)
+{
+  act_log_debug(act_log_msg("Received GUI socket message."));
+  if (gtk_widget_get_parent(GTK_WIDGET(box_main)) != NULL)
+  {
+    act_log_normal(act_log_msg("Strange: Received GUI socket message from act_control, but GUI components already embedded. Ignoring this message."));
+    return;
+  }
+  GtkWidget *plg_new = gtk_plug_new(win_id);
+  gtk_container_add(GTK_CONTAINER(plg_new), box_main);
+  g_signal_connect(G_OBJECT(plg_new),"destroy",G_CALLBACK(destroy_gui_plug), box_main);
+  gtk_widget_show_all(plg_new);
+}
+
+void destroy_gui_plug(GtkWidget *plug, gpointer box_main)
+{
+  gtk_container_remove(GTK_CONTAINER(plug),GTK_WIDGET(box_main));
 }
 
 /** \brief Main function.
@@ -384,6 +595,7 @@ int main(int argc, char** argv)
     g_object_unref(store);
     return 1;
   }
+  acq_net_init(net, cntrl);
   
   // Create GUI
   GtkWidget *box_main = gtk_vbox_new(FALSE, TABLE_PADDING);
@@ -415,23 +627,6 @@ int main(int argc, char** argv)
   gtk_table_attach(GTK_TABLE(box_controls), btn_expose, 1,2,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *btn_cancel = gtk_button_new_with_label("Cancel");
   gtk_table_attach(GTK_TABLE(box_controls), btn_cancel, 2,3,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
-  
-  void acq_net_set_ccdcap_ready(AcqNet *acq_net, gboolean ready);
-  void acq_net_set_min_exp_t_s(AcqNet *acq_net, gfloat exp_t);
-  void acq_net_set_max_exp_t_s(AcqNe *acq_net, gfloat exp_t);
-  void acq_net_set_ccd_id(AcqNet *acq_net, const gchar *ccd_id);
-  
-  
-  struct acq_objects objs = {
-    .box_main = box_main,
-    .imgdisp = imgdisp,
-    .lbl_prog_stat = lbl_prog_stat,
-    .lbl_ccd_stat = lbl_ccd_stat,
-    .lbl_exp_rem = lbl_exp_rem,
-    .lbl_store_stat = lbl_store_stat,
-    .btn_expose = btn_expose;
-    .btn_cancel = btn_cancel;
-  };
   
   // Connect signals
   g_signal_connect (G_OBJECT(btn_view_param), "click", G_CALLBACK (view_param_click), imgdisp);

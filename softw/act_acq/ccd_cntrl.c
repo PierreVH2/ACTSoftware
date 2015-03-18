@@ -314,6 +314,11 @@ CcdCntrl *ccd_cntrl_new (void)
   return objs;
 }
 
+gchar *ccd_cntrl_get_ccd_id(CcdCntrl *objs)
+{
+  return g_strdup(objs->ccd_id);
+}
+
 gfloat ccd_cntrl_get_min_exp_t_sec(CcdCntrl *objs)
 {
   return objs->min_exp_t_s;
@@ -496,7 +501,7 @@ static void ccd_cntrl_instance_init(GObject *ccd_cntrl)
 
 static void ccd_cntrl_class_init(CcdImgClass *klass)
 {
-  cntrl_signals[SIG_STAT_UPDATE] = g_signal_new("ccd-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__UCHAR_FLOAT, G_TYPE_NONE, 2, G_TYPE_UCHAR, G_TYPE_FLOAT);
+  cntrl_signals[SIG_STAT_UPDATE] = g_signal_new("ccd-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
   cntrl_signals[SIG_NEW_IMG] = g_signal_new("ccd-new-image", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__OBJECT, G_TYPE_NONE, 1, G_TYPE_OBJECT);
   G_OBJECT_CLASS(klass)->dispose = ccd_cntrl_instance_dispose;
 }
@@ -560,7 +565,7 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
   if (tmp_stat == objs->drv_stat)
     return TRUE;
   
-  g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_STAT_UPDATE], 0,  tmp_stat, ccd_cntrl_get_integ_trem(objs));
+  g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_STAT_UPDATE], 0,  tmp_stat);
   
   if ((tmp_stat & CCD_IMG_READY) != 0)
   {
@@ -603,7 +608,7 @@ static gboolean integ_timer(gpointer ccd_cntrl)
     objs->exp_trem_to_id = 0;
     return FALSE;
   }
-  g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_STAT_UPDATE], 0,  objs->drv_stat, ccd_cntrl_get_integ_trem(objs));
+  g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_STAT_UPDATE], 0,  objs->drv_stat);
   return TRUE;
 }
 

@@ -24,12 +24,12 @@
 
 /// Number of arcminutes per radian
 #define ONEARCMIN_RAD 0.0002908882086657216
-/// Spacing between Viewport grid lines
+/// Default spacing between Viewport grid lines
 #define GRID_SPACING_VIEWPORT  0.2
-/// Spacing between Pixel grid lines
+/// Default spacing between Pixel grid lines
 #define GRID_SPACING_PIXEL     50
-/// Spacing between Equitorial grid lines at equator
-#define GRID_SPACING_EQUAT     ONEARCMIN_RAD
+/// Default spacing between Equitorial grid lines at equator in degrees
+#define GRID_SPACING_EQUAT     (1./60.)
 
 
 static void imglut_instance_init(GObject *imglut);
@@ -735,14 +735,14 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
         break;
       }
       glMatrixMode(GL_MODELVIEW);
-      float cur_line;
+      float cur_line, spacing_x=GRID_SPACING_PIXEL*objs->grid_spacing_x, spacing_y=GRID_SPACING_PIXEL*objs->grid_spacing_y;
       glBegin (GL_LINES);
-      for (cur_line = 0.0; cur_line < (float)img_width; cur_line += GRID_SPACING_PIXEL)
+      for (cur_line = 0.0; cur_line < (float)img_width; cur_line += spacing_x)
       {
         glVertex3f(cur_line, 0.0, 0.0);
         glVertex3f(cur_line, img_height, 0.0);
       }
-      for (cur_line = 0.0; cur_line < (float)img_height; cur_line += GRID_SPACING_PIXEL)
+      for (cur_line = 0.0; cur_line < (float)img_height; cur_line += spacing_y)
       {
         glVertex3f(0.0, cur_line, 0.0);
         glVertex3f(img_width, cur_line, 0.0);
@@ -754,14 +754,14 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
     {
       glMatrixMode(GL_MODELVIEW);
       glLoadIdentity();
-      float cur_line;
+      float cur_line, spacing_x=GRID_SPACING_VIEWPORT*objs->grid_spacing_x, spacing_y=GRID_SPACING_VIEWPORT*objs->grid_spacing_y;
       glBegin (GL_LINES);
-      for (cur_line = -1.0; cur_line < 1.0; cur_line += GRID_SPACING_VIEWPORT)
+      for (cur_line = -1.0; cur_line < 1.0; cur_line += spacing_x)
       {
         glVertex3f(cur_line, -1.0, 0.0);
         glVertex3f(cur_line, 1.0, 0.0);
       }
-      for (cur_line = -1.0; cur_line < 1.0; cur_line += GRID_SPACING_VIEWPORT)
+      for (cur_line = -1.0; cur_line < 1.0; cur_line += spacing_y)
       {
         glVertex3f(-1.0, cur_line, 0.0);
         glVertex3f(1.0, cur_line, 0.0);
@@ -775,7 +775,7 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
       double ra_low, ra_high, dec_low, dec_high;
       double dec_inc, ra_inc, num_divs;
       
-      dec_inc = convert_DEG_RAD(objs->grid_spacing_y/3600.0);
+      dec_inc = convert_DEG_RAD(objs->grid_spacing_y*GRID_SPACING_EQUAT);
       num_divs = ceil(img_height_rad / dec_inc) + 1.0;
       dec_cent = dec_rad - fmod(dec_rad, dec_inc);
       dec_low = dec_cent - num_divs*dec_inc;
@@ -788,16 +788,16 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
           dec_high = ONEPI/2 * (dec_high < 0.0 ? -1.0 : 1.0);
         else
           dec_low = ONEPI/2 * (dec_low < 0.0 ? -1.0 : 1.0);
-        num_divs = ceil(img_width_rad / convert_DEG_RAD(objs->grid_spacing_x/3600.0)) * 2.0;
+        num_divs = ceil(img_width_rad / convert_DEG_RAD(objs->grid_spacing_x*GRID_SPACING_EQUAT)) * 2.0;
         ra_inc = TWOPI / num_divs;
         ra_low = 0.0;
         ra_high = TWOPI + ra_inc/10.0;
       }
       else
       {
-        ra_inc = objs->grid_spacing_x / cos(dec_rad);
-        ra_inc -= fmod(ra_inc, objs->grid_spacing_x);
-        ra_inc = convert_DEG_RAD(ra_inc/3600.0);
+        ra_inc = objs->grid_spacing_x*GRID_SPACING_EQUAT / cos(dec_rad);
+        ra_inc -= fmod(ra_inc, objs->grid_spacing_x*GRID_SPACING_EQUAT);
+        ra_inc = convert_DEG_RAD(ra_inc);
         if (fabs(dec_low) < fabs(dec_high))
           num_divs = ceil(img_width_rad / ra_inc / cos(dec_high)) + 1.0;
         else
@@ -811,7 +811,6 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
       glPopMatrix();
 
       double line_ra, line_dec;
-      glColor3f(0.0,0.0,1.0);
       for (line_ra=ra_low; line_ra<=ra_high; line_ra+=ra_inc)
       {
         glBegin(GL_LINE_STRIP);
@@ -820,7 +819,6 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
         glEnd();
       }
       
-      glColor3f(0.0,1.0,0.0);
       for (line_dec=dec_low; line_dec<=dec_high; line_dec+=dec_inc)
       {
         glBegin(GL_LINE_STRIP);
