@@ -2,11 +2,13 @@
 #include <act_log.h>
 #include <imgdisp.h>
 #include <ccd_img.h>
+#include <view_param_dialog.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
 #include <act_timecoord.h>
 
+/*
 void faint_changed(GtkWidget *scl_faint, gpointer imgdisp)
 {
   imgdisp_set_faint_lim(GTK_WIDGET(imgdisp), gtk_range_get_value(GTK_RANGE(scl_faint)));
@@ -37,7 +39,7 @@ void toggle_flip_ew(GtkWidget *btn_flip_ew, gpointer imgdisp)
     gtk_button_set_image(GTK_BUTTON(btn_flip_ew), gtk_image_new_from_stock(GTK_STOCK_GO_FORWARD,GTK_ICON_SIZE_BUTTON));
   else
     gtk_button_set_image(GTK_BUTTON(btn_flip_ew), gtk_image_new_from_stock(GTK_STOCK_GO_BACK,GTK_ICON_SIZE_BUTTON));
-}
+}*/
 
 gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_coord)
 {
@@ -65,6 +67,21 @@ gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_co
   return FALSE;
 }
 
+void view_param_response(GtkWidget *dialog, gint response_id)
+{
+  if (response_id == GTK_RESPONSE_CANCEL)
+    view_param_dialog_revert(dialog);
+  else
+    gtk_widget_destroy(dialog);
+}
+
+void show_view_param(GtkWidget *btn_view_param, gpointer imgdisp)
+{
+  GtkWidget *dialog = view_param_dialog_new(gtk_widget_get_toplevel(btn_view_param), GTK_WIDGET(imgdisp));
+  g_signal_connect(G_OBJECT(dialog), "response", G_CALLBACK(view_param_response), NULL);
+  gtk_widget_show_all(dialog);
+}
+
 int main(int argc, char **argv)
 {
   act_log_open();
@@ -83,11 +100,7 @@ int main(int argc, char **argv)
   ccd_img_set_exp_t(img, 1.0);
   gulong width=407, height=288;
   ccd_img_set_window(img, 0, 0, width, height, 1, 1);
-  struct rastruct ra;
-  struct decstruct dec;
-  convert_H_HMSMS_ra(0.001, &ra);
-  convert_D_DMS_dec(-89.9, &dec);
-  ccd_img_set_tel_pos(img, &ra, &dec);
+  ccd_img_set_tel_pos(img, 0.0, -33.5);
   ccd_img_set_pixel_size(img, 1.5, 1.5);
   gfloat img_data[width * height];
   srand(time(NULL));
@@ -115,14 +128,18 @@ int main(int argc, char **argv)
   g_signal_connect(G_OBJECT(scl_bright), "value-changed", G_CALLBACK(bright_changed), imgdisp);
   gtk_box_pack_start(GTK_BOX(box_main), scl_bright, 0, 0, 0);*/
   
-  GtkWidget* btn_flip_ns = gtk_button_new_with_label("N");
+/*  GtkWidget* btn_flip_ns = gtk_button_new_with_label("N");
   gtk_button_set_image(GTK_BUTTON(btn_flip_ns), gtk_image_new_from_stock(GTK_STOCK_GO_UP,GTK_ICON_SIZE_BUTTON));
   gtk_box_pack_start(GTK_BOX(box_main), btn_flip_ns, TRUE, TRUE, 3);
   g_signal_connect(G_OBJECT(btn_flip_ns),"clicked",G_CALLBACK(toggle_flip_ns),imgdisp);
   GtkWidget* btn_flip_EW = gtk_button_new_with_label("E");
   gtk_button_set_image(GTK_BUTTON(btn_flip_EW), gtk_image_new_from_stock(GTK_STOCK_GO_FORWARD,GTK_ICON_SIZE_BUTTON));
   gtk_box_pack_start(GTK_BOX(box_main), btn_flip_EW, TRUE, TRUE, 3);
-  g_signal_connect(G_OBJECT(btn_flip_EW),"clicked",G_CALLBACK(toggle_flip_ew),imgdisp);
+  g_signal_connect(G_OBJECT(btn_flip_EW),"clicked",G_CALLBACK(toggle_flip_ew),imgdisp);*/
+
+  GtkWidget *btn_view_param = gtk_button_new_with_label("View parameters...");
+  g_signal_connect(G_OBJECT(btn_view_param), "clicked", G_CALLBACK(show_view_param), imgdisp);
+  gtk_box_pack_start(GTK_BOX(box_main), btn_view_param, TRUE, TRUE, 3);
   
   GtkWidget *lbl_coord = gtk_label_new("");
   gtk_box_pack_start(GTK_BOX(box_main), lbl_coord, TRUE, TRUE, 3);

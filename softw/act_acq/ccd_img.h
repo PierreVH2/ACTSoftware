@@ -92,7 +92,7 @@ void ccd_img_set_target(CcdImg *objs, gulong targ_id, gchar const *targ_name);
 gchar const *ccd_img_get_user_name(CcdImg const *objs);
 gulong ccd_img_get_user_id(CcdImg const *objs);
 void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name);
-void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat tel_dec_d);
+void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat *tel_dec_d);
 void ccd_img_set_tel_pos(CcdImg *objs, gfloat tel_ra_d, gfloat tel_dec_d);
 gulong ccd_img_get_img_len(CcdImg const *objs);
 gfloat const *ccd_img_get_img_data(CcdImg const *objs);

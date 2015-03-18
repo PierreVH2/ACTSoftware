@@ -5,10 +5,11 @@
 
 #include <glib.h>
 #include <glib-object.h>
+#include "imgdisp.h"
 
 G_BEGIN_DECLS
 
-#define VIEW_PARAM_DIALOG_TYPE              (view_param_dialog_get_type())
+#define VIEW_PARAM_DIALOG_TYPE              (view_param_dialog_type())
 #define VIEW_PARAM_DIALOG(objs)             (G_TYPE_CHECK_INSTANCE_CAST ((objs), VIEW_PARAM_DIALOG_TYPE, ViewParamDialog))
 #define VIEW_PARAM_DIALOG_CLASS(klass)      (G_TYPE_CHECK_CLASS_CAST ((klass), VIEW_PARAM_DIALOG_TYPE, ViewParamDialogClass))
 #define IS_VIEW_PARAM_DIALOG(objs)          (G_TYPE_CHECK_INSTANCE_TYPE ((objs), VIEW_PARAM_DIALOG_TYPE))
@@ -19,8 +20,7 @@ typedef struct _ViewParamDialogClass  ViewParamDialogClass;
 
 struct _ViewParamDialog
 {
-  GObject parent;
-  GtkWidget *dialog;
+  GtkDialog parent;
   GtkWidget *imgdisp;
   
   gboolean orig_flip_ns, orig_flip_ew;
@@ -28,16 +28,21 @@ struct _ViewParamDialog
   Imglut *orig_lut;
   guchar orig_grid_type;
   gfloat orig_grid_spacing_x, orig_grid_spacing_y;
+  
+  GtkWidget* btn_flip_ns, *btn_flip_ew;
+  GtkWidget *cmb_grid_type;
+  GtkWidget *scl_grid_x, *scl_grid_y;
+  GtkWidget *cmb_lut;
+  GtkWidget *scl_faint, *scl_bright
 };
 
 struct _ViewParamDialogClass
 {
-  GObjectClass parent_class;
+  GtkDialogClass parent_class;
 };
 
 GType view_param_dialog_type(void);
-GObject *view_param_dialog_new(GtkWidget *parent, GtkWidget *imgdisp);
-void view_param_dialog_cancel(GObject *view_param_dialog);
-GtkWidget *view_param_dialog_get_dialog(GObject *view_param_dialog);
+GtkWidget *view_param_dialog_new(GtkWidget *parent, GtkWidget *imgdisp);
+void view_param_dialog_revert(GtkWidget *view_param_dialog);
 
 #endif   /* __VIEW_PARAM_DIALOG_H__ */

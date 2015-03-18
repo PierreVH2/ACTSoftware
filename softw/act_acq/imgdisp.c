@@ -476,9 +476,9 @@ gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
   }
   
   long img_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
-  struct decstruct dec;
+  gfloat dec;
   ccd_img_get_tel_pos(objs->img, NULL, &dec);
-  return convert_DMS_D_dec(&dec) - (img_y - ccd_img_get_img_height(objs->img)/2.0) * ccd_img_get_pixel_size_dec(objs->img) / 3600.0;
+  return dec - (img_y - ccd_img_get_img_height(objs->img)/2.0) * ccd_img_get_pixel_size_dec(objs->img) / 3600.0;
 }
 
 static void imgdisp_instance_init(GtkWidget *imgdisp)
@@ -660,10 +660,10 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   gulong dra_width = objs->dra_ccdimg->allocation.width, dra_height = objs->dra_ccdimg->allocation.height;
   gulong img_width = ccd_img_get_img_width(objs->img), img_height = ccd_img_get_img_height(objs->img);
   
-  struct rastruct tel_ra;
-  struct decstruct tel_dec;
-  ccd_img_get_tel_pos(objs->img, &tel_ra, &tel_dec);
-  gdouble ra_rad = convert_H_RAD(convert_HMSMS_H_ra(&tel_ra)), dec_rad = convert_DEG_RAD(convert_DMS_D_dec(&tel_dec));
+  gfloat ra_rad, dec_rad;
+  ccd_img_get_tel_pos(objs->img, &ra_rad, &dec_rad);
+  ra_rad = convert_DEG_RAD(ra_rad);
+  dec_rad = convert_DEG_RAD(dec_rad);
   gdouble img_height_rad = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
   gdouble img_width_rad = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
   

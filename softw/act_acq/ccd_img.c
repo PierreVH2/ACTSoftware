@@ -172,7 +172,7 @@ void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name)
   objs->user_name = g_strdup(user_name);
 }
 
-void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat tel_dec_d)
+void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat *tel_dec_d)
 {
   if (tel_ra_d != NULL)
     *tel_ra_d = objs->ra_d;
