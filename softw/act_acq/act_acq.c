@@ -10,8 +10,8 @@ enum
   MODE_IDLE,
   MODE_MANUAL_EXP,
   MODE_TARGSET_EXP,
-  MODE_TARGSET_CENT,
-  MODE_DATACCD_EXP
+  MODE_DATACCD_EXP,
+  MODE_ERR_RESTART
 };
 
 struct acq_objects
@@ -31,6 +31,11 @@ struct acq_objects
   GtkWidget *lbl_store_stat;
   GtkWidget *btn_expose;
   GtkWidget *btn_cancel;
+  
+  gulong cur_targ_id;
+  gchar *cur_targ_name;
+  gulong cur_user_id;
+  gchar *cur_user_name;
 };
 
 /** \brief Callback when main plug containing all GUI objects is destroyed.
@@ -289,19 +294,52 @@ return FALSE;
 
 
 
-g_signal_connect (G_OBJECT(btn_expose), "click", G_CALLBACK(expose_click), &objs);
-g_signal_connect (G_OBJECT(btn_cancel), "click", G_CALLBACK(cancel_click), &objs);
 
-g_signal_connect (G_OBJECT(acq_net), "coord-received", G_CALLBACK(coord_received), ccd_cntrl);
-void ccd_cntrl_set_tel_pos(CcdCntrl *objs, gfloat tel_ra_d, gfloat tel_dec_d);
-
-g_signal_connect (G_OBJECT(acq_net), "change-user", G_CALLBACK(change_user), &objs);
-g_signal_connect (G_OBJECT(acq_net), "change-target", G_CALLBACK(change_target), &objs);
 g_signal_connect (G_OBJECT(acq_net), "targset-start", G_CALLBACK(targset_start), &objs);
 g_signal_connect (G_OBJECT(acq_net), "targset-stop", G_CALLBACK(targset-stop), &objs);
 g_signal_connect (G_OBJECT(acq_net), "data-ccd-start", G_CALLBACK(data_ccd_start), &objs);
 g_signal_connect (G_OBJECT(acq_net), "data-ccd-stop", G_CALLBACK(data_ccd_stop), &objs);
 
+
+void change_target(GObject *acq_net, gulong new_target_id, gchar *new_targ_name, gpointer user_data)
+{
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  if (objs->cur_user_id == new_user_id)
+    return;
+  objs->cur_targ_id = new_targ_id;
+  if (objs->cur_targ_name != NULL)
+    g_free(objs->cur_targ_name);
+  objs->cur_targ_name = new_targ_name;
+}
+
+void change_user(GObject *acq_net, gulong new_user_id, gpointer user_data)
+{
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  if (objs->cur_user_id == new_user_id)
+    return;
+  objs->cur_user_id = new_user_id;
+  if (objs->cur_user_name != NULL)
+    g_free(objs->cur_user_name);
+  objs->cur_user_name = acq_store_get_user_name(objs->store, new_user_id);
+}
+
+void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer user_data)
+{
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  ccd_cntrl_set_tel_pos(objs->cntrl, tel_ra_d, tel_dec_d);
+}
+
+void expose_click(GtkWidget btn_expose, gpointer user_data)
+{
+  // Create and show exposure parameters dialog
+}
+
+void cancel_click(GtkWiget *btn_cancel, gpointer user_data)
+{
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  ccd_cntrl_cancel_exp(objs->cntrl);
+  objs->mode = MODE_IDLE;
+}
 
 void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
 {
@@ -320,30 +358,16 @@ void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
   else if (ccd_cntrl_stat_integrating(new_stat))
   {
     sprintf(stat_str, "%5.1f s / %lu", ccd_cntrl_get_integ_trem(objs->cntrl), ccd_cntrl_get_rpt_rem(objs->cntrl));
-    gtk_label_set_text(GTK_LABEL(objs->lbl_exp_trem), stat_str);
+    gtk_label_set_text(GTK_LABEL(objs->lbl_exp_rem), stat_str);
     sprintf(stat_str, "INTEG");
   }
   else if (ccd_cntrl_stat_readout(new_stat))
-  {
     sprintf(stat_str, "READ");
-  }
-  else
+  else if (objs->mode == MODE_IDLE)
     sprintf(stat_str, "IDLE");
+  
   gtk_label_set_text(GTK_LABEL(objs->lbl_ccd_stat), stat_str);
-  
-    
-  gboolean ccd_cntrl_stat_readout(guchar status);
-  
-  MODE_IDLE,
-  MODE_MANUAL_EXP,
-  MODE_TARGSET_EXP,
-  MODE_TARGSET_CENT,
-  MODE_DATACCD_EXP
-
-  // Update status indicator
-  // Update integration time remaining
-  // In case of error, cancel integration and report accordingly
-  if ()
+  gtk_widget_set_sensitive(GTK_WIDGET(objs->btn_expose), objs->mode == MODE_IDLE);
 }
 
 void ccd_stat_err_retry(struct acq_objects *objs)
@@ -352,66 +376,92 @@ void ccd_stat_err_retry(struct acq_objects *objs)
   {
     case MODE_IDLE:
       // do nothing
+      act_log_error(act_log_msg("CCD raised a recoverable error, but the system is currently idle. This should not have happened."));
       break;
     case MODE_MANUAL_EXP:
       // show retry error dialog
+      act_log_error(act_log_msg("CCD raised a recoverable error during a manual integration."));
+      GtkWidget *dialog = gtk_message_dialog_new (objs->box_main, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "CCD raised a recoverable error during a manual integration.");
+      g_signal_connect_swapped (dialog, "response", G_CALLBACK (gtk_widget_destroy), dialog);
+      gtk_widget_show_all(dialog);
       break;
     case MODE_TARGSET_EXP:
       // Send error message
-      break;
-    case MODE_TARGSET_CENT:
-      // This should not happen, only log error
+      acq_net_send_targset_response(objs->net, OBSNSTAT_ERR_RETRY, 0.0, 0.0, FALSE);
       break;
     case MODE_DATACCD_EXP:
       // Send retry error message
+      act_log_error(act_log_msg("CCD raised a recoverable error during an auto CCD data integration."));
+      acq_net_send_dataccd_response(objs->net, OBSNSTAT_ERR_RETRY);
       break;
     default:
       act_log_debug(act_log_msg("CCD raised recoverable error, but an invalid ACQ mode is in operation. Ignoring."));
   }
+  objs->mode = MODE_IDLE;
 }
 
 void ccd_stat_err_no_recov(struct acq_objects *objs)
 {
+  static gint reconnect_to = 0;
   switch (objs->mode)
   {
     case MODE_IDLE:
       // do nothing
+      act_log_error(act_log_msg("CCD raised a fatal error, but the system is currently idle. This should not have happened."));
       break;
     case MODE_MANUAL_EXP:
       // show error dialog
+      act_log_error(act_log_msg("CCD raised a fatal error during a manual integration."));
+      GtkWidget *dialog = gtk_message_dialog_new (objs->box_main, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "CCD raised a fatal error during a manual integration.");
+      g_signal_connect_swapped (dialog, "response", G_CALLBACK (gtk_widget_destroy), dialog);
+      gtk_widget_show_all(dialog);
       break;
     case MODE_TARGSET_EXP:
       // Send error message
-      break;
-    case MODE_TARGSET_CENT:
-      // This should not happen, only log error
+      act_log_error(act_log_msg("CCD raised a fatal error during an auto target set integration."));
+      acq_net_send_targset_response(objs->net, OBSNSTAT_ERR_WAIT, 0.0, 0.0, FALSE);
       break;
     case MODE_DATACCD_EXP:
       // Send error message
+      act_log_error(act_log_msg("CCD raised a fatal error during an auto CCD data integration."));
+      acq_net_send_dataccd_response(objs->net, OBSNSTAT_ERR_WAIT);
       break;
     default:
       act_log_debug(act_log_msg("CCD raised recoverable error, but an invalid ACQ mode is in operation. Ignoring."));
   }
+  
+  // Try to disconnect from camera driver and reconnect
+  if (ccd_cntrl_reconnect(objs))
+  {
+    objs->mode = MODE_IDLE;
+    if (reconnect_to != 0)
+    {
+      g_source_remove(reconnect_to);
+      reconnect_to = 0;
+    }
+    act_log_normal(act_log_msg("Successfully reconnected to CCD."));
+  }
+  else
+  {
+    objs->mode = MODE_ERR_RESTART;
+    if (reconnect_to == 0)
+      reconnect_to = g_timeout_add(RECONNECT_TIMEOUT_PERIOD, reconnect_timeout, objs);
+    act_log_normal(act_log_msg("Failed to reconnect to CCD. Will try again in %d seconds.", RECONNECT_TIMEOUT_PERIOD/1000));
+  }
 }
 
-struct acq_objects
+void reconnect_timeout(gpointer user_data)
 {
-  gint mode;
-  CcdCntrl *cntrl;
-  AcqStore *store;
-  AcqNet *net;
-  
-  GtkWidget *box_main;
-  GtkWidget *imgdisp;
-  
-  GtkWidget *prog_stat;
-  GtkWidget *lbl_ccd_stat;
-  GtkWidget *lbl_exp_rem;
-  
-  GtkWidget *lbl_store_stat;
-  GtkWidget *btn_expose;
-  GtkWidget *btn_cancel;
-};
+  gboolean ret = ccd_cntrl((struct acq_objects *)user_data);
+  if (ret)
+  {
+    act_log_normal(act_log_msg("Successfully reconnected to CCD."));
+    objs->mode = MODE_IDLE;
+  }
+  else
+    act_log_normal(act_log_mgs("Failed to reconnect to CCD. Will try again in %d seconds.", RECONNECT_TIMEOUT_PERIOD/1000));
+  return !ret;
+}
 
 void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
 {
@@ -421,6 +471,8 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
   // Check for auto target set, if so extract stars, calculate offset etc
   
   acq_store_append_image(objs->store, CCD_IMG(img));
+  
+  // If all integrations done (rpt_rem == 0), then change acq mode
 }
 
 void store_stat_update(GObject *acq_store, gpointer lbl_store_stat)
@@ -619,7 +671,7 @@ int main(int argc, char** argv)
   GtkWidget *lbl_ccd_stat = gtk_label_new("CCD OK");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_ccd_stat, 1,2,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *lbl_exp_rem = gtk_label_new("");
-  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_trem, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_rem, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
   GtkWidget *lbl_store_stat = gtk_label_new("Store OK");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_auto, 0,1,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
@@ -627,6 +679,22 @@ int main(int argc, char** argv)
   gtk_table_attach(GTK_TABLE(box_controls), btn_expose, 1,2,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *btn_cancel = gtk_button_new_with_label("Cancel");
   gtk_table_attach(GTK_TABLE(box_controls), btn_cancel, 2,3,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  
+  struct acq_objects objs = 
+  {
+    .mode = MODE_IDLE,
+    .cntrl = cntrl,
+    .store = store,
+    .net = net,
+    .box_main = box_main,
+    .imgdisp = imgdisp,
+    .lbl_prog_stat = lbl_prog_stat,
+    .lbl_ccd_stat = lbl_ccd_stat,
+    .lbl_exp_rem = lbl_exp_rem,
+    .lbl_store_stat = lbl_store_stat,
+    .btn_expose = btn_expose,
+    .btn_cancel = btn_cancel,
+  };
   
   // Connect signals
   g_signal_connect (G_OBJECT(btn_view_param), "click", G_CALLBACK (view_param_click), imgdisp);

@@ -21,6 +21,7 @@ static void ccd_cmd_instance_dispose(GObject *ccd_cmd);
 static void ccd_cntrl_instance_init(GObject *ccd_cntrl);
 static void ccd_cntrl_class_init(CcdImgClass *klass);
 static void ccd_cntrl_instance_dispose(GObject *ccd_cntrl);
+static gboolean ccd_cntrl_ccd_init(GObject *ccd_cntrl);
 static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_cntrl);
 static gboolean integ_timer(gpointer ccd_cntrl);
 static gboolean datetime_timeout(gpointer ccd_cntrl);
@@ -266,52 +267,38 @@ GType ccd_cntrl_get_type (void)
 
 CcdCntrl *ccd_cntrl_new (void)
 {
-  gint drv_fd = open("/dev/" MERLIN_DEVICE_NAME, O_RDWR|O_NONBLOCK);
-  if (drv_fd < 0)
-  {
-    act_log_error(act_log_msg("Failed to open camera driver character device - %s.", strerror(errno)));
-    return NULL;
-  }
-  guchar tmp_stat;
-  gint ret = read(drv_fd, &tmp_stat, 1);
-  if (ret < 0)
-  {
-    act_log_error(act_log_msg("Failed to read from camera driver character device - %s.", strerror(errno)));
-    close(drv_fd);
-    return NULL;
-  }
-  struct ccd_modes tmp_modes;
-  ret = ioctl(drv_fd, IOCTL_GET_MODES, &tmp_modes);
-  if (ret != 0)
-  {
-    act_log_error(act_log_msg("Failed to read camera driver capabilities - %s.", strerror(errno)));
-    return NULL;
-  }
-  
   CcdCntrl *objs = CCD_CNTRL(g_object_new (ccd_cntrl_get_type(), NULL));
-  objs->drv_stat = tmp_stat;
-  objs->drv_chan = g_io_channel_unix_new(drv_fd);
-  g_io_channel_set_close_on_unref(objs->drv_chan, TRUE);
-  objs->drv_watch_id = g_io_add_watch(objs->drv_chan, G_IO_IN|G_IO_PRI, drv_watch, objs);
-  if (objs->ccd_id != NULL)
-    g_free(objs->ccd_id);
-  objs->ccd_id = malloc(strlen(tmp_modes.ccd_id+1));
-  sprintf(objs->ccd_id, "%s", tmp_modes.ccd_id);
-  objs->min_exp_t_s = tmp_modes.min_exp_t_sec + tmp_modes.min_exp_t_nanosec/1000000000.0;
-  objs->max_exp_t_s = tmp_modes.max_exp_t_sec + tmp_modes.max_exp_t_nanosec/1000000000.0;
-  objs->max_width_px = tmp_modes.max_width_px;
-  objs->max_height_px = tmp_modes.max_height_px;
-  objs->ra_width_asec = tmp_modes.ra_width_asec;
-  objs->dec_height_asec = tmp_modes.dec_height_asec;
-  /// TODO: When windowing implemented, implement proper treatment of initial window - i.e. either select a default starting window mode and send that to the driver here or read the last used window from the driver and set it in the cntrl structure here.
-  objs->win_start_x = 0;
-  objs->win_start_y = 0;
-  objs->win_width = tmp_modes.max_width_px;
-  objs->win_height = tmp_modes.max_height_px;
-  objs->prebin_x = 1;
-  objs->prebin_y = 1;
-  
+  if (!ccd_cntrl_ccd_init(objs))
+  {
+    act_log_error(act_log_msg("Failed to initialise CCD interface."));
+    g_object_unref(G_OBJECT(objs));
+    return NULL;
+  }
   return objs;
+}
+
+gboolean ccd_cntrl_reconnect(CcdCntrl *objs)
+{
+  if (objs->drv_chan != NULL)
+  {
+    gint drv_fd = g_io_channel_unix_get_fd (objs->drv_chan);
+    ioctl(drv_fd, IOCTL_ACQ_RESET, 0);
+    GError *err = NULL;
+    GIOStatus chan_stat = g_io_channel_shutdown (objs->drv_chan, FALSE, &err);
+    if ((chan_stat != G_IO_STATUS_NORMAL) || (err != NULL))
+    {
+      act_log_error(act_log_msg("Error while trying to shut down CCD driver channel (code %d)\n", chan_stat));
+      if (err != NULL)
+      {
+        act_log_error(act_log_msg("Error message was: %s\n", err->message));
+        g_error_free (err);
+        err = NULL;
+      }
+      return FALSE;
+    }
+    objs->drv_chan = NULL;
+  }
+  return ccd_cntrl_ccd_init(objs);
 }
 
 gchar *ccd_cntrl_get_ccd_id(CcdCntrl *objs)
@@ -551,6 +538,55 @@ static void ccd_cntrl_instance_dispose(GObject *ccd_cntrl)
   }
 }
 
+static gboolean ccd_cntrl_ccd_init(CcdCntrl *objs)
+{
+  gint drv_fd = open("/dev/" MERLIN_DEVICE_NAME, O_RDWR|O_NONBLOCK);
+  if (drv_fd < 0)
+  {
+    act_log_error(act_log_msg("Failed to open camera driver character device - %s.", strerror(errno)));
+    return FALSE;
+  }
+  guchar tmp_stat;
+  gint ret = read(drv_fd, &tmp_stat, 1);
+  if (ret < 0)
+  {
+    act_log_error(act_log_msg("Failed to read from camera driver character device - %s.", strerror(errno)));
+    close(drv_fd);
+    return FALSE;
+  }
+  struct ccd_modes tmp_modes;
+  ret = ioctl(drv_fd, IOCTL_GET_MODES, &tmp_modes);
+  if (ret != 0)
+  {
+    act_log_error(act_log_msg("Failed to read camera driver capabilities - %s.", strerror(errno)));
+    return FALSE;
+  }
+  
+  objs->drv_stat = tmp_stat;
+  objs->drv_chan = g_io_channel_unix_new(drv_fd);
+  g_io_channel_set_close_on_unref(objs->drv_chan, TRUE);
+  objs->drv_watch_id = g_io_add_watch(objs->drv_chan, G_IO_IN|G_IO_PRI, drv_watch, objs);
+  if (objs->ccd_id != NULL)
+    g_free(objs->ccd_id);
+  objs->ccd_id = malloc(strlen(tmp_modes.ccd_id+1));
+  sprintf(objs->ccd_id, "%s", tmp_modes.ccd_id);
+  objs->min_exp_t_s = tmp_modes.min_exp_t_sec + tmp_modes.min_exp_t_nanosec/1000000000.0;
+  objs->max_exp_t_s = tmp_modes.max_exp_t_sec + tmp_modes.max_exp_t_nanosec/1000000000.0;
+  objs->max_width_px = tmp_modes.max_width_px;
+  objs->max_height_px = tmp_modes.max_height_px;
+  objs->ra_width_asec = tmp_modes.ra_width_asec;
+  objs->dec_height_asec = tmp_modes.dec_height_asec;
+  /// TODO: When windowing implemented, implement proper treatment of initial window - i.e. either select a default starting window mode and send that to the driver here or read the last used window from the driver and set it in the cntrl structure here.
+  objs->win_start_x = 0;
+  objs->win_start_y = 0;
+  objs->win_width = tmp_modes.max_width_px;
+  objs->win_height = tmp_modes.max_height_px;
+  objs->prebin_x = 1;
+  objs->prebin_y = 1;
+  
+  return TRUE;
+}
+
 static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_cntrl)
 {
   (void)cond;
@@ -569,11 +605,6 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
   
   if ((tmp_stat & CCD_IMG_READY) != 0)
   {
-    if (objs->exp_trem_to_id != 0)
-    {
-      g_source_remove(objs->exp_trem_to_id);
-      objs->exp_trem_to_id = 0;
-    }
     struct merlin_img tmp_img;
     ret = ioctl(g_io_channel_unix_get_fd(objs->drv_chan), IOCTL_GET_IMAGE, &tmp_img);
     struct ccd_img_params *tmp_params = &tmp_img.img_params;
@@ -592,8 +623,16 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
     ccd_img_get_start_datetime(CCD_IMG(objs->cur_img), &sys_start_unid, &sys_start_unit);
     check_systime_discrep(&sys_start_unid, &sys_start_unit, &real_start_unit);
     ccd_img_set_start_datetime(CCD_IMG(objs->cur_img), &sys_start_unid, &real_start_unit);
-    
     g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_NEW_IMG], 0,  objs->cur_img);
+    
+    if (--objs->rpt_rem <= 0)
+    {
+    }
+    else if (objs->exp_trem_to_id != 0)
+    {
+      g_source_remove(objs->exp_trem_to_id);
+      objs->exp_trem_to_id = 0;
+    }
   }
   
   return TRUE;

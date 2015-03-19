@@ -1,8 +1,6 @@
 #ifndef __VIEW_PARAM_DIALOG_H__
 #define __VIEW_PARAM_DIALOG_H__
 
-/** TODO: Re-implement this widget as a derivative of GtkDialog. This needs a bit more work than simply deriving from GObject, so the less-clean GObject route was selected instead */
-
 #include <glib.h>
 #include <glib-object.h>
 #include "imgdisp.h"

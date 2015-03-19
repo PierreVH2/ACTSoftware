@@ -128,13 +128,14 @@ gboolean acq_net_targset_pending(AcqNet *objs)
   return ((struct act_msg *)objs->pending_msg)->mtype == MT_TARG_SET;
 }
 
-gint acq_net_send_targset_response(AcqNet *objs, gdouble adj_ra_d, gdouble adj_dec_d, gboolean targ_cent)
+gint acq_net_send_targset_response(AcqNet *objs, gchar status, gdouble adj_ra_d, gdouble adj_dec_d, gboolean targ_cent)
 {
   if (!acq_net_targset_pending(objs))
   {
     act_log_error(act_log_msg("Target set message response requested, but no target set message is pending."));
     return -1;
   }
+  PENDING_MSG_TARGSET(objs)->status = status;
   PENDING_MSG_TARGSET(objs)->adj_ra_h = convert_DEG_H(adj_ra_d/15.0);
   PENDING_MSG_TARGSET(objs)->adj_dec_d = adj_dec_d;
   PENDING_MSG_TARGSET(objs)->targ_cent = targ_cent;
