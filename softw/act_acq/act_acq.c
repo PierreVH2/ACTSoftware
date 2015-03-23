@@ -36,6 +36,9 @@ struct acq_objects
   gchar *cur_targ_name;
   gulong cur_user_id;
   gchar *cur_user_name;
+  
+  gfloat last_exp_t = 1.0;
+  guint last_repeat = 1;
 };
 
 /** \brief Callback when main plug containing all GUI objects is destroyed.
@@ -329,6 +332,10 @@ void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer 
   ccd_cntrl_set_tel_pos(objs->cntrl, tel_ra_d, tel_dec_d);
 }
 
+void expose_response(GtkWidget *dialog, gint response_id, gpointer cntrl_objs)
+{
+}
+
 void expose_click(GtkWidget btn_expose, gpointer user_data)
 {
   // Create and show exposure parameters dialog
@@ -501,13 +508,31 @@ void store_stat_update(GObject *acq_store, gpointer lbl_store_stat)
   gtk_label_set_text(GTK_LABEL(lbl_store_stat), stat_str);
 }
 
-void acq_net_init(AcqNet *net, CcdCntrl *cntrl)
+void acq_net_init(AcqNet *net, AcqStore *store, CcdCntrl *cntrl)
 {
   acq_net_set_min_exp_t_s(net, ccd_cntrl_get_min_exp_t_sec(cntrl));
   acq_net_set_max_exp_t_s(net, ccd_cntrl_get_max_exp_t_sec(cntrl));
   gchar *ccd_id = ccd_cntrl_get_ccd_id(cntrl);
   acq_net_set_ccd_id(net, ccd_id);
   g_free(ccd_id);
+  acq_filters_list_t ccd_filters;
+  if (!acq_store_get_filt_list(store, &ccd_filters))
+  {
+    act_log_error(act_log_msg("Failed to get CCD filters list from database."));
+    return;;
+  }
+  gint i, num_added=0;
+  for (i=0; i<IPC_MAX_NUM_FILTAPERS; i++)
+  {
+    if (ccd_filters.filt[i].db_id <= 0)
+      continue;
+    if (!acq_net_add_filter(net, ccd_filters.filt[i].name, ccd_filters.filt[i].slot, ccd_filters.filt[i].db_id))
+      act_log_error(act_log_msg("Failed to add filter with database ID %d to the internal list of available filters.", ccd_filters.filt[i].db_id));
+    else
+      num_added++;
+  }
+  if (num_added == 0)
+    return;
   acq_net_set_ccdcap_ready(net, TRUE);
 }
 

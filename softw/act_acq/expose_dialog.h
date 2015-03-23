@@ -41,7 +41,7 @@ guint expose_dialog_get_win_start_y(GtkWidget *expose_dialog);
 guint expose_dialog_get_win_width(GtkWidget *expose_dialog);
 guint expose_dialog_get_win_height(GtkWidget *expose_dialog);
 guint expose_dialog_get_prebin_x(GtkWidget *expose_dialog);
-guint expose_dialog_get_previn_y(GtkWidget *expose_dialog);
+guint expose_dialog_get_prebin_y(GtkWidget *expose_dialog);
 gfloat expose_dialog_get_exp_t(GtkWidget *expose_dialog);
 guint expose_dialog_get_repetitions(GtkWidget *expose_dialog);
 gboolean expose_dialog_set_image_type(GtkWidget *expose_dialog, guchar img_type);

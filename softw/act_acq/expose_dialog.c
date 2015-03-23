@@ -49,6 +49,24 @@ GtkWidget *expose_dialog_new(GtkWidget *parent, CcdCntrl *cntrl)
   gtk_window_set_title(GTK_WINDOW(objs), "Exposure parameters");
   
   // Set limits of necessary fields based on info from cntrl
+  guint ccd_width = ccd_cntrl_get_max_width(cntrl), ccd_height = ccd_cntrl_get_max_height(cntrl);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_start_x), 0, ccd_width);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_start_x), 0);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_start_y), 0, ccd_height);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_start_y), 0);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_width), 0, ccd_width);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_width), ccd_width);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_height), 0, ccd_height);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_height), ccd_height);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_x), 1, ccd_width);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_prebin_x), 1);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_y), 1, ccd_height);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_prebin_y), 1);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, ccd_cntrl_get_max_exp_t_sec(cntrl));
+  gtk_spin_button_set_increments(GTK_SPIN_BUTTON(objs->spn_exp_t_s), ccd_cntrl_get_min_exp_t_sec(cntrl), 1.0);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_exp_t_s), last_exp_t);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_repetitions), 1, 1000000);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_repetitions), last_repeat);
   
   return GTK_WIDGET(objs);
 }
@@ -177,7 +195,24 @@ static void instance_init(GtkWidget *expose_dialog)
   
   gtk_table_attach(GTK_TABLE(box_content), gtk_label_new("Type"), 0, 1, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   objs->cmb_img_type = gtk_combo_box_new();
-  /// TODO: Initialise combo box
+  GtkListStore *imgtstore = gtk_list_store_new(TYPESTORE_NUM_COLS, G_TYPE_INT, G_TYPE_STRING);
+  GtkTreeIter iter;
+  gtk_list_store_append(gridstore, &iter);
+  gtk_list_store_set(gridstore, &iter, TYPESTORE_TYPE, IMGT_ACQ_OBJ, TYPESTORE_NAME, "Acq star", -1);
+  gtk_list_store_append(gridstore, &iter);
+  gtk_list_store_set(gridstore, &iter, TYPESTORE_TYPE, IMGT_ACQ_SKY, TYPESTORE_NAME, "Acq sky", -1);
+  gtk_list_store_append(gridstore, &iter);
+  gtk_list_store_set(gridstore, &iter, TYPESTORE_TYPE, IMGT_OBJECT, TYPESTORE_NAME, "Object", -1);
+  gtk_list_store_append(gridstore, &iter);
+  gtk_list_store_set(gridstore, &iter, TYPESTORE_TYPE, IMGT_BIAS, TYPESTORE_NAME, "Bias", -1);
+  gtk_list_store_append(gridstore, &iter);
+  gtk_list_store_set(gridstore, &iter, TYPESTORE_TYPE, IMGT_DARK, TYPESTORE_NAME, "Dark", -1);
+  gtk_list_store_append(gridstore, &iter);
+  gtk_list_store_set(gridstore, &iter, TYPESTORE_TYPE, IMGT_FLAT, TYPESTORE_NAME, "Flat", -1);
+  GtkCellRenderer *renderer = gtk_cell_renderer_text_new();
+  gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(objs->cmb_img_type), renderer, TRUE);
+  gtk_cell_layout_add_attribute(GTK_CELL_LAYOUT(objs->cmb_img_type), renderer, "text", TYPESTORE_NAME);
+  gtk_combo_box_set_model(GTK_COMBO_BOX(objs->cmb_img_type), GTK_TREE_MODEL(imgtstore));
   gtk_table_attach(GTK_TABLE(box_content), objs->cmb_img_type, 1, 2, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
   gtk_table_attach(GTK_TABLE(box_content), gtk_hseparator_new(), 0, 2, 1, 2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);

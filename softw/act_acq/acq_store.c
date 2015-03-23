@@ -314,8 +314,23 @@ gchar *acq_store_get_user_name(AcqStore *objs, gulong user_id)
   return user_name;
 }
 
-gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdcap)
+struct filtaper
 {
+  //! Name of filter/aperture (really only for user convenience)
+  char name[IPC_MAX_FILTAPER_NAME_LEN];
+  //! Slot where filter/aperture currently installed
+  unsigned char slot;
+  //! Internal identifier for filter/aperture (used for storage)
+  int db_id;
+};
+
+gboolean acq_store_get_filt_list(AcqStore *objs, acq_filters_list_t *ccd_filters)
+{
+  if (ccd_filters == NULL)
+  {
+    act_log_error(act_log_msg("Invalid input parameters."));
+    return FALSE;
+  }
   if (objs->genl_conn == NULL)
   {
     act_log_error(act_log_msg("MySQL connection not available."));
@@ -345,14 +360,21 @@ gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdc
     act_log_debug(act_log_msg("No filters found."));
     return FALSE;
   }
+  if (rowcount > num_filts)
+  {
+    act_log_debug(act_log_msg("Too many filters found (%d, max %d)", rowcount, num_filts));
+    rowcount = num_filts;
+  }
   
   int i;
-  for (i=0; i<IPC_MAX_NUM_FILTAPERS; i++)
+  for (i=0; i<num_filts; i++)
   {
     row = mysql_fetch_row(result);
     if (row == NULL)
     {
-      msg_ccdcap->filters[i].db_id = 0;
+      ccd_filters.filt[i].db_id = 0;
+      ccd_filters.filt[i].slot = 0;
+      ccd_filters.filt[i].name[0] = '\0';
       continue;
     }
     gint tmp_slot, tmp_db_id, tmp_name_len;
@@ -377,22 +399,20 @@ gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdc
       act_log_error(act_log_msg("Name for CCD filter with ID %d (%s) is too long (%d). Trimming to %d characters.", tmp_db_id, row[2], tmp_name_len, IPC_MAX_FILTAPER_NAME_LEN));
       tmp_name_len = IPC_MAX_FILTAPER_NAME_LEN-1;
     }
-    msg_ccdcap->filters[i].db_id = tmp_db_id;
-    msg_ccdcap->filters[i].slot = tmp_slot;
-    snprintf(msg_ccdcap->filters[i].name, tmp_name_len, "%s", row[2]);
+    ccd_filters.filt[i].db_id = tmp_db_id;
+    ccd_filters.filt[i].slot = tmp_slot;
+    snprintf(ccd_filters.filt[i].name, tmp_name_len, "%s", row[2]);
   }
   return TRUE;
 }
 
-PointList *acq_store_get_tycho_pattern(AcqStore *objs, struct rastruct *ra, struct decstruct *dec, float epoch, float radius_deg)
+PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg)
 {
   if (objs->genl_conn == NULL)
   {
     act_log_error(act_log_msg("MySQL connection not available."));
     return FALSE;
   }
-  double ra_d = convert_H_DEG(convert_HMSMS_H_ra(ra));
-  double dec_d = convert_DMS_D_dec(dec);
   double ra_radius = radius_deg / cos(convert_DEG_RAD(dec_d));
   gchar qrystr[256];
   gchar quad_shift = 0;

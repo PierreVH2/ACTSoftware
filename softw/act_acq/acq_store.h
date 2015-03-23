@@ -8,6 +8,9 @@
 #include "ccdcntrl.h"
 #include "ccd_img.h"
 #include "point_list.h"
+#include "act_ipc.h"
+
+typedef struct _acq_filters_list_t{ struct filtaper filt[IPC_MAX_NUM_FILTAPERS]; } acq_filters_list_t;
 
 G_BEGIN_DECLS
 
@@ -44,8 +47,8 @@ glong acq_store_search_targ_id(AcqStore *objs, gchar const *targ_name_pat);
 gchar *acq_store_get_targ_name(AcqStore *objs, gulong targ_id);
 glong acq_store_search_user_id(AcqStore *objs, gchar const *user_name_pat);
 gchar *acq_store_get_user_name(AcqStore *objs, gulong user_id);
-gboolean acq_store_get_filt_list(AcqStore *objs, struct act_msg_ccdcap *msg_ccdcap);
-PointList *acq_store_get_tycho_pattern(AcqStore *objs, struct rastruct *ra, struct decstruct *dec, float epoch, float radius_deg);
+gboolean acq_store_get_filt_list(AcqStore *objs, acq_filters_list_t *ccd_filters);
+PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg);
 void acq_store_append_image(AcqStore *objs, CcdImg *new_img);
 gboolean acq_store_idle(AcqStore *objs);
 gboolean acq_store_storing(AcqStore *objs);
