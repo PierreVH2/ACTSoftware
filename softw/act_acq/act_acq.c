@@ -37,264 +37,10 @@ struct acq_objects
   gulong cur_user_id;
   gchar *cur_user_name;
   
+  guchar last_imgt = IMGT_NONE;
   gfloat last_exp_t = 1.0;
   guint last_repeat = 1;
 };
-
-/** \brief Callback when main plug containing all GUI objects is destroyed.
- * \param plug GTK plug object.
- * \param user_data Contents of GTK plug.
- * \return (void)
- * \todo Access contents of plug using get_child instead.
- *
- * References objects contained within plug so they don't get destroyed.
- */
-void destroy_plug(GtkWidget *plug, gpointer user_data)
-{
-  g_object_ref(G_OBJECT(user_data));
-  gtk_container_remove(GTK_CONTAINER(plug),GTK_WIDGET(user_data));
-}
-
-/** \brief Setup network socket with ACT control.
- * \param host Hostname (dns name) or IP address of the computer running ACT control.
- * \param port Port number/name that ACT control is listening on.
- */
-int setup_net(const char* host, const char* port)
-{
-  struct addrinfo hints, *servinfo, *p;
-  int sockfd, retval;
-  memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  if ((retval = getaddrinfo(host, port, &hints, &servinfo)) != 0)
-  {
-    act_log_error(act_log_msg("Failed to get address info - %s.", gai_strerror(retval)));
-    return -1;
-  }
-  
-  for(p = servinfo; p != NULL; p = p->ai_next)
-  {
-    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
-      continue;
-    
-    if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1)
-    {
-      close(sockfd);
-      continue;
-    }
-    break;
-  }
-  if (p == NULL)
-  {
-    act_log_error(act_log_msg("Failed to connect - %s.", gai_strerror(retval)));
-    return -1;
-  }
-  freeaddrinfo(servinfo);
-  
-  return sockfd;
-}
-
-/** \brief If GUI objects are not embedded within a socket (via a plug), request socket information from controller.
- * \return TRUE if request was successfully sent, otherwise <0.
- */
-int request_guisock()
-{
-  struct act_msg guimsg;
-  guimsg.mtype = MT_GUISOCK;
-  memset(&guimsg.content.msg_guisock, 0, sizeof(struct act_msg_guisock));
-  if (send(G_netsock_fd, &guimsg, sizeof(struct act_msg), 0) == -1)
-  {
-    act_log_error(act_log_msg("Failed to send GUI socket request - %s.", strerror(errno)));
-    return -1;
-  }
-  return 1;
-}
-
-/** \brief Check for incoming messages over network connection.
- * \param box_main GTK box containing all graphical objects.
- * \return TRUE if a message was received, FALSE if incoming queue is empty, <0 upon error.
- *
- * Recognises the following message types:
- *  - MT_QUIT: Exit main programme loop.
- *  - MT_CAP: Respond with capabilities and requirements.
- *  - MT_STAT: Respond with current status.
- *  - MT_GUISOCK: Construct GtkPlug for given socket and embed box_main within plug.
- *  - MT_COORD: Update internally stored right ascension, hour angle, declination, altitude, azimuth.
- *
- * \todo For MT_OBSN - ignore messages with error flag set.
- */
-int check_net_messages()
-{
-  int ret = 0;
-  struct act_msg msgbuf;
-  memset(&msgbuf, 0, sizeof(struct act_msg));
-  int numbytes = recv(G_netsock_fd, &msgbuf, sizeof(struct act_msg), MSG_DONTWAIT);
-  if ((numbytes == -1) && (errno == EAGAIN))
-    return 0;
-  if (numbytes == -1)
-  {
-    act_log_error(act_log_msg("Failed to receive message - %s.", strerror(errno)));
-    return -1;
-  }
-  switch (msgbuf.mtype)
-  {
-    case MT_QUIT:
-    {
-      act_log_normal(act_log_msg("Received QUIT signal"));
-      gtk_main_quit();
-      break;
-    }
-    case MT_CAP:
-    {
-      struct act_msg_cap *cap_msg = &msgbuf.content.msg_cap;
-      cap_msg->service_provides = SERVICE_TIME;
-      cap_msg->service_needs = SERVICE_COORD;
-      cap_msg->targset_prov = 0;
-      cap_msg->datapmt_prov = 0;
-      cap_msg->dataccd_prov = 0;
-      snprintf(cap_msg->version_str, MAX_VERSION_LEN, "%d.%d", MAJOR_VER, MINOR_VER);
-      if (send(G_netsock_fd, &msgbuf, sizeof(struct act_msg), 0) == -1)
-      {
-        act_log_error(act_log_msg("Failed to send capabilities message - %s.", strerror(errno)));
-        ret = -1;
-      }
-      else 
-        ret = 1;
-      break;
-    }
-    case MT_STAT:
-    {
-      msgbuf.content.msg_stat.status = PROGSTAT_RUNNING;
-      if (send(G_netsock_fd, &msgbuf, sizeof(struct act_msg), 0) == -1)
-      {
-        act_log_error(act_log_msg("Failed to send status message - %s.", strerror(errno)));
-        ret = -1;
-      }
-      else
-        ret = 1;
-      break;
-    }
-    case MT_GUISOCK:
-    {
-      struct act_msg_guisock *guimsg = &msgbuf.content.msg_guisock;
-      ret = 1;
-      if (guimsg->gui_socket > 0)
-      {
-        if (gtk_widget_get_parent(G_form_objs.box_main) != NULL)
-        {
-          act_log_normal(act_log_msg("Received GUI socket (%d), but GUI elements are already embedded. Ignoring the latter."));
-          break;
-        }
-        GtkWidget *plg_new = gtk_plug_new(guimsg->gui_socket);
-        act_log_normal(act_log_msg("Received GUI socket %d.", guimsg->gui_socket));
-        gtk_container_add(GTK_CONTAINER(plg_new),G_form_objs.box_main);
-        g_object_unref(G_OBJECT(G_form_objs.box_main));
-        g_signal_connect(G_OBJECT(plg_new),"destroy",G_CALLBACK(destroy_plug),G_form_objs.box_main);
-        gtk_widget_show_all(plg_new);
-      }
-      break;
-    }
-    case MT_COORD:
-    {
-      if (G_msg_coord == NULL)
-        G_msg_coord = malloc(sizeof(struct act_msg_coord));
-      memcpy(G_msg_coord, &msgbuf.content.msg_coord, sizeof(struct act_msg_coord));
-      disp_coords();
-      ret = 1;
-      break;
-    }
-    default:
-      if (msgbuf.mtype >= MT_INVAL)
-        act_log_error(act_log_msg("Invalid message received (type %d).", msgbuf.mtype));
-      ret = 1;
-  }
-  return ret;
-}
-
-gboolean process_signal(GIOChannel *source, GIOCondition cond, gpointer user_data)
-{
-  (void)cond;
-  (void)user_data;
-  GError *error = NULL;
-  union 
-  {
-    gchar chars[sizeof(int)];
-    int signum;
-  } buf;
-  GIOStatus status;
-  gsize bytes_read;
-  
-  while((status = g_io_channel_read_chars(source, buf.chars, sizeof(int), &bytes_read, &error)) == G_IO_STATUS_NORMAL)
-  {
-    if (error != NULL)
-      break;
-    int ret;
-    ret = check_net_messages();
-    if (ret < 0)
-      act_log_error(act_log_msg("Error reading messages."));
-  }
-  
-  if(error != NULL)
-  {
-    act_log_error(act_log_msg("Error reading signal pipe: %s", error->message));
-    return TRUE;
-  }
-  if(status == G_IO_STATUS_EOF)
-  {
-    act_log_error(act_log_msg("Signal pipe has been closed."));
-    return FALSE;
-  }
-  if (status != G_IO_STATUS_AGAIN)
-  {
-    act_log_error(act_log_msg("status != G_IO_STATUS_AGAIN."));
-    return FALSE;
-  }
-  return TRUE;
-}
-
-/** \brief Main programme loop.
- * \param user_data Pointer to struct formobjects which contains all data relevant to this function.
- * \return Return FALSE if main loop should not be called again, otherwise always return TRUE.
- *
- * Tasks:
- *  - Check for new incoming messages.
- *  - If main GTK box isn't embedded, request X11 socket info from controller.
- *  - Read/calculate times (local and universal time and date, gjd, hjd)
- *  - Send time information to controller.
- *  - Display times and coordinates on screen.
- */
-gboolean timeout(gpointer user_data)
-{
-  (void)user_data;
-  send_times();
-  /*  struct timeout_objects *to_objs = (struct timeout_objects *)user_data;
-   *  if (to_objs->timeout_period != DEFAULT_LOOP_PERIOD)
-   *  {
-   *    to_objs->timeout_period = DEFAULT_LOOP_PERIOD;
-   *    g_timeout_add(to_objs->timeout_period, timeout, user_data);
-   *    return FALSE;
-}
-if ((G_msg_time.loct.milliseconds % (DEFAULT_LOOP_PERIOD-DEFAULT_LOOP_PERIOD/10) > DEFAULT_LOOP_PERIOD/10) && (G_msg_time.loct.milliseconds < DEFAULT_LOOP_PERIOD))
-{
-to_objs->timeout_period = DEFAULT_LOOP_PERIOD - G_msg_time.loct.milliseconds;
-g_timeout_add(to_objs->timeout_period, timeout, user_data);
-return FALSE;
-}*/
-  return TRUE;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -332,13 +78,75 @@ void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer 
   ccd_cntrl_set_tel_pos(objs->cntrl, tel_ra_d, tel_dec_d);
 }
 
-void expose_response(GtkWidget *dialog, gint response_id, gpointer cntrl_objs)
+void expose_response(GtkWidget *dialog, gint response_id, gpointer user_data)
 {
+  // User cancelled
+  if (response_id != GTK_RESPONSE_OK)
+  {
+    gtk_widget_destroy(dialog);
+    return;
+  }
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  // This is actually just precautionary, the user should not be able to click the expose button when there is an exposure underway
+  if (objs->mode != MODE_IDLE)
+  {
+    /// TODO: Show error dialog, indicating that system is busy
+    act_log_error(act_log_debug("User attempted to start a manual exposure, but system is currently busy (mode %hhu).", objs->mode));
+    GtkWidget *err_dialog = gtk_message_dialog_new (objs->box_main, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "User attempted to start a manual exposure, but system is currently busy (mode %hhu).", objs->mode);
+    g_signal_connect_swapped (err_dialog, "response", G_CALLBACK (gtk_widget_destroy), err_dialog);
+    gtk_widget_show_all(err_dialog);
+    gtk_widget_destroy(dialog);
+    return;
+  }
+  objs->mode = MODE_MANUAL_EXP;
+  
+  // Create CCD command structure and populate
+  CcdCmd *cmd = CCD_CMD(g_object_new (ccd_cmd_get_type(), NULL));
+  ccd_cmd_set_img_type(cmd, expose_dialog_get_image_type(dialog));
+  ccd_cmd_set_win_start_x(cmd, expose_dialog_get_win_start_x(dialog));
+  ccd_cmd_set_win_start_y(cmd, expose_dialog_get_win_start_y(dialog));
+  ccd_cmd_set_win_width(cmd, expose_dialog_get_win_width(dialog));
+  ccd_cmd_set_win_height(cmd, expose_dialog_get_win_height(dialog));
+  ccd_cmd_set_prebin_x(cmd, expose_dialog_get_prebin_x(dialog));
+  ccd_cmd_set_prebin_y(cmd, expose_dialog_get_prebin_y(dialog));
+  ccd_cmd_set_exp_t(cmd, expose_dialog_get_exp_t(dialog));
+  ccd_cmd_set_rpt(cmd, expose_dialog_get_repetitions(dialog));
+  ccd_cmd_set_target(cmd, objs->cur_targ_id, objs->cur_targ_name);
+  ccd_cmd_set_user(cmd, objs->cur_user_id, objs->cur_user_name);
+  
+  objs->last_imgt = expose_dialog_get_image_type(dialog);
+  objs->last_exp_t = expose_dialog_get_exp_t(dialog);
+  objs->last_repeat = expose_dialog_get_repetitions(dialog);
+  
+  gint ret = ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd);
+  if (ret < 0)
+  {
+    objs->mode = MODE_IDLE;
+    act_log_error(act_log_msg("Error occurred while attempting to start a manual exposure - %s.", strerror(abs(ret))));
+    GtkWidget *err_dialog = gtk_message_dialog_new (objs->box_main, GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_CLOSE, "Error occurred while attempting to start a manual exposure - %s.", strerror(abs(ret)));
+    g_signal_connect_swapped (err_dialog, "response", G_CALLBACK (gtk_widget_destroy), err_dialog);
+    gtk_widget_show_all(err_dialog);
+  }
+  
+  gtk_widget_destroy(dialog);
 }
 
 void expose_click(GtkWidget btn_expose, gpointer user_data)
 {
   // Create and show exposure parameters dialog
+  struct acq_objects *objs = (struct acq_objects *)user_data;
+  GtkWidget *dialog = expose_dialog_new(objs->box_main, objs->cntrl);
+  expose_dialog_set_image_type(dialog, objs->last_imgt);
+  expose_dialog_set_win_start_x(dialog, 1);
+  expose_dialog_set_win_start_y(dialog, 1);
+  expose_dialog_set_win_width(dialog, ccd_cntrl_get_max_width(objs->cntrl));
+  expose_dialog_set_win_height(dialog, ccd_cntrl_get_max_height(objs->cntrl));
+  expose_dialog_set_prebin_x(dialog, 1);
+  expose_dialog_set_prebin_y(dialog, 1);
+  expose_dialog_set_exp_t(dialog, objs->last_exp_t);
+  expose_dialog_set_repetitions(dialog, objs->last_repeat);
+  g_signal_connect(G_OBJECT(dialog), "response", G_CALLBACK(expose_response), user_data);
+  gtk_widget_show_all(dialog);
 }
 
 void cancel_click(GtkWiget *btn_cancel, gpointer user_data)
@@ -676,6 +484,7 @@ int main(int argc, char** argv)
   
   // Create GUI
   GtkWidget *box_main = gtk_vbox_new(FALSE, TABLE_PADDING);
+  g_object_ref(box_main);
   GtkWidget *imgdisp  = imgdisp_new();
   gtk_box_pack_start(GTK_BOX(box_main), imgdisp, TRUE, TRUE, TABLE_PADDING);
   GtkWidget* box_controls = gtk_table_new(3,3,TRUE);

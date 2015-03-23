@@ -331,12 +331,12 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
   if (objs->max_exp_t_s == objs->min_exp_t_s)
   {
     act_log_error(act_log_msg("CCD parameters not yet established, cannot start integration."));
-    return EAGAIN;
+    return -EAGAIN;
   }
   if (objs->drv_stat & (CCD_INTEGRATING | CCD_READING_OUT))
   {
     act_log_error(act_log_msg("CCD is busy, cannot order exposure."));
-    return EBUSY;
+    return -EBUSY;
   }
   struct ccd_cmd drv_cmd;
   ccd_cmd_exp_t(ccd_cmd_get_exp_t(cmd), drv_cmd);
@@ -350,7 +350,7 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
   if (ret != 0)
   {
     act_log_error(act_log_msg("Failed to order CCD exposure - %s", strerror(ret)));
-    return EIO;
+    return -EIO;
   }
 
   CcdImg *new_img = CCD_IMG(g_object_new (ccd_img_get_type(), NULL));

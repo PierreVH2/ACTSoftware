@@ -50,21 +50,14 @@ GtkWidget *expose_dialog_new(GtkWidget *parent, CcdCntrl *cntrl)
   
   // Set limits of necessary fields based on info from cntrl
   guint ccd_width = ccd_cntrl_get_max_width(cntrl), ccd_height = ccd_cntrl_get_max_height(cntrl);
-  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_start_x), 0, ccd_width);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_start_x), 0);
-  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_start_y), 0, ccd_height);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_start_y), 0);
-  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_width), 0, ccd_width);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_width), ccd_width);
-  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_height), 0, ccd_height);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_win_height), ccd_height);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_start_x), 1, ccd_width);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_start_y), 1, ccd_height);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_width), 1, ccd_width);
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_height), 1, ccd_height);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_x), 1, ccd_width);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_prebin_x), 1);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_y), 1, ccd_height);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_prebin_y), 1);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, ccd_cntrl_get_max_exp_t_sec(cntrl));
   gtk_spin_button_set_increments(GTK_SPIN_BUTTON(objs->spn_exp_t_s), ccd_cntrl_get_min_exp_t_sec(cntrl), 1.0);
-  gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_exp_t_s), last_exp_t);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_repetitions), 1, 1000000);
   gtk_spin_button_set_value(GTK_SPIN_BUTTON(objs->spn_repetitions), last_repeat);
   

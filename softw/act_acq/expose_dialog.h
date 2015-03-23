@@ -34,7 +34,6 @@ struct _ExposeDialogClass
 
 GType expose_dialog_type(void);
 GtkWidget *expose_dialog_new(GtkWidget *parent, CcdCntrl *cntrl);
-GtkWidget *expose_dialog_new_init(GtkWidget *parent, guchar img_type, guint start_x, guint start_y, guint win_width, guint win_height, guint prebin_x, guint prebin_y, gfloat exp_t, guint rpt);
 guchar expose_dialog_get_image_type(GtkWidget *expose_dialog);
 guint expose_dialog_get_win_start_x(GtkWidget *expose_dialog);
 guint expose_dialog_get_win_start_y(GtkWidget *expose_dialog);
