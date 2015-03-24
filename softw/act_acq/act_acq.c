@@ -153,7 +153,7 @@ void cancel_click(GtkWiget *btn_cancel, gpointer user_data)
 {
   struct acq_objects *objs = (struct acq_objects *)user_data;
   ccd_cntrl_cancel_exp(objs->cntrl);
-  objs->mode = MODE_IDLE;
+//   objs->mode = MODE_IDLE;
 }
 
 void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
@@ -242,7 +242,7 @@ void ccd_stat_err_no_recov(struct acq_objects *objs)
       acq_net_send_dataccd_response(objs->net, OBSNSTAT_ERR_WAIT);
       break;
     default:
-      act_log_debug(act_log_msg("CCD raised recoverable error, but an invalid ACQ mode is in operation. Ignoring."));
+      act_log_debug(act_log_msg("CCD raised fatal error, but an invalid ACQ mode is in operation. Ignoring."));
   }
   
   // Try to disconnect from camera driver and reconnect
@@ -283,11 +283,36 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
   struct acq_objects *objs = (struct acq_objects *)user_data;
   imgdisp_set_img(objs->imgdisp, CCD_IMG(img));
   
-  // Check for auto target set, if so extract stars, calculate offset etc
+  gulong rpt_rem = ccd_cntrl_get_rpt_rem(CCD_CNTRL(ccd_cntrl));
+  switch (objs->mode)
+  {
+    case MODE_IDLE:
+      // This should not happen
+      act_log_error(act_log_msg("New CCD image received, but ACQ system should be idle."));
+      break;
+    case MODE_MANUAL_EXP:
+      // Check if there integration repetitions are complete, if so change mode to idle
+      act_log_debug(act_log_msg("New manual image received."));
+      if (rpt_rem == 0)
+        objs->mode = MODE_IDLE;
+      break;
+    case MODE_TARGSET_EXP:
+      // Do pattern matching
+      // Send response
+      acq_net_send_targset_response(objs->net, , ra_offs, dec_offs, FALSE);
+      objs->mode = MODE_IDLE;
+      break;
+    case MODE_DATACCD_EXP:
+      // Check if there integration repetitions are complete, if so change mode to idle
+      act_log_debug(act_log_msg("New DATA CCD image received."));
+      if (rpt_rem == 0)
+        objs->mode = MODE_IDLE;
+      break;
+    default:
+      act_log_debug(act_log_msg("New CCD iamge received, but an invalid ACQ mode is in operation. Ignoring."));
+  }
   
   acq_store_append_image(objs->store, CCD_IMG(img));
-  
-  // If all integrations done (rpt_rem == 0), then change acq mode
 }
 
 void store_stat_update(GObject *acq_store, gpointer lbl_store_stat)
