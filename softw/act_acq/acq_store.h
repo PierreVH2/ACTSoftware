@@ -5,7 +5,7 @@
 #include <glib-object.h>
 #include <pthread.h>
 #include <mysql/mysql.h>
-#include "ccdcntrl.h"
+#include "ccd_cntrl.h"
 #include "ccd_img.h"
 #include "point_list.h"
 #include "act_ipc.h"

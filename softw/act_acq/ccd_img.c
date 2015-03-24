@@ -191,7 +191,7 @@ gulong ccd_img_get_img_len(CcdImg const *objs)
   return objs->img_len;
 }
 
-gfloat const *ccd_img_get_img_data(CcdImg const *objs)
+gfloat *ccd_img_get_img_data(CcdImg const *objs)
 {
   return objs->img_data;
 }
