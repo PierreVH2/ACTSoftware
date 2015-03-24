@@ -50,7 +50,7 @@ struct motor_tel_coord
 struct motor_goto_cmd
 {
   int targ_ha, targ_dec;
-  unsigned char speed, tracking_on, use_encod;
+  unsigned char speed, tracking_on;
 };
 
 struct motor_card_cmd
@@ -66,9 +66,6 @@ struct motor_track_adj
 
 /// IOCTL to get the telescope's current position according to telescope motors - saves struct motor_tel_coord to ioctl parameter.
 #define IOCTL_MOTOR_GET_MOTOR_POS _IOR(MOTOR_IOCTL_NUM, 0, void *)
-
-/// IOCTL to get the telescope's current position according to telescope encoders - saves struct motor_tel_coord to ioctl parameter.
-#define IOCTL_MOTOR_GET_ENCOD_POS _IOR(MOTOR_IOCTL_NUM, 1, void *)
 
 /// IOCTL to start or end a telescope goto - takes pointer to motor_goto struct as ioctl parameter, if NULL end goto.
 #define IOCTL_MOTOR_GOTO _IOW(MOTOR_IOCTL_NUM, 2, void *)
@@ -92,7 +89,7 @@ struct motor_track_adj
  * \{
  */
 #ifdef MOTOR_SIM
-/// IOCTL to set the number of motor/encoder steps
+/// IOCTL to set the number of motor steps
 #define IOCTL_MOTOR_SET_SIM_STEPS _IOW(MOTOR_IOCTL_NUM, 8, unsigned long)
 
 /// IOCTL to set the eletronic limit switch flags
@@ -107,6 +104,20 @@ struct motor_track_adj
 /// IOCTL to get the speed with which the "motors" should move
 #define IOCTL_MOTOR_GET_SIM_RATE _IOR(MOTOR_IOCTL_NUM, 12,unsigned char)
 #endif
+/** \} */
+
+/** \brief Additional IOCTL - FOR TESTING PURPOSES ONLY
+ * \{
+ */
+/// IOCTL to SET the telescope's current position according to telescope motors - parameter must be a struct motor_tel_coord containing HA, DEC motor steps
+/// NOTE: This feature can be dangerous and may only be used if the user is ABSOLUTELY certain what position the telescope is pointing in
+#define IOCTL_MOTOR_SET_MOTOR_POS _IOW(MOTOR_IOCTL_NUM, 13, void *)
+
+/// IOCTL to SET the telescope's current initialisation state - paramater must be a bitmask of MOTOR_STAT_HA_INIT and MOTOR_STAT_DEC_INIT
+/// indicating which axis needs to be initialised. If the flag is ON, that axis will be INITIALISED and vice versa.
+/// NOTE: This feature is intended to address the issue of spontaneous Western limit switch triggers and to aid in the software workaround that
+///       was implemented in check_motors (motor_intfce.c) - see the comments in that function for further details.
+#define IOCTL_MOTOR_SET_INIT _IOW(MOTOR_IOCTL_NUM, 14, unsigned char)
 /** \} */
 
 #endif //MOTOR_DRIVER_H

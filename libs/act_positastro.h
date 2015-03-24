@@ -33,8 +33,11 @@ void calc_moon_pos (double JulCen, struct rastruct *moon_ra, struct decstruct *m
 double calc_moon_illum (struct rastruct *moon_ra, struct decstruct *moon_dec, struct rastruct *sun_ra, struct decstruct *sun_dec);
 double calc_airmass(struct altstruct *alt);
 void precess_coord(struct rastruct *ra_in, struct decstruct *dec_in, float epoch_in, float epoch_out, struct rastruct *ra_out, struct decstruct *dec_out);
-void corr_atm_refract_to_sky(struct altstruct *alt);
-void corr_atm_refract_to_obs(struct altstruct *alt);
+void corr_atm_refract_tel_sky(struct altstruct *alt);
+void corr_atm_refract_sky_tel(struct altstruct *alt);
+void corr_atm_refract_tel_sky_equat(struct hastruct *ha, struct decstruct *dec);
+void corr_atm_refract_sky_tel_equat(struct hastruct *ha, struct decstruct *dec);
+double calc_atm_refract_deg(double alt_deg, double press_kpa, double temp_c);
 
 #ifdef __cplusplus
 }

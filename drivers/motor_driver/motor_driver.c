@@ -141,13 +141,6 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
         value = -EFAULT;
       break;
       
-    case IOCTL_MOTOR_GET_ENCOD_POS:
-      get_coord_encod(&user_data.coord);
-      value = copy_to_user((void*)ioctl_param, &user_data.coord, sizeof(struct motor_tel_coord));
-      if (value != 0)
-        value = -EFAULT;
-      break;
-      
     case IOCTL_MOTOR_GOTO:
       if (ioctl_param == 0)
       {
@@ -281,6 +274,22 @@ static long device_ioctl(struct file *filp, unsigned int ioctl_num, unsigned lon
       break;
     }
     #endif
+    case IOCTL_MOTOR_SET_MOTOR_POS:
+      value = copy_from_user(&user_data.coord, (void*)ioctl_param, sizeof(struct motor_tel_coord));
+      if (value < 0)
+      {
+        printk(KERN_INFO PRINTK_PREFIX "Failed to read motor steps from user-space.\n");
+        value = -EIO;
+        break;
+      }
+      set_coord_motor(&user_data.coord);
+      break;
+    
+    case IOCTL_MOTOR_SET_INIT:
+      set_init_motor(ioctl_param);
+      value = 0;
+      break;
+
     default:
       printk(KERN_DEBUG PRINTK_PREFIX "Invalid IOCTL number (%d).\n", ioctl_num);
       value = -ENODEV;

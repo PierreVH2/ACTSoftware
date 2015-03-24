@@ -115,7 +115,7 @@ void storeinteg(struct storeinteg_objects *objs, struct pmtintegstruct *pmtinteg
   char *qrystr = malloc(180 + num_buffered*PMTPHOT_LINE_LENGTH);
   int num_written = 0;
   unsigned long qrylen;
-  qrylen = sprintf(qrystr, "INSERT INTO raw_pmt_phot (target_id, sky, user_id, start_date, start_time_h, sampling_s, dead_time_s, integt_s, filt_id, aper_id, counts, warn, err) VALUES ");
+  qrylen = sprintf(qrystr, "INSERT INTO pmt_phot_raw (modnum, start_date, start_time_h, integt_s, pmt_filt_id, pmt_aper_id, counts, warn, err) VALUES ");
   while (done > 0)
   {
     if (qrylen + PMTPHOT_LINE_LENGTH < sizeof(qrystr))
@@ -134,7 +134,7 @@ void storeinteg(struct storeinteg_objects *objs, struct pmtintegstruct *pmtinteg
         break;
       }
     }
-    qrylen += sprintf(&qrystr[qrylen], "(%11d, %3hhd, %11d, \"%04hd-%02hhd-%02hhd\", %15.10lf, %15.10lf, %15.10lf, %15.10lf, %11d, %11d, %11lu, %3hhu, %3hhu), ", lastinteg->targid,lastinteg->sky,  lastinteg->userid, lastinteg->start_unidate.year, lastinteg->start_unidate.month+1, lastinteg->start_unidate.day+1, convert_HMSMS_H_time(&lastinteg->start_unitime), lastinteg->sample_period_s, lastinteg->dead_time_s, lastinteg->integt_s, lastinteg->filter.db_id, lastinteg->aperture.db_id, lastinteg->counts, pmt_noncrit_err(lastinteg->error), pmt_crit_err(lastinteg->error));
+    qrylen += sprintf(&qrystr[qrylen], "(%11d, \"%04hd-%02hhd-%02hhd\", %15.10lf, %15.10lf, %11d, %11d, %11lu, %3hhu, %3hhu), ", 1, lastinteg->start_unidate.year, lastinteg->start_unidate.month+1, lastinteg->start_unidate.day+1, convert_HMSMS_H_time(&lastinteg->start_unitime), lastinteg->integt_s, lastinteg->filter.db_id, lastinteg->aperture.db_id, lastinteg->counts, pmt_noncrit_err(lastinteg->error), pmt_crit_err(lastinteg->error));
     num_written++;
     if (lastinteg->next != NULL)
     {

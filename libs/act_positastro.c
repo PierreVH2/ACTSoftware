@@ -5,6 +5,8 @@
  * \todo Check coord limits
  */
 
+#include <stdio.h>
+
 #include <math.h>
 #include <string.h>
 #include "act_site.h"
@@ -236,11 +238,11 @@ void convert_EQUI_ALTAZ (struct hastruct *ha, struct decstruct *dec, struct alts
 {
   if ((ha == NULL) || (dec == NULL))
     return;
-  double hangle_rad = convert_H_RAD(convert_HMSMS_H_ha(ha));
+  double ha_rad = convert_H_RAD(convert_HMSMS_H_ha(ha));
   double dec_rad = convert_DEG_RAD(convert_DMS_D_dec(dec));
   double lat_rad = convert_DEG_RAD(LATITUDE);
-  double alt_rad = asin(sin(lat_rad)*sin(dec_rad) + cos(lat_rad)*cos(dec_rad)*cos(hangle_rad));
-  double azm_rad = atan2(sin(-hangle_rad) * cos(dec_rad) / cos(alt_rad), (sin(dec_rad)-sin(lat_rad)*sin(alt_rad)) / cos(lat_rad) / cos(alt_rad));
+  double alt_rad = asin(sin(lat_rad)*sin(dec_rad) + cos(lat_rad)*cos(dec_rad)*cos(ha_rad));
+  double azm_rad = atan2(sin(-ha_rad) * cos(dec_rad) / cos(alt_rad), (sin(dec_rad)-sin(lat_rad)*sin(alt_rad)) / cos(lat_rad) / cos(alt_rad));
   convert_D_DMS_alt(convert_RAD_DEG(alt_rad), alt);
   convert_D_DMS_azm(convert_RAD_DEG(azm_rad), azm);
   check_alt_azm_ranges(alt, azm);
@@ -536,19 +538,11 @@ void precess_coord(struct rastruct *ra_in, struct decstruct *dec_in, float epoch
 /** \brief Calculates unrefracted altitude from observed altitude
  * \param alt Altitude structure - modified in-place.
  * \return (void)
- *
- * Formulae from "Astronomical Algorithms (2nd ed.), Jean Meeus, Willmann-Bell, Inc., 1998, pg. 105-108
  */
-void corr_atm_refract_to_sky(struct altstruct *alt)
+void corr_atm_refract_tel_sky(struct altstruct *alt)
 {
   double alt_deg = convert_DMS_D_alt(alt);
-  double coeff = alt_deg + 7.31/(alt_deg+4.4);
-  double R = 1.0 / tan(convert_DEG_RAD(coeff));
-//   R += 0.0013515;
-//   R -= 0.06*sin(convert_DEG_RAD(14.7*R + 13));
-//   R *= AVG_PRESS_mb/1010;
-//   R *= 283 / (273 + AVG_TEMP_degC);
-  alt_deg -= R / 60.0;
+  alt_deg -= calc_atm_refract_deg(alt_deg, AVG_PRESS_kPa, AVG_TEMP_degC);
   convert_D_DMS_alt(alt_deg, alt);
 }
 
@@ -558,15 +552,59 @@ void corr_atm_refract_to_sky(struct altstruct *alt)
  *
  * Formulae from "Astronomical Algorithms (2nd ed.), Jean Meeus, Willmann-Bell, Inc., 1998, pg. 105-108
  */
-void corr_atm_refract_to_obs(struct altstruct *alt)
+void corr_atm_refract_sky_tel(struct altstruct *alt)
 {
   double alt_deg = convert_DMS_D_alt(alt);
-  double coeff = alt_deg + 10.3/(alt_deg+5.11);
-  double R = 1.02 / tan(convert_DEG_RAD(coeff));
-//   R += 0.0013515;
-//   R -= 0.06*sin(convert_DEG_RAD(14.7*R + 13));
-//   R *= AVG_PRESS_mb/1010;
-//   R *= 283 / (273 + AVG_TEMP_degC);
-  alt_deg += R / 60.0;
+  alt_deg += calc_atm_refract_deg(alt_deg, AVG_PRESS_kPa, AVG_TEMP_degC);
   convert_D_DMS_alt(alt_deg, alt);
+}
+
+void corr_atm_refract_tel_sky_equat(struct hastruct *ha, struct decstruct *dec)
+{
+  double ha_rad = convert_H_RAD(convert_HMSMS_H_ha(ha));
+  double dec_rad = convert_DEG_RAD(convert_DMS_D_dec(dec));
+  double lat_rad = convert_DEG_RAD(LATITUDE);
+  double alt_rad = asin(sin(lat_rad)*sin(dec_rad) + cos(lat_rad)*cos(dec_rad)*cos(ha_rad));
+  double azm_rad = atan2(sin(-ha_rad) * cos(dec_rad) / cos(alt_rad), (sin(dec_rad)-sin(lat_rad)*sin(alt_rad)) / cos(lat_rad) / cos(alt_rad));
+  alt_rad -= convert_DEG_RAD(calc_atm_refract_deg(convert_RAD_DEG(alt_rad), AVG_PRESS_kPa, AVG_TEMP_degC));
+  dec_rad = asin(sin(lat_rad)*sin(alt_rad) + cos(lat_rad)*cos(alt_rad)*cos(azm_rad));
+  ha_rad = atan2(-sin(azm_rad)*cos(alt_rad)/cos(dec_rad), (sin(alt_rad) - sin(dec_rad)*sin(lat_rad))/cos(dec_rad)/cos(lat_rad));
+  convert_H_HMSMS_ha(convert_RAD_H(ha_rad), ha);
+  convert_D_DMS_dec(convert_RAD_DEG(dec_rad), dec);
+  check_ra_ha_dec_ranges(NULL, ha, dec);
+}
+
+void corr_atm_refract_sky_tel_equat(struct hastruct *ha, struct decstruct *dec)
+{
+  double ha_rad = convert_H_RAD(convert_HMSMS_H_ha(ha));
+  double dec_rad = convert_DEG_RAD(convert_DMS_D_dec(dec));
+  double lat_rad = convert_DEG_RAD(LATITUDE);
+  double alt_rad = asin(sin(lat_rad)*sin(dec_rad) + cos(lat_rad)*cos(dec_rad)*cos(ha_rad));
+  double azm_rad = atan2(sin(-ha_rad) * cos(dec_rad) / cos(alt_rad), (sin(dec_rad)-sin(lat_rad)*sin(alt_rad)) / cos(lat_rad) / cos(alt_rad));
+  alt_rad += convert_DEG_RAD(calc_atm_refract_deg(convert_RAD_DEG(alt_rad), AVG_PRESS_kPa, AVG_TEMP_degC));
+  dec_rad = asin(sin(lat_rad)*sin(alt_rad) + cos(lat_rad)*cos(alt_rad)*cos(azm_rad));
+  ha_rad = atan2(-sin(azm_rad)*cos(alt_rad)/cos(dec_rad), (sin(alt_rad) - sin(dec_rad)*sin(lat_rad))/cos(dec_rad)/cos(lat_rad));
+  convert_H_HMSMS_ha(convert_RAD_H(ha_rad), ha);
+  convert_D_DMS_dec(convert_RAD_DEG(dec_rad), dec);
+  check_ra_ha_dec_ranges(NULL, ha, dec);
+}
+
+/** \brief Calculates refraction at given altitude
+ * \param alt Altitude structure - not modified.
+ * \param press_kpa Atmospheric pressure in kPa
+ * \param temp_c Atmospheric temperature in degrees Celcius
+ * \return Atmospheric refraction angle in degrees
+ *
+ * Formula from "Astronomical Algorithms (2nd ed.), Jean Meeus, Willmann-Bell, Inc., 1998, pg. 105-108
+ * Observed or calculated altitude may be used - difference in refraction should be negligible (see Meeus)
+ * Add returned angle to ideal (unrefracted) altitude to find predicted true altitude ("sky to tel")
+ * Subtract returned angle from observed altitude to find ideal (unrefracted) altitude ("tel to sky")
+ */
+double calc_atm_refract_deg(double alt_deg, double press_kpa, double temp_c)
+{
+  double coeff = alt_deg + 10.3/(alt_deg+5.11);
+  double R = (press_kpa/101.0) * (283.0/(273.0+temp_c)) * 1.02 / tan(coeff*ONEPI/180.0);
+  if (R < 0.0)
+    return 0.0;
+  return R / 60.0;
 }

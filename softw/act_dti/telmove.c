@@ -48,7 +48,7 @@ static void stat_update(gpointer telmove, guchar stat);
 static void limits_update(gpointer telmove, guchar limits);
 static void warn_update(gpointer telmove, guchar warn);
 static void coord_update(gpointer telmove, GActTelcoord *new_coord);
-static void goto_finish(gpointer telmove, gboolean success);
+static void move_finish(gpointer telmove, gboolean success, gpointer new_coord);
 // static void update_statdisp(Telmove *objs);
 // static void update_limitdisp(Telmove *objs);
 static void check_button_sens(Telmove *objs);
@@ -77,6 +77,8 @@ static void user_cancel_goto(gpointer telmove);
 static gint start_goto(Dtimotor *dti_motor, struct hastruct *ha, struct decstruct *dec, gboolean is_sidereal);
 static void check_sidt(Telmove *objs);
 static void error_dialog(GtkWidget *top_parent, const char *message, unsigned int errcode);
+
+static void print_coord(gpointer telmove);
 
 
 enum
@@ -132,7 +134,7 @@ GtkWidget *telmove_new (void)
   g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "limits-update", G_CALLBACK(limits_update), objs);
   g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "warn-update", G_CALLBACK(warn_update), objs);
   g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "coord-update", G_CALLBACK(coord_update), objs);
-  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "goto-finish", G_CALLBACK(goto_finish), objs);
+  g_signal_connect_swapped(G_OBJECT(objs->dti_motor), "move-finish", G_CALLBACK(move_finish), objs);
   
   g_signal_connect_swapped(G_OBJECT(telmove), "destroy", G_CALLBACK(telmove_destroy), telmove);
   g_signal_connect(G_OBJECT(objs->btn_goto), "clicked", G_CALLBACK(user_tel_goto), telmove);
@@ -147,6 +149,8 @@ GtkWidget *telmove_new (void)
   g_signal_connect(G_OBJECT(objs->btn_moveS), "button-release-event", G_CALLBACK(end_moveNSEW), telmove);
   g_signal_connect(G_OBJECT(objs->btn_moveE), "button-release-event", G_CALLBACK(end_moveNSEW), telmove);
   g_signal_connect(G_OBJECT(objs->btn_moveW), "button-release-event", G_CALLBACK(end_moveNSEW), telmove);
+
+  g_signal_connect_swapped(G_OBJECT(objs->btn_print_coord), "clicked", G_CALLBACK(print_coord), telmove);
 
   return telmove;
 }
@@ -256,6 +260,9 @@ static void telmove_init(GtkWidget *telmove)
   objs->lbl_stat = gtk_label_new("");
   gtk_label_set_width_chars(GTK_LABEL(objs->lbl_stat), 20);
   gtk_container_add(GTK_CONTAINER(objs->evb_stat),objs->lbl_stat);
+
+  objs->btn_print_coord = gtk_button_new_with_label("Print Coord.");
+  gtk_table_attach(GTK_TABLE(objs->box), objs->btn_print_coord, 4, 7, 5, 6, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
 }
 
 static void telmove_destroy(gpointer telmove)
@@ -397,8 +404,7 @@ static void warn_update(gpointer telmove, guchar warn)
 static void coord_update(gpointer telmove, GActTelcoord *new_coord)
 {
   Telmove *objs = TELMOVE(telmove);
-  if (g_object_is_floating(G_OBJECT(new_coord)))
-    g_object_ref_sink(G_OBJECT(new_coord));
+  g_object_ref(G_OBJECT(new_coord));
 /*  GActTelcoord *raw_coord = gact_telcoord_new(&new_coord->ha, &new_coord->dec);
   if (g_object_is_floating(G_OBJECT(raw_coord)))
     g_object_ref_sink(G_OBJECT(raw_coord));*/
@@ -453,6 +459,7 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
     gdouble decdiff_d = convert_DMS_D_dec(&objs->targ_dec) - convert_DMS_D_dec(&msg_coord->dec);
     if ((fabs(hadiff_h) > TRACK_ADJ_MIN_HA_H) || (fabs(decdiff_d) > TRACK_ADJ_MIN_DEC_D))
     {
+      act_log_debug(act_log_msg("Sending adjustment %f %f", hadiff_h, decdiff_d));
       gint ret = dti_motor_track_adj(objs->dti_motor, hadiff_h, decdiff_d);
       if (ret != 0)
         act_log_error(act_log_msg("Failed to send tracking adjustment (%f h, %f d) - %s", hadiff_h, decdiff_d, strerror(ret)));
@@ -460,14 +467,15 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
   }
 }
 
-static void goto_finish(gpointer telmove, gboolean success)
+static void move_finish(gpointer telmove, gboolean success, gpointer new_coord)
 {
   Telmove *objs = TELMOVE(telmove);
+  coord_update(telmove, GACT_TELCOORD(new_coord));
   if (objs->pending_msg == NULL)
     return;
   if (!success)
   {
-    act_log_debug(act_log_msg("Goto finished, unsuccessful."));
+    act_log_debug(act_log_msg("Move finished, unsuccessful."));
     process_complete(objs, OBSNSTAT_ERR_NEXT);
     return;
   }
@@ -924,4 +932,12 @@ static void error_dialog(GtkWidget *top_parent, const char *message, unsigned in
     err_dialog = gtk_message_dialog_new (GTK_WINDOW(top_parent), GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, "%s.", message);
   g_signal_connect_swapped(G_OBJECT(err_dialog), "response", G_CALLBACK(gtk_widget_destroy), err_dialog);
   gtk_widget_show_all(err_dialog);
+}
+
+static void print_coord(gpointer telmove)
+{
+  Telmove *objs = TELMOVE(telmove);
+  glong ha_steps, dec_steps;
+  dti_motor_get_raw_coord(objs->dti_motor, &ha_steps, &dec_steps);
+  act_log_debug(act_log_msg("Tel coord (SIDT h, HA steps, DEC steps): %f, %d, %d", objs->sidt_h, ha_steps, dec_steps));
 }
