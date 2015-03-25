@@ -10,6 +10,7 @@
 #include "../sep/sep.h"
 #include "../point_list.h"
 #include "../acq_store.h"
+#include "../pattern_match.h"
 
 /// Width of CCD in pixels in full-frame mode (no prebinning, no windowing)
 #define   WIDTH_PX     407
@@ -27,7 +28,7 @@
 /// Y centre of aperture on acquisition image in pixels
 #define YAPERTURE 110
 
-#define MIN_NUM_OBJ      2
+#define MIN_NUM_OBJ      6
 #define MIN_MATCH_FRAC   0.4
 
 #define RADIUS 5.0
@@ -45,27 +46,26 @@ struct point
   float y;
 };
 
-int get_pattern(MYSQL *conn, double tel_ra, double tel_dec, struct point **point_list, int *num_points);
+PointList *get_pattern(MYSQL *conn, double tel_ra, double tel_dec);
 int get_image_info(MYSQL *conn, int img_id, int *img_width, int *img_height, float *epoch, float *tel_ra, float *tel_dec, float *img_mean, float *img_std);
-int get_image(MYSQL *conn, int img_id, float **image, int *num_pix);
-void FindPointMapping (struct point *pList1, int nPts1, struct point *pList2, int nPts2, int** nMap, int* nMatch);
-void print_points(const char *pref, int img_id, struct point *point_list, int num_points);
-void print_map(const char *pref, int img_id, int num, int *map, struct point *list1, struct point *list2);
+int get_image(MYSQL *conn, int img_id, float *image, int num_pix);
+PointList *image_extract_stars(void *image, int width, int height, float tel_ra, float tel_dec, float cutoff);
+void print_points(const char *pref, int img_id, PointList *list);
+void print_map(const char *pref, int img_id, int *map, int max_map, PointList *list1, PointList *list2);
 
 int main(int argc, char **argv)
 {
   int prog = 0, ret;
   MYSQL * conn = NULL;
   int img_id=0, i;
-  int num_pix=0, num_stars=0, num_pat=0, num_match=0;
+  int num_match=0;
   int img_width, img_height;
   float img_epoch;
   float *image = NULL;
-  sepobj *obj = NULL;
-  struct point *img_points = NULL;
-  struct point *pat_points = NULL;
+  PointList *img_pts = point_list_new();
+  PointList *pat_pts = point_list_new();
   int *map = NULL;
-  float conv[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1};
+  int max_map=0;
   float mean=0.0, stddev=0.0;
   float tel_ra=0.0, tel_dec=0.0;
   float corr_ra=0.0, corr_dec=0.0;
@@ -109,74 +109,93 @@ int main(int argc, char **argv)
   convert_D_DMS_dec(tel_dec, &tmp_dec);
   fprintf(stderr,"Telescope RA, Dec:   %s   %s\n", ra_to_str(&tmp_ra), dec_to_str(&tmp_dec));
   
-  ret = get_image (conn, img_id, &image, &num_pix);
+  image = malloc(img_width*img_height*sizeof(float));
+  ret = get_image (conn, img_id, image, img_width*img_height);
   if (ret < 0)
   {
     fprintf(stderr,"Failed to retrieve image %d\n", img_id);
     prog = 1;
     goto cleanup;
   }
-  
-  ret = sep_extract((void *)image, NULL, SEP_TFLOAT, SEP_TFLOAT, 0, WIDTH_PX, HEIGHT_PX, mean+2.0*stddev, 5, conv, 3, 3, 32, 0.005, 1, 1.0, &obj, &num_stars);
-  fprintf(stderr,"%d stars extracted\n", num_stars);
-  if (num_stars < MIN_NUM_OBJ)
+  if (ret != img_width*img_height)
   {
-    fprintf(stderr,"Too few stars extracted from image. Not continuing.\n");
+    fprintf(stderr, "Could not extract all pixels from SQL databse (%d extracted, should be %d).\n", ret, img_width*img_height);
     prog = 1;
     goto cleanup;
   }
-  img_points = malloc(num_stars*sizeof(struct point));
-  for (i=0; i<num_stars; i++)
-  {
-    int j, max_flux = 0;
-    for (j=1; j<num_stars; j++)
-    {
-      if (obj[j].flux > obj[max_flux].flux)
-        max_flux = j;
-    }
-    img_points[i].x = (obj[max_flux].x-XAPERTURE)*RA_WIDTH/WIDTH_PX/cos(tel_dec*ONEPI/180.0);
-    img_points[i].y = (-obj[max_flux].y+YAPERTURE)*DEC_HEIGHT/HEIGHT_PX;
-    obj[max_flux].flux = 0.0;
-  }
-  print_points("obj", img_id, img_points, num_stars);
   
-  ret = get_pattern(conn, tel_ra, tel_dec, &pat_points, &num_pat);
-  if (ret < 0)
+  g_object_unref(G_OBJECT(img_pts));
+  img_pts = image_extract_stars((void*)image, img_width, img_height, tel_ra, tel_dec, mean+2.0*stddev);
+  if (point_list_get_num_used(img_pts) < MIN_NUM_OBJ)
   {
-    fprintf(stderr,"Failed to get pattern.\n");
+    fprintf(stderr, "Too few stars extracted from image. Not continuing.\n");
     prog = 1;
     goto cleanup;
   }
-  fprintf(stderr,"%d pattern points returned.\n", num_pat);
-  print_points("pat", img_id, pat_points, num_pat);
+  fprintf(stderr,"%d image points extracted.\n", point_list_get_num_used(img_pts));
+  print_points("obj", img_id, img_pts);
   
-  FindPointMapping (img_points, num_stars, pat_points, num_pat, &map, &num_match);
-  fprintf(stderr,"%d points matched.\n", num_match);
-  if (num_match / (float)num_stars < MIN_MATCH_FRAC)
+  g_object_unref(G_OBJECT(pat_pts));
+  pat_pts = get_pattern(conn, tel_ra, tel_dec);
+  if (point_list_get_num_used(pat_pts) < MIN_NUM_OBJ)
   {
-    fprintf(stderr,"Too few points matched.\n");
+    fprintf(stderr, "Error extracting stars from Tycho catalog database (or too few stars available). Not continuing.\n");
     prog = 1;
     goto cleanup;
   }
-  print_map("map", img_id, num_stars, map, img_points, pat_points);
+  fprintf(stderr,"%d pattern points extracted.\n", point_list_get_num_used(pat_pts));
+  print_points("pat", img_id, pat_pts);
+  
+  max_map = point_list_get_num_used(img_pts);
+  map = malloc(max_map*sizeof(int));
+  if (map == NULL)
+  {
+    fprintf(stderr, "Failed to allocate memory for point mapping.\n");
+    prog = 1;
+    goto cleanup;
+  }
+  ret = FindListMapping(img_pts, pat_pts, map, max_map, RADIUS);
+  if (ret == 0)
+  {
+    fprintf(stderr, "Failed to create point mapping.\n");
+    prog = 1;
+    goto cleanup;
+  }
+  print_map("map", img_id, map, max_map, img_pts, pat_pts);
   
   rashift = decshift = 0.0;
-  for (i=0; i<num_stars; i++)
+  num_match = 0;
+  for (i=0; i<max_map; i++)
   {
     if (map[i] < 0)
       continue;
-    rashift += img_points[i].x - pat_points[map[i]].x;
-    decshift += img_points[i].y - pat_points[map[i]].y;
+    static gdouble x1, x2, y1, y2;
+    ret = point_list_get_coord(img_pts, i, &x1, &y1) && point_list_get_coord(pat_pts, map[i], &x2, &y2);
+    if (!ret)
+      break;
+    rashift += x1 - x2;
+    decshift += y1 - y2;
+    num_match++;
+  }
+  if (!ret)
+  {
+    fprintf(stderr, "Failed to calculate mapping offset.\n");
+    prog = 1;
+    goto cleanup;
   }
   rashift /= num_match;
   decshift /= num_match;
   raerr = decerr = 0.0;
-  for (i=0; i<num_stars; i++)
+  for (i=0; i<max_map; i++)
   {
     if (map[i] < 0)
       continue;
-    raerr += fabs(rashift - img_points[i].x + pat_points[map[i]].x);
-    decerr += fabs(decshift - img_points[i].y + pat_points[map[i]].y);
+    static gdouble x1, x2, y1, y2;
+    ret = point_list_get_coord(img_pts, i, &x1, &y1) && point_list_get_coord(pat_pts, map[i], &x2, &y2);
+    if (!ret)
+      break;
+    raerr += fabs(rashift - x1 + x2);
+    decerr += fabs(decshift - y1 + y2);
   }
   raerr /= num_match;
   decerr /= num_match;
@@ -188,77 +207,39 @@ int main(int argc, char **argv)
   convert_D_DMS_dec(corr_dec, &tmp_dec);
   fprintf(stderr,"Match coord:    %s    %s\n", ra_to_str(&tmp_ra), dec_to_str(&tmp_dec));
   
-//   printf("%4d  %6.2f %6.2f  %10.5f %10.5f  %3d %3d %3d  %7.2f %7.2f %7.2f %7.2f  %10.5f %10.5f\n", img_id, mean, stddev, tel_ra, tel_dec, num_stars, num_pat, num_match, rashift, raerr, decshift, decerr, corr_ra, corr_dec);
-  
   cleanup:
   if (conn != NULL)
     mysql_close(conn);
   if (image != NULL)
     free(image);
-  if (obj != NULL)
-    free(obj);
-  if (img_points != NULL)
-    free(img_points);
-  if (pat_points != NULL)
-    free(pat_points);
   
-  printf("%4d  %6.2f %6.2f  %10.5f %10.5f  %3d %3d %3d  %7.2f %7.2f %7.2f %7.2f  %10.5f %10.5f\n", img_id, mean, stddev, tel_ra, tel_dec, num_stars, num_pat, num_match, rashift, raerr, decshift, decerr, corr_ra, corr_dec);
+  printf("%4d  %6.2f %6.2f  %10.5f %10.5f  %3d %3d %3d  %7.2f %7.2f %7.2f %7.2f  %10.5f %10.5f\n", img_id, mean, stddev, tel_ra, tel_dec, point_list_get_num_used(img_pts), point_list_get_num_used(pat_pts), num_match, rashift, raerr, decshift, decerr, corr_ra, corr_dec);
   fprintf(stderr, "\n");
+  
+  g_object_unref(G_OBJECT(img_pts));
+  g_object_unref(G_OBJECT(pat_pts));
   
   return prog;
 }
 
-int get_pattern(MYSQL *conn, double tel_ra, double tel_dec, struct point **point_list, int *num_points)
+PointList *get_pattern(MYSQL *conn, double tel_ra, double tel_dec)
 {
   (void) conn;
   AcqStore *store = acq_store_new("localhost");
   if (store == NULL)
   {
     fprintf(stderr, "Failed to create store object.\n");
-    return -1;
+    return point_list_new();
   }
-  struct rastruct tmp_ra;
-  struct decstruct tmp_dec;
-  convert_H_HMSMS_ra(convert_DEG_H(tel_ra), &tmp_ra);
-  convert_D_DMS_dec(tel_dec, &tmp_dec);
-  PointList *pattern_map = acq_store_get_tycho_pattern(store, &tmp_ra, &tmp_dec, 2014.0, 1.0);
+  PointList *pattern_map = acq_store_get_tycho_pattern(store, tel_ra, tel_dec, 2014.0, 1.0);
   g_object_unref(store);
   store = NULL;
   if (pattern_map == NULL)
   {
     fprintf(stderr, "Error retrieving star pattern from database.\n");
-    return -1;
+    return point_list_new();
   }
-
-  struct point *tmp_list = malloc(point_list_get_num_used(pattern_map)*sizeof(struct point));
-  if (tmp_list == NULL)
-  {
-    fprintf(stderr, "Error creating point list.\n");
-    g_object_unref(pattern_map);
-    return -1;
-  }
-  int i, ret = 0;
-  for (i=0; i<(int)point_list_get_num_used(pattern_map); i++)
-  {
-    gdouble tmp_x, tmp_y;
-    if (!point_list_get_coord(pattern_map, i, &tmp_x, &tmp_y))
-    {
-      ret = -1;
-      break;
-    }
-    tmp_list[i].x = tmp_x;
-    tmp_list[i].y = tmp_y;
-    ret++;
-  }
-  g_object_unref(pattern_map);
-  if (ret <= 0)
-  {
-    fprintf(stderr, "Error copying pattern.\n");
-    return ret;
-  }
-  *point_list = tmp_list;
-  *num_points = ret;
-  return 0;
+  return pattern_map;
 }
 
 int get_image_info(MYSQL *conn, int img_id, int *img_width, int *img_height, float *epoch, float *tel_ra, float *tel_dec, float *img_mean, float *img_std)
@@ -342,7 +323,7 @@ int get_image_info(MYSQL *conn, int img_id, int *img_width, int *img_height, flo
   return 0;
 }
 
-int get_image(MYSQL *conn, int img_id, float **image, int *num_pix)
+int get_image(MYSQL *conn, int img_id, float *image, int num_pix)
 {
   MYSQL_RES *result;
   MYSQL_ROW row;
@@ -368,8 +349,13 @@ int get_image(MYSQL *conn, int img_id, float **image, int *num_pix)
     mysql_free_result(result);
     return -1;
   }
+  if (rowcount > num_pix)
+  {
+    fprintf(stderr, "Insufficient space in \"image\" array. Cannot extract image %d from SQL database.", img_id);
+    mysql_free_result(result);
+    return -1;
+  }
   
-  *image = malloc(rowcount*sizeof(float));
   unsigned char pix;
   int count = 0;
   while ((row=mysql_fetch_row(result)) != NULL)
@@ -379,181 +365,73 @@ int get_image(MYSQL *conn, int img_id, float **image, int *num_pix)
       fprintf(stderr,"Failed to extract image pixel %d - %s\n", count, row[0]);
       continue;
     }
-    (*image)[count] = pix;
+    image[count] = pix;
     count++;
   }
-  *num_pix = count;
   
   mysql_free_result(result);
-  return 1;
+  return count;
 }
 
-void FindPointMapping (struct point *pList1, int nPts1, struct point *pList2, int nPts2, int** nMap, int* nMatch)
+PointList *image_extract_stars(void *image, int width, int height, float tel_ra, float tel_dec, float cutoff)
 {
-  struct point *dList;
-  int *dCount, *cList, *cBest;
-  int nDist;
-  int i, j, d, m;
-  int nFound;
-  float dx, dy;
-  int nMax, nPairs, nPairsBest;
+  (void) tel_ra;
+  sepobj *obj = NULL;
+  float conv[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1};
+  int i, ret, num_stars;
   
-  dList = (struct point*) calloc( nPts1*nPts2, sizeof(struct point) );
-  dCount = (int*) calloc( nPts1*nPts2, sizeof(int) );
-  cList = (int*) calloc( nPts1*nPts2, sizeof(int) );
-  cBest = (int*) calloc( nPts1*nPts2, sizeof(int) );
-  
-  if ((dList == NULL) || (dCount == NULL) || (cList == NULL) || (cBest == NULL))
+  ret = sep_extract(image, NULL, SEP_TFLOAT, SEP_TFLOAT, 0, width, height, cutoff, 5, conv, 3, 3, 32, 0.005, 1, 1.0, &obj, &num_stars);
+  if (ret != 0)
   {
-    *nMap = NULL;
-    *nMatch = -1;
-    return;
+    fprintf(stderr, "Failed to extract stars from image - SEP error code %d", ret);
+    return point_list_new();
   }
+  PointList *star_list = point_list_new_with_length(num_stars);
   
-  /* find and cluster all interpoint distances */
-  nDist = 0;
-  for (i=0; i<nPts1; i++)
-    for (j=0; j<nPts2; j++)
-    {
-      dx = pList1[i].x - pList2[j].x;
-      dy = pList1[i].y - pList2[j].y;
-      
-      nFound = 0;
-      for (d=0; d<nDist; d++)
-      {
-        if ( (fabs(dList[d].x/dCount[d] - dx) < RADIUS) 
-          && (fabs(dList[d].y/dCount[d] - dy) < RADIUS) )
-        {
-          nFound = 1;
-          
-          dList[d].x += dx;
-          dList[d].y += dy;                                       
-          dCount[d]++;
-        }
-      }
-      
-      if (!nFound)
-      {
-        dList[nDist].x = dx;
-        dList[nDist].y = dy;
-        dCount[nDist] = 1;
-        
-        nDist++;
-      }
-    }
-    
-    /* get means of distance clusters */
-    for (d=0; d<nDist; d++)
-    {
-      dList[d].x /= dCount[d];
-      dList[d].y /= dCount[d];
-    }
-    
-    #ifdef DEBUG
-    for (i=0; i<nDist; i++)
-      fprintf(stderr, "%4d  %9.3f  %9.3f %d\n", i, dList[i].x, dList[i].y, dCount[i] );
-    #endif
-    
-    /* find largest point mapping */
-    nPairsBest = 0;
-    while (1)
-    {
-      m = -1;
-      nMax = 1;
-      for (d=0; d<nDist; d++)
-      {
-        if (nMax < dCount[d])
-        {
-          m = d;
-          nMax = dCount[d];
-        }
-      }
-      
-      /* stop if no more possibilities exist */
-      if (m == -1)
-        break;
-      
-      #ifdef DEBUG
-      fprintf(stderr, "Offset (%f,%f)\n", dList[m].x, dList[m].y );
-      #endif
-      
-      /* only examine this option if it can possibly be larger than the current best */
-      if (dCount[m] > nPairsBest) 
-      {
-        nPairs = 0;
-        for (i=0; i<nPts1; i++)
-        {
-          cList[i] = -1;
-          for (j=0; j<nPts2; j++)
-          {
-            dx = pList1[i].x - pList2[j].x - dList[m].x;
-            dy = pList1[i].y - pList2[j].y - dList[m].y;
-            
-            if ( fabs(dx) < RADIUS && fabs(dy) < RADIUS )
-            {
-              cList[i] = j;
-              nPairs++;
-              break;
-            }
-          }
-        }
-        
-        if (nPairs > nPairsBest)
-        {
-          int* tmp;
-          
-          tmp = cBest;
-          cBest = cList;
-          cList = tmp;
-          
-          nPairsBest = nPairs;
-        }
-      }
-      
-      /* don't try this option again */
-      dCount[m] = 0;
-    }
-    
-    #ifdef DEBUG
-    for (i=0; i<nPts1; i++)
-      fprintf(stderr, "%4d -> %4d\n", i, cBest[i] );
-    #endif
-    
-    if (nPairsBest < 2)
-      *nMatch = 0;
-    else
-      *nMatch = nPairsBest;
-    
-    *nMap = cBest;
-    
-    free( dList );
-    free( dCount );
-    free( cList );
+  for (i=0; i<num_stars; i++)
+  {
+    static double x, y;
+    x = (obj[i].x-XAPERTURE)*RA_WIDTH/WIDTH_PX/cos(convert_DEG_RAD(tel_dec));
+    y = (-obj[i].y+YAPERTURE)*DEC_HEIGHT/HEIGHT_PX;
+    if (!point_list_append(star_list, x, y))
+      fprintf(stderr, "Failed to add identified star %d to stars list.", i);
+  }
+  return star_list;
 }
 
-void print_points(const char *pref, int img_id, struct point *list, int num)
+void print_points(const char *pref, int img_id, PointList *list1)
 {
   char fname[256];
   sprintf(fname, "img%d_%s.dat", img_id, pref);
   FILE *fp = fopen(fname, "w");
-  int i;
+  int i, len=point_list_get_num_used(list1);
+  gdouble x,y;
   
-  for (i=0; i<num; i++)
-    fprintf(fp, "%6.1f  %6.1f\n", list[i].x, list[i].y);
+  for (i=0; i<len; i++)
+  {
+    if (!point_list_get_coord(list1, i, &x, &y))
+      continue;
+    fprintf(fp, "%6.1f  %6.1f\n", x, y);
+  }
   fclose(fp);
 }
 
-void print_map(const char *pref, int img_id, int num, int *map, struct point *list1, struct point *list2)
+void print_map(const char *pref, int img_id, int *map, int max_map, PointList *list1, PointList *list2)
 {
   char fname[256];
   sprintf(fname, "img%d_%s.dat", img_id, pref);
   FILE *fp = fopen(fname, "w");
   int i;
-  for (i=0; i<num; i++)
+  gdouble x1,y1,x2,y2;
+  for (i=0; i<max_map; i++)
   {
     if (map[i] < 0)
       continue;
-    fprintf(fp, "%2d    %6.1f  %6.1f  %6.1f    %6.1f  %6.1f  %6.1f\n", map[i], list1[i].x, list2[i].x, list1[i].x-list2[i].x, list1[i].y, list2[map[i]].y, list1[i].y - list2[map[i]].y);
+    if (!point_list_get_coord(list1, i, &x1, &y1))
+      continue;
+    if (!point_list_get_coord(list2, map[i], &x2, &y2))
+      continue;
+    fprintf(fp, "%2d    %6.1f  %6.1f  %6.1f    %6.1f  %6.1f  %6.1f\n", map[i], x1, x2, x1-x2, y1, y2, y1 - y2);
   }
   fclose(fp);
 }

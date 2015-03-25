@@ -25,6 +25,15 @@
 /// Y centre of aperture on acquisition image in pixels
 #define YAPERTURE 110
 
+/// Minimum number of stars for a positive field identification
+#define MIN_NUM_STARS    6
+/// If during a target set procedure an insufficient number of stars are extracted from the image, retry with an exposure time that is EXP_RETRY_FACT than for the previous attempt
+#define EXP_RETRY_FACT   3
+/// Search radius for pattern matching in degrees
+#define PAT_SEARCH_RAD   0.5
+
+#define SEC_TO_YEAR(sec)   (1970 + sec/(float)31556926)
+
 enum
 {
   MODE_IDLE,
@@ -77,6 +86,7 @@ void ccd_stat_err_retry(struct acq_objects *objs);
 void ccd_stat_err_no_recov(struct acq_objects *objs);
 void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data);
 PointList *image_extract_stars(CcdImg *img);
+gint targset_exp_retry(CcdCntrl *cntrl, CcdImg *img);
 gboolean reconnect_timeout(gpointer user_data);
 void store_stat_update(GObject *acq_store, gpointer lbl_store_stat);
 void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer user_data);
@@ -533,14 +543,45 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
       break;
     case MODE_TARGSET_EXP:
       // Do pattern matching
+      // Extract stars from image
       PointList *img_pts = image_extract_stars(CCD_IMG(img));
       if (point_list_get_num_used(img_pts) < MIN_NUM_STARS)
       {
-        // TODO: Expose again with double exposure time
+        if (targset_exp_retry(objs->cntrl, CCD_IMG(img)) < 0)
+        {
+          act_log_error(act_log_msg("Error occurred while attempting to start an auto target set exposure - %s.", strerror(abs(ret))));
+          acq_net_send_targset_response(objs->net, OBSNSTAT_ERR_RETRY, 0.0, 0.0, FALSE);
+        }
         break;
       }
-      /// TODO: Implement
-      PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg);
+      
+      // Fetch nearby stars in Tycho2 catalog from database
+      gfloat img_ra, img_dec;
+      ccd_img_get_tel_pos(CCD_IMG(img), &img_ra, &img_dec);
+      glong img_start_sec, img_start_nanosec;
+      ccd_img_get_start_datetime(CCD_IMG(img), &img_start_sec, &img_start_nanosec);
+      PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RAD);
+      if (point_list_get_num_used(pat_pts) < MIN_NUM_STARS)
+      {
+        act_log_error(act_log_msg("Failed to fetch Tycho catalog stars."));
+        break;
+      }
+      
+      // TODO: Continue implementing here
+      
+      
+      // Match the two lists of points
+      FindPointMapping (img_points, num_stars, pat_points, num_pat, &map, &num_match);
+      fprintf(stderr,"%d points matched.\n", num_match);
+      if (num_match / (float)num_stars < MIN_MATCH_FRAC)
+      {
+        fprintf(stderr,"Too few points matched.\n");
+        prog = 1;
+        goto cleanup;
+      }
+      print_map("map", img_id, num_stars, map, img_points, pat_points);
+      
+      
       // Send response
 //       acq_net_send_targset_response(objs->net, , ra_offs, dec_offs, FALSE);
       prog_change_mode(objs, MODE_IDLE);
@@ -561,6 +602,7 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
 
 PointList *image_extract_stars(CcdImg *img)
 {
+  PointList *star_list = point_list_new_with_length(num_stars);
   float conv[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1};
   float mean=0.0, stddev=0.0;
   int i, num_pix=ccd_img_get_img_len(img);
@@ -575,10 +617,12 @@ PointList *image_extract_stars(CcdImg *img)
   sepobj *obj = NULL;
   int ret, num_stars;
   ret = sep_extract((void *)img_data, NULL, SEP_TFLOAT, SEP_TFLOAT, 0, ccd_img_get_win_width(img), ccd_img_get_win_height(img), mean+2.0*stddev, 5, conv, 3, 3, 32, 0.005, 1, 1.0, &obj, &num_stars);
+  if (ret != 0)
+  {
+    act_log_error(act_log_msg("Failed to extract stars from image - SEP error code %d", ret));
+    return star_list;
+  }
   
-  /// TODO: Check ret?
-  
-  PointList *star_list = point_list_new_with_length(num_stars);
   gfloat tmp_ra, tmp_dec;
   ccd_img_get_tel_pos(img, &tmp_ra, &tmp_dec);
   for (i=0; i<num_stars; i++)
@@ -590,6 +634,25 @@ PointList *image_extract_stars(CcdImg *img)
       act_log_debug(act_log_msg("Failed to add identified star %d to stars list."));
   }
   return star_list;
+}
+
+gint targset_exp_retry(CcdCntrl *cntrl, CcdImg *img)
+{
+  CcdCmd *cmd = CCD_CMD(g_object_new (ccd_cmd_get_type(), NULL));
+  ccd_cmd_set_img_type(cmd, IMGT_ACQ_OBJ);
+  ccd_cmd_set_win_start_x(cmd, ccd_img_get_win_start_x(CCD_IMG(img)));
+  ccd_cmd_set_win_start_y(cmd, ccd_img_get_win_start_y(CCD_IMG(img)));
+  ccd_cmd_set_win_width(cmd, ccd_img_get_win_width(CCD_IMG(img)));
+  ccd_cmd_set_win_height(cmd, ccd_img_get_win_height(CCD_IMG(img)));
+  ccd_cmd_set_prebin_x(cmd, ccd_img_get_prebin_x(CCD_IMG(img)));
+  ccd_cmd_set_prebin_y(cmd, ccd_img_get_prebin_y(CCD_IMG(img)));
+  ccd_cmd_set_exp_t(cmd, ccd_img_get_exp_t(CCD_IMG(img))*EXP_RETRY_FACT);
+  ccd_cmd_set_rpt(cmd, 1);
+  ccd_cmd_set_target(cmd, objs->cur_targ_id, objs->cur_targ_name);
+  ccd_cmd_set_user(cmd, objs->cur_user_id, objs->cur_user_name);
+  gint ret = ccd_cntrl_start_exp(objs->cntrl, cmd);
+  g_object_unref(G_OBJECT(cmd));
+  return ret;
 }
 
 gboolean reconnect_timeout(gpointer user_data)
@@ -682,7 +745,7 @@ void change_target(GObject *acq_net, gulong new_targ_id, gchar *new_targ_name, g
 void targset_start(GObject *acq_net, gdouble targ_ra, gdouble targ_dec, gpointer user_data)
 {
   struct acq_objects *objs = (struct acq_objects *)user_data;
-  if ((objs->mode != MODE_IDLE) && (objs->mode != ))
+  if ((objs->mode != MODE_IDLE) && (objs->mode != MODE_TARGSET_EXP))
   {
     act_log_error(act_log_msg("Auto target set message received, but the ACQ system is not idle (mode %hhu).", objs->mode));
     if (acq_net_send_targset_response(ACQ_NET(acq_net), OBSNSTAT_ERR_WAIT, 0.0, 0.0, FALSE) < 0)
@@ -772,3 +835,4 @@ void prog_change_mode(struct acq_objects *objs, guchar new_mode)
   }
   gtk_label_set_text(GTK_LABEL(objs->lbl_prog_stat), stat_str);
 }
+

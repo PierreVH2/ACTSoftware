@@ -314,16 +314,6 @@ gchar *acq_store_get_user_name(AcqStore *objs, gulong user_id)
   return user_name;
 }
 
-struct filtaper
-{
-  //! Name of filter/aperture (really only for user convenience)
-  char name[IPC_MAX_FILTAPER_NAME_LEN];
-  //! Slot where filter/aperture currently installed
-  unsigned char slot;
-  //! Internal identifier for filter/aperture (used for storage)
-  int db_id;
-};
-
 gboolean acq_store_get_filt_list(AcqStore *objs, acq_filters_list_t *ccd_filters)
 {
   if (ccd_filters == NULL)
@@ -360,21 +350,21 @@ gboolean acq_store_get_filt_list(AcqStore *objs, acq_filters_list_t *ccd_filters
     act_log_debug(act_log_msg("No filters found."));
     return FALSE;
   }
-  if (rowcount > num_filts)
+  if (rowcount > IPC_MAX_NUM_FILTAPERS)
   {
-    act_log_debug(act_log_msg("Too many filters found (%d, max %d)", rowcount, num_filts));
-    rowcount = num_filts;
+    act_log_debug(act_log_msg("Too many filters found (%d, max %d)", rowcount, IPC_MAX_NUM_FILTAPERS));
+    rowcount = IPC_MAX_NUM_FILTAPERS;
   }
   
   int i;
-  for (i=0; i<num_filts; i++)
+  for (i=0; i<rowcount; i++)
   {
     row = mysql_fetch_row(result);
     if (row == NULL)
     {
-      ccd_filters.filt[i].db_id = 0;
-      ccd_filters.filt[i].slot = 0;
-      ccd_filters.filt[i].name[0] = '\0';
+      ccd_filters->filt[i].db_id = 0;
+      ccd_filters->filt[i].slot = 0;
+      ccd_filters->filt[i].name[0] = '\0';
       continue;
     }
     gint tmp_slot, tmp_db_id, tmp_name_len;
@@ -399,19 +389,20 @@ gboolean acq_store_get_filt_list(AcqStore *objs, acq_filters_list_t *ccd_filters
       act_log_error(act_log_msg("Name for CCD filter with ID %d (%s) is too long (%d). Trimming to %d characters.", tmp_db_id, row[2], tmp_name_len, IPC_MAX_FILTAPER_NAME_LEN));
       tmp_name_len = IPC_MAX_FILTAPER_NAME_LEN-1;
     }
-    ccd_filters.filt[i].db_id = tmp_db_id;
-    ccd_filters.filt[i].slot = tmp_slot;
-    snprintf(ccd_filters.filt[i].name, tmp_name_len, "%s", row[2]);
+    ccd_filters->filt[i].db_id = tmp_db_id;
+    ccd_filters->filt[i].slot = tmp_slot;
+    snprintf(ccd_filters->filt[i].name, tmp_name_len, "%s", row[2]);
   }
   return TRUE;
 }
 
 PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg)
 {
+  PointList *ret = point_list_new();
   if (objs->genl_conn == NULL)
   {
     act_log_error(act_log_msg("MySQL connection not available."));
-    return FALSE;
+    return ret;
   }
   double ra_radius = radius_deg / cos(convert_DEG_RAD(dec_d));
   gchar qrystr[256];
@@ -450,14 +441,14 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d
   if (result == NULL)
   {
     act_log_error(act_log_msg("Could not retrieve star catalog entries - %s.", mysql_error(objs->genl_conn)));
-    return NULL;
+    return ret;
   }
   int rowcount = mysql_num_rows(result);
   if ((rowcount <= 0) || (mysql_num_fields(result) != 4))
   {
     act_log_error(act_log_msg("Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
     mysql_free_result(result);
-    return NULL;
+    return ret;
   }
   act_log_debug(act_log_msg("%d objects to retrieve.", rowcount));
   
@@ -466,8 +457,9 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d
   {
     act_log_error(act_log_msg("Failed to create point list for star catalog entries."));
     mysql_free_result(result);
-    return NULL;
+    return ret;
   }
+  g_object_unref(ret);
   
   double point_ra, point_dec;
   double point_pmra, point_pmdec;
@@ -475,12 +467,12 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d
   struct decstruct orig_dec, prec_dec;
   while ((row = mysql_fetch_row(result)) != NULL)
   {
-    int ret = 0;
-    ret += sscanf(row[0], "%lf", &point_ra);
-    ret += sscanf(row[1], "%lf", &point_dec);
-    ret += sscanf(row[2], "%lf", &point_pmra);
-    ret += sscanf(row[3], "%lf", &point_pmdec);
-    if (ret != 4)
+    int extr = 0;
+    extr += sscanf(row[0], "%lf", &point_ra);
+    extr += sscanf(row[1], "%lf", &point_dec);
+    extr += sscanf(row[2], "%lf", &point_pmra);
+    extr += sscanf(row[3], "%lf", &point_pmdec);
+    if (extr != 4)
     {
       act_log_error(act_log_msg("Failed to extract all parameters for point from database."));
       continue;
@@ -679,12 +671,10 @@ static void store_next_img(AcqStore *objs)
 
 static gboolean store_img(MYSQL *conn, CcdImg *img)
 {
-  struct rastruct tel_ra;
-  struct decstruct tel_dec;
+  gfloat tel_ra, tel_dec;
   ccd_img_get_tel_pos(img, &tel_ra, &tel_dec);
-  struct timestruct start_time;
-  struct datestruct start_date;
-  ccd_img_get_start_datetime(img, &start_date, &start_time);
+  glong img_start_sec, img_start_nanosec;
+  ccd_img_get_start_datetime(img, &img_start_sec, &img_start_nanosec);
   char qrystr[256];
   sprintf(qrystr, "INSERT INTO ccd_img \
   (targ_id, user_id, type, exp_t_s, start_date, start_time_h, win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, tel_ra_h, tel_dec_d) VALUES \
@@ -693,16 +683,18 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
           ccd_img_get_user_id(img),
           img_type_acq_to_db(ccd_img_get_img_type(img)),
           ccd_img_get_exp_t(img),
-          start_date.year, start_date.month+1, start_date.day+1,
-          convert_HMSMS_H_time(&start_time),
+          1990, 1, 1,
+//           start_date.year, start_date.month+1, start_date.day+1,
+          0.0,
+//           convert_HMSMS_H_time(&start_time),
           ccd_img_get_win_start_x(img),
           ccd_img_get_win_start_y(img),
           ccd_img_get_win_width(img),
           ccd_img_get_win_height(img),
           ccd_img_get_prebin_x(img),
           ccd_img_get_prebin_y(img),
-          convert_HMSMS_H_ra(&tel_ra),
-          convert_DMS_D_dec(&tel_dec));
+          convert_DEG_H(tel_ra),
+          tel_dec);
   if (mysql_query(conn, qrystr))
   {
     act_log_error(act_log_msg("Failed to save CCD image header to database - %s.", mysql_error(conn)));
@@ -842,11 +834,10 @@ static void store_img_fallback(CcdImg *img)
     }
   }
   
-  struct datestruct start_unid;
-  struct timestruct start_unit;
-  ccd_img_get_start_datetime(img, &start_unid, &start_unit);
+  glong img_start_sec, img_start_nanosec;
+  ccd_img_get_start_datetime(img, &img_start_sec, &img_start_nanosec);
   char filepath[strlen(fallback_path)+50];
-  sprintf(filepath, "%s%s%s.dat", fallback_path, date_to_str(&start_unid), time_to_str(&start_unit));
+  sprintf(filepath, "%s%ld.dat", fallback_path, img_start_sec);
   FILE *fp = fopen(filepath, "ab");
   if (fp == NULL)
   {
