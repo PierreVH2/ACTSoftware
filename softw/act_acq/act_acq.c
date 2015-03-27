@@ -567,20 +567,16 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
         break;
       }
       
-      // TODO: Continue implementing here
-      
-      
       // Match the two lists of points
-      FindPointMapping (img_points, num_stars, pat_points, num_pat, &map, &num_match);
-      fprintf(stderr,"%d points matched.\n", num_match);
+      GSList *map = find_point_list_map(img_pts, pat_pts, DEFAULT_RADIUS);
       if (num_match / (float)num_stars < MIN_MATCH_FRAC)
       {
         fprintf(stderr,"Too few points matched.\n");
         prog = 1;
         goto cleanup;
       }
-      print_map("map", img_id, num_stars, map, img_points, pat_points);
-      
+      point_list_map_calc_offset(map, &rashift, &decshift, &raerr, &decerr);
+      point_list_map_free(map);
       
       // Send response
 //       acq_net_send_targset_response(objs->net, , ra_offs, dec_offs, FALSE);

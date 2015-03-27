@@ -33,43 +33,28 @@
 
 #define RADIUS 5.0
 
-/** 
- * \brief Structure to hold information relevant to a point (star) on the acquisition image.
- *
- * A point is the centre of a blob that corresponds to a star.
- */
-struct point
-{
-  /// X-coordinate of point on acquisition image.
-  float x;
-  /// Y-coordinate of point on acquisition image.
-  float y;
-};
-
 PointList *get_pattern(MYSQL *conn, double tel_ra, double tel_dec);
 int get_image_info(MYSQL *conn, int img_id, int *img_width, int *img_height, float *epoch, float *tel_ra, float *tel_dec, float *img_mean, float *img_std);
 int get_image(MYSQL *conn, int img_id, float *image, int num_pix);
 PointList *image_extract_stars(void *image, int width, int height, float tel_ra, float tel_dec, float cutoff);
 void print_points(const char *pref, int img_id, PointList *list);
-void print_map(const char *pref, int img_id, int *map, int max_map, PointList *list1, PointList *list2);
+void print_map(const char *pref, int img_id, GSList *map);
 
 int main(int argc, char **argv)
 {
   int prog = 0, ret;
   MYSQL * conn = NULL;
-  int img_id=0, i;
+  int img_id=0;
   int num_match=0;
   int img_width, img_height;
   float img_epoch;
   float *image = NULL;
   PointList *img_pts = point_list_new();
   PointList *pat_pts = point_list_new();
-  int *map = NULL;
-  int max_map=0;
   float mean=0.0, stddev=0.0;
   float tel_ra=0.0, tel_dec=0.0;
   float corr_ra=0.0, corr_dec=0.0;
-  double rashift=0.0, decshift=0.0, raerr=0.0, decerr=0.0;
+  gfloat rashift=0.0, decshift=0.0, raerr=0.0, decerr=0.0;
   struct rastruct tmp_ra;
   struct decstruct tmp_dec;
   
@@ -146,60 +131,10 @@ int main(int argc, char **argv)
   fprintf(stderr,"%d pattern points extracted.\n", point_list_get_num_used(pat_pts));
   print_points("pat", img_id, pat_pts);
   
-  max_map = point_list_get_num_used(img_pts);
-  map = malloc(max_map*sizeof(int));
-  if (map == NULL)
-  {
-    fprintf(stderr, "Failed to allocate memory for point mapping.\n");
-    prog = 1;
-    goto cleanup;
-  }
-  ret = FindListMapping(img_pts, pat_pts, map, max_map, RADIUS);
-  if (ret == 0)
-  {
-    fprintf(stderr, "Failed to create point mapping.\n");
-    prog = 1;
-    goto cleanup;
-  }
-  print_map("map", img_id, map, max_map, img_pts, pat_pts);
-  
-  rashift = decshift = 0.0;
-  num_match = 0;
-  for (i=0; i<max_map; i++)
-  {
-    if (map[i] < 0)
-      continue;
-    static gdouble x1, x2, y1, y2;
-    ret = point_list_get_coord(img_pts, i, &x1, &y1) && point_list_get_coord(pat_pts, map[i], &x2, &y2);
-    if (!ret)
-      break;
-    rashift += x1 - x2;
-    decshift += y1 - y2;
-    num_match++;
-  }
-  if (!ret)
-  {
-    fprintf(stderr, "Failed to calculate mapping offset.\n");
-    prog = 1;
-    goto cleanup;
-  }
-  rashift /= num_match;
-  decshift /= num_match;
-  raerr = decerr = 0.0;
-  for (i=0; i<max_map; i++)
-  {
-    if (map[i] < 0)
-      continue;
-    static gdouble x1, x2, y1, y2;
-    ret = point_list_get_coord(img_pts, i, &x1, &y1) && point_list_get_coord(pat_pts, map[i], &x2, &y2);
-    if (!ret)
-      break;
-    raerr += fabs(rashift - x1 + x2);
-    decerr += fabs(decshift - y1 + y2);
-  }
-  raerr /= num_match;
-  decerr /= num_match;
-  fprintf(stderr,"Shift:  RA %6.1f\" ~%6.1f  DEC %6.1f\" ~%6.1f\n", rashift, raerr, decshift, decerr);
+  GSList *map = find_point_list_map(img_pts, pat_pts, DEFAULT_RADIUS);
+  print_map("map", img_id, map);
+  point_list_map_calc_offset(map, &rashift, &decshift, &raerr, &decerr);
+  point_list_map_free(map);
   
   corr_ra = tel_ra - rashift/3600.0;
   corr_dec = tel_dec - decshift/3600.0;
@@ -416,22 +351,19 @@ void print_points(const char *pref, int img_id, PointList *list1)
   fclose(fp);
 }
 
-void print_map(const char *pref, int img_id, int *map, int max_map, PointList *list1, PointList *list2)
+void print_map(const char *pref, int img_id, GSList *map)
 {
   char fname[256];
   sprintf(fname, "img%d_%s.dat", img_id, pref);
   FILE *fp = fopen(fname, "w");
-  int i;
-  gdouble x1,y1,x2,y2;
-  for (i=0; i<max_map; i++)
+  GSList *node = map;
+  while (node != NULL)
   {
-    if (map[i] < 0)
+    point_map_t *tmp = (point_map_t *)node->data;
+    if (tmp == NULL)
       continue;
-    if (!point_list_get_coord(list1, i, &x1, &y1))
-      continue;
-    if (!point_list_get_coord(list2, map[i], &x2, &y2))
-      continue;
-    fprintf(fp, "%2d    %6.1f  %6.1f  %6.1f    %6.1f  %6.1f  %6.1f\n", map[i], x1, x2, x1-x2, y1, y2, y1 - y2);
+    fprintf(fp, "%4d  %4d    %6.1f  %6.1f  %6.1f    %6.1f  %6.1f  %6.1f\n", tmp->idx1, tmp->idx2, tmp->x1, tmp->x2, tmp->x1-tmp->x2, tmp->y1, tmp->y2, tmp->y1 - tmp->y2);
+    node = g_slist_next(node);
   }
   fclose(fp);
 }

@@ -15,11 +15,9 @@ struct point
 
 void FindPointMapping (struct point *pList1, int nPts1, struct point *pList2, int nPts2, int** nMap, int* nMatch, float radius);
 
-gboolean FindListMapping(PointList *list1, PointList *list2, gint *list_map, gint max_map, gfloat radius)
+GSList *find_point_list_map(PointList *list1, PointList *list2, gfloat radius)
 {
   int num1 = point_list_get_num_used(list1), num2 = point_list_get_num_used(list2);
-  if (max_map <= num1)
-    return FALSE;
   int *point_map, num_map, i;
   struct point *points1=calloc(num1, sizeof(struct point)), *points2=calloc(num2, sizeof(struct point));
   gdouble x, y;
@@ -38,12 +36,76 @@ gboolean FindListMapping(PointList *list1, PointList *list2, gint *list_map, gin
     points2[i].y = y;
   }
   FindPointMapping (points1, num1, points2, num2, &point_map, &num_map, radius);
-  if (num_map <= 1)
-    return FALSE;
-  if (num_map >= max_map)
-    return FALSE;
-  memcpy((void *)list_map, (void *)point_map, num_map*sizeof(int));
-  return TRUE;
+  GSList *ret = NULL;
+  point_map_t *tmp_map;
+  for (i=0; i<num_map; i++)
+  {
+    if (point_map[i] < 0)
+      continue;
+    tmp_map = g_malloc(sizeof(point_map_t));
+    if (tmp_map == NULL)
+      break;
+    tmp_map->idx1 = i;
+    tmp_map->idx2 = point_map[i];
+    tmp_map->x1 = points1[i].x;
+    tmp_map->y1 = points1[i].y;
+    tmp_map->x2 = points2[point_map[i]].x;
+    tmp_map->y2 = points2[point_map[i]].y;
+    ret = g_slist_prepend(ret, tmp_map);
+  }
+  free(point_map);
+  return ret;
+}
+
+void point_list_map_calc_offset(GSList *map, gfloat *mean_x, gfloat *mean_y, gfloat *std_x, gfloat *std_y)
+{
+  GSList *node = map;
+  gfloat sum_x=0.0, sum_y=0.0, err_x=0.0, err_y=0.0;
+  gint count=0;
+  point_map_t *tmp_map=NULL;
+  while (node != NULL)
+  {
+    tmp_map = (point_map_t *)node->data;
+    if (tmp_map == NULL)
+      continue;
+    sum_x += tmp_map->x1 - tmp_map->x2;
+    sum_y += tmp_map->y1 - tmp_map->y2;
+    count++;
+    node = g_slist_next(node);
+  }
+  sum_x /= count;
+  sum_y /= count;
+  node = map;
+  while (node != NULL)
+  {
+    tmp_map = (point_map_t *)node->data;
+    if (tmp_map == NULL)
+      continue;
+    err_x += fabs(sum_x - tmp_map->x1 + tmp_map->x2);
+    err_y += fabs(sum_y - tmp_map->y1 + tmp_map->y2);
+    node = g_slist_next(node);
+  }
+  if (mean_x != NULL)
+    *mean_x = sum_x;
+  if (mean_y != NULL)
+    *mean_y = sum_y;
+  if (std_x != NULL)
+    *std_x = err_x / count;
+  if (std_y != NULL)
+    *std_y = err_y / count;
+}
+
+void point_list_map_free(GSList *map)
+{
+  GSList *node = map;
+  while (node != NULL)
+  {
+    if (node->data == NULL)
+      continue;
+    g_free(node->data);
+    node->data = NULL;
+    node = g_slist_next(node);
+  }
 }
 
 void FindPointMapping (struct point *pList1, int nPts1, struct point *pList2, int nPts2, int** nMap, int* nMatch, float radius)
