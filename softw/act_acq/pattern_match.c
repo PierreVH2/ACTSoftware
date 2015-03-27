@@ -54,6 +54,8 @@ GSList *find_point_list_map(PointList *list1, PointList *list2, gfloat radius)
     ret = g_slist_prepend(ret, tmp_map);
   }
   free(point_map);
+  free(points1);
+  free(points2);
   return ret;
 }
 

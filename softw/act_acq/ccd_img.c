@@ -122,18 +122,14 @@ gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs)
   return objs->pix_size_dec;
 }
 
-void ccd_img_get_start_datetime(CcdImg const *objs, glong *img_start_sec, glong *img_start_nanosec)
+gdouble ccd_img_get_start_datetime(CcdImg const *objs)
 {
-  if (img_start_sec != NULL)
-    *img_start_sec = objs->start_sec;
-  if (img_start_nanosec != NULL)
-    *img_start_nanosec = objs->start_nanosec;
+  return objs->start_sec;
 }
 
-void ccd_img_set_start_datetime(CcdImg *objs, glong img_start_sec, glong img_start_nanosec)
+void ccd_img_set_start_datetime(CcdImg *objs, gdouble new_start_sec)
 {
-  objs->start_sec = img_start_sec;
-  objs->start_nanosec = img_start_nanosec;
+  objs->start_sec = new_start_sec;
 }
 
 gchar const *ccd_img_get_targ_name(CcdImg const *objs)
@@ -212,8 +208,7 @@ static void ccd_img_instance_init(GObject *ccd_img)
   objs->win_start_x = objs->win_start_y = 0;
   objs->win_width = objs->win_height = 0;
   objs->exp_t_s = 0.0;
-  objs->start_sec = 0;
-  objs->start_nanosec = 0;
+  objs->start_sec = 0.0;
   objs->targ_name = NULL;
   objs->targ_id = 0;
   objs->user_name = NULL;

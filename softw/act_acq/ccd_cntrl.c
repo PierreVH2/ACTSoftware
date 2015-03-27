@@ -614,17 +614,12 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
     for (i=0; i<tmp_params->img_len; i++)
       tmp_data[i] = (gfloat)tmp_img.img_data[i]/CCDPIX_MAX;
     ccd_img_set_img_data(CCD_IMG(objs->cur_img), tmp_params->img_len, tmp_data);
-    
     ccd_img_set_window(CCD_IMG(objs->cur_img), tmp_params->win_start_x, tmp_params->win_start_y, tmp_params->win_width, tmp_params->win_height, tmp_params->prebin_x, tmp_params->prebin_y);
     ccd_img_set_exp_t(CCD_IMG(objs->cur_img), ccd_img_exp_t((*tmp_params)));
-    struct datestruct sys_start_unid;
-    struct timestruct real_start_unit, sys_start_unit;
-    convert_H_HMSMS_time(ccd_img_start_t((*tmp_params))/3600.0, &real_start_unit);
-    ccd_img_get_start_datetime(CCD_IMG(objs->cur_img), &sys_start_unid, &sys_start_unit);
-    check_systime_discrep(&sys_start_unid, &sys_start_unit, &real_start_unit);
-    ccd_img_set_start_datetime(CCD_IMG(objs->cur_img), &sys_start_unid, &real_start_unit);
+    ccd_img_set_start_datetime(CCD_IMG(objs->cur_img), tmp_params->start_sec + tmp_params->start_nanosec/(double)1e9);
     g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_NEW_IMG], 0,  objs->cur_img);
-    
+
+    /// TODO :Implement repetitions    
     if (--objs->rpt_rem <= 0)
     {
     }

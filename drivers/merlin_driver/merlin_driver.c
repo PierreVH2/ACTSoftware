@@ -598,14 +598,15 @@ static void start_exp_now(void)
 {
   unsigned long unit;
   unsigned short unit_msec;
+  static struct timespec ts;
   if (G_send_exp_ts != NULL)
   {
     printk(KERN_INFO PRINTK_PREFIX "Error: Start of exposure has already been scheduled, cannot schedule a second.\n");
     return;
   }
-  get_unitime(&unit, &unit_msec);
-  G_img.img_params.start_sec = unit;
-  G_img.img_params.start_nanosec = unit_msec*1000000;
+  getnstimeofday(&ts);
+  G_img.img_params.start_sec = ts.tv_sec;
+  G_img.img_params.start_nanosec = ts.tv_nsec;
   kthread_run(start_exp,NULL,"start_exp_thread");
 }
 

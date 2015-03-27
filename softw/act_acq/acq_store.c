@@ -671,22 +671,36 @@ static void store_next_img(AcqStore *objs)
 
 static gboolean store_img(MYSQL *conn, CcdImg *img)
 {
+  /** \NOTE:
+   * Concerning how the start date and time is sent to the SQL server: DATE(FROM_UNIXTIME(start_datetime)) gives the
+   * date component of the start datetime. Converting the date back to a UNIX timestap (ie. seconds since 1970 Jan 1)
+   * and subtracting this value from the start datetime gives the number of seconds since midnight (on the day the 
+   * integration was started), which is then converted to hours since midnight by dividing by 3600.0.
+   * \NOTE:
+   * The database is structured so the start date time is stored as a UTC date column (MySQL type DATE) and a floating
+   * point number of hours since midnight at which the integration was started. This is because MySQL does not always
+   * support sub-second time (this depends on a number of things, check the MySQL manuals), which precludes the use 
+   * of the more standard and convenient DATETIME data type for the start date-time column in the table. The start
+   * date is kept as a standard MySQL DATE type so the date can be set with relative ease and using the MySQL 
+   * conversion routines.
+   */
   gfloat tel_ra, tel_dec;
   ccd_img_get_tel_pos(img, &tel_ra, &tel_dec);
-  glong img_start_sec, img_start_nanosec;
-  ccd_img_get_start_datetime(img, &img_start_sec, &img_start_nanosec);
   char qrystr[256];
   sprintf(qrystr, "INSERT INTO ccd_img \
-  (targ_id, user_id, type, exp_t_s, start_date, start_time_h, win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, tel_ra_h, tel_dec_d) VALUES \
-  (%lu, %lu, %hhu, %f, \"%hu-%hhu-%hhu\", %f, %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
+                     (targ_id, user_id, type, exp_t_s, start_date, start_time_h, \
+                     win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, \
+                     tel_ra_h, tel_dec_d) \
+                   VALUES \
+                     (%lu, %lu, %hhu, %f, \
+                     DATE(FROM_UNIXTIME(%lf)), (UNIX_TIMESTAMP(DATE(FROM_UNIXTIME(%lf))) - %lf)/3600.0, \
+                     %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
           ccd_img_get_targ_id(img),
           ccd_img_get_user_id(img),
           img_type_acq_to_db(ccd_img_get_img_type(img)),
           ccd_img_get_exp_t(img),
-          1990, 1, 1,
-//           start_date.year, start_date.month+1, start_date.day+1,
-          0.0,
-//           convert_HMSMS_H_time(&start_time),
+          ccd_img_get_start_datetime(img),
+          ccd_img_get_start_datetime(img), ccd_img_get_start_datetime(img),
           ccd_img_get_win_start_x(img),
           ccd_img_get_win_start_y(img),
           ccd_img_get_win_width(img),
@@ -834,10 +848,8 @@ static void store_img_fallback(CcdImg *img)
     }
   }
   
-  glong img_start_sec, img_start_nanosec;
-  ccd_img_get_start_datetime(img, &img_start_sec, &img_start_nanosec);
   char filepath[strlen(fallback_path)+50];
-  sprintf(filepath, "%s%ld.dat", fallback_path, img_start_sec);
+  sprintf(filepath, "%s%ld.dat", fallback_path, trunc(ccd_img_get_start_datetime(img)));
   FILE *fp = fopen(filepath, "ab");
   if (fp == NULL)
   {

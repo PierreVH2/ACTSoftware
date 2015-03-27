@@ -44,7 +44,7 @@ struct _CcdImg
   /// The length of the exposure
   gfloat exp_t_s;
   /// Starting date and time of exposure
-  glong start_sec, start_nanosec;
+  gdouble start_sec;
   /// Target name and DB id
   gchar *targ_name;
   gulong targ_id;
@@ -84,8 +84,8 @@ void ccd_img_set_window(CcdImg *objs, gushort win_start_x, gushort win_start_y, 
 void ccd_img_set_pixel_size(CcdImg *objs, gfloat size_ra_asec, gfloat size_dec_asec);
 gfloat ccd_img_get_pixel_size_ra(CcdImg const *objs);
 gfloat ccd_img_get_pixel_size_dec(CcdImg const *objs);
-void ccd_img_get_start_datetime(CcdImg const *objs, glong *img_start_sec, glong *img_start_nanosec);
-void ccd_img_set_start_datetime(CcdImg *objs, glong img_start_sec, glong img_start_nanosec);
+gdouble ccd_img_get_start_datetime(CcdImg const *objs);
+void ccd_img_set_start_datetime(CcdImg *objs, gdouble new_start_sec);
 gchar const *ccd_img_get_targ_name(CcdImg const *objs);
 gulong ccd_img_get_targ_id(CcdImg const *objs);
 void ccd_img_set_target(CcdImg *objs, gulong targ_id, gchar const *targ_name);
