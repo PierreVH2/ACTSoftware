@@ -115,7 +115,7 @@ gboolean acq_net_request_guisocket(AcqNet *objs)
   struct act_msg msgbuf;
   memset(&msgbuf, 0, sizeof(struct act_msg));
   msgbuf.mtype = MT_GUISOCK;
-  if (acq_net_send(objs->net_chan, &msg) < 0)
+  if (acq_net_send(objs->net_chan, &msgbuf) < 0)
   {
     act_log_error(act_log_msg("Failed to send GUI socket request message."));
     return FALSE;
@@ -263,12 +263,12 @@ static void acq_net_instance_dispose(GObject *acq_net)
   if (objs->pending_msg != NULL)
   {
     gboolean pending_response = FALSE;
-    if ((acq_net_targset_pending(objs) && (objs->net_chan != NULL))
+    if ((acq_net_targset_pending(objs) && (objs->net_chan != NULL)))
     {
       pending_response = TRUE;
       PENDING_MSG_TARGSET(objs)->status = OBSNSTAT_CANCEL;
     }
-    else if ((acq_net_dataccd_pending(objs) && (objs->net_chan != NULL))
+    else if ((acq_net_dataccd_pending(objs) && (objs->net_chan != NULL)))
     {
       pending_response = TRUE;
       PENDING_MSG_DATACCD(objs)->status = OBSNSTAT_CANCEL;

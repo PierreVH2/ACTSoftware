@@ -409,7 +409,7 @@ DtiNet *dti_net_new (const gchar *host, const gchar *port)
 
 gint dti_net_send(DtiNet *dti_net, DtiMsg *msg)
 {
-  unsigned int num_bytes;
+  gsize num_bytes;
   int status;
   GError *error = NULL;
   status = g_io_channel_write_chars (dti_net->net_chan, (gchar *)(&msg->msg), sizeof(struct act_msg), &num_bytes, &error);
@@ -474,7 +474,7 @@ static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer
   (void) dti_net;
 //   DtiNet *objs = DTI_NET(dti_net);
   struct act_msg msgbuf;
-  unsigned int num_bytes;
+  gsize num_bytes;
   int status;
   GError *error = NULL;
   status = g_io_channel_read_chars (net_chan, (gchar *)&msgbuf, sizeof(msgbuf), &num_bytes, &error);

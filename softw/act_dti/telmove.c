@@ -601,14 +601,14 @@ static guchar process_targset(Telmove *objs, struct act_msg_targset *msg_targset
   }
   if (msg_targset->targ_cent)
   {
-    act_log_debug(act_log_msg("Target %s (%d, %s) centred.", msg_targset->targ_name, msg_targset->targ_id, msg_targset->sky ? "sky" : "object"));
+    act_log_debug(act_log_msg("Target %s (%d) centred.", msg_targset->targ_name, msg_targset->targ_id));
     return OBSNSTAT_GOOD;
   }
   struct rastruct ra;
   struct decstruct dec;
   convert_H_HMSMS_ra(convert_HMSMS_H_ra(&msg_targset->targ_ra) + msg_targset->adj_ra_h, &ra);
   convert_D_DMS_dec(convert_DMS_D_dec(&msg_targset->targ_dec) + msg_targset->adj_dec_d, &dec);
-  act_log_debug(act_log_msg("Initiating automatic target set: %s (%d) %s - %s %s adjustment %f %f (resultant %s %s)", msg_targset->targ_name, msg_targset->targ_id, msg_targset->sky ? "sky" : "object", ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->adj_ra_h, msg_targset->adj_dec_d, ra_to_str(&ra), dec_to_str(&dec)));
+  act_log_debug(act_log_msg("Initiating automatic target set: %s (%d) - %s %s adjustment %f %f (resultant %s %s)", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->adj_ra_h, msg_targset->adj_dec_d, ra_to_str(&ra), dec_to_str(&dec)));
   
   guchar ret = start_goto_sid(objs, &ra, &dec);
   act_log_debug(act_log_msg("Start goto result: %hhu", ret));

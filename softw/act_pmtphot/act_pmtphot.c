@@ -78,7 +78,7 @@ static struct act_msg_pmtcap G_pmtcaps;
 
 char net_send(GIOChannel *channel, struct act_msg *msg)
 {
-  unsigned int num_bytes;
+  gsize num_bytes;
   int status;
   GError *error = NULL;
   status = g_io_channel_write_chars (channel, (gchar *)msg, sizeof(struct act_msg), &num_bytes, &error);
@@ -739,7 +739,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
   (void)condition;
   struct formobjects *objs = (struct formobjects *)net_read_data;
   struct act_msg msgbuf;
-  unsigned int num_bytes;
+  gsize num_bytes;
   int status;
   GError *error = NULL;
   status = g_io_channel_read_chars (source, (gchar *)&msgbuf, sizeof(msgbuf), &num_bytes, &error);

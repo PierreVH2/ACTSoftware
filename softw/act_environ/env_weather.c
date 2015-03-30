@@ -45,7 +45,8 @@ static void process_msg_environ(EnvWeather *objs, struct act_msg_environ *msg_en
 static void process_msg_targset(EnvWeather *objs, struct act_msg_targset *msg_targset);
 static void process_msg_datapmt(EnvWeather *objs, struct act_msg_datapmt *msg_datapmt);
 static void process_msg_dataccd(EnvWeather *objs, struct act_msg_dataccd *msg_dataccd);
-static unsigned char process_obsn(EnvWeather *objs, struct rastruct *targ_ra, struct decstruct *targ_dec);
+static unsigned char process_targset(EnvWeather *objs, struct rastruct *targ_ra, struct decstruct *targ_dec);
+static unsigned char process_obsn(EnvWeather *objs);
 static double calc_moon_dist(struct rastruct *moon_ra, struct decstruct *moon_dec, struct rastruct *targ_ra, struct decstruct *targ_dec);
 
 
@@ -607,7 +608,7 @@ static void process_msg_targset(EnvWeather *objs, struct act_msg_targset *msg_ta
     return;
   if (msg_targset->status != OBSNSTAT_GOOD)
     return;
-  msg_targset->status = process_obsn(objs, &msg_targset->targ_ra, &msg_targset->targ_dec);
+  msg_targset->status = process_targset(objs, &msg_targset->targ_ra, &msg_targset->targ_dec);
 }
 
 static void process_msg_datapmt(EnvWeather *objs, struct act_msg_datapmt *msg_datapmt)
@@ -616,7 +617,7 @@ static void process_msg_datapmt(EnvWeather *objs, struct act_msg_datapmt *msg_da
     return;
   if (msg_datapmt->status != OBSNSTAT_GOOD)
     return;
-  msg_datapmt->status = process_obsn(objs, &msg_datapmt->targ_ra, &msg_datapmt->targ_dec);
+  msg_datapmt->status = process_obsn(objs);
 }
 
 static void process_msg_dataccd(EnvWeather *objs, struct act_msg_dataccd *msg_dataccd)
@@ -625,15 +626,22 @@ static void process_msg_dataccd(EnvWeather *objs, struct act_msg_dataccd *msg_da
     return;
   if (msg_dataccd->status != OBSNSTAT_GOOD)
     return;
-  msg_dataccd->status = process_obsn(objs, &msg_dataccd->targ_ra, &msg_dataccd->targ_dec);
+  msg_dataccd->status = process_obsn(objs);
 }
 
-static unsigned char process_obsn(EnvWeather *objs, struct rastruct *targ_ra, struct decstruct *targ_dec)
+static unsigned char process_targset(EnvWeather *objs, struct rastruct *targ_ra, struct decstruct *targ_dec)
 {
   if (!objs->all_env.weath_ok)
     return OBSNSTAT_ERR_WAIT;
   if (calc_moon_dist(&objs->all_env.moon_ra, &objs->all_env.moon_dec, targ_ra, targ_dec) < MOON_PROX_LIMIT_DEG)
     return OBSNSTAT_ERR_NEXT;
+  return OBSNSTAT_GOOD;
+}
+
+static unsigned char process_obsn(EnvWeather *objs)
+{
+  if (!objs->all_env.weath_ok)
+    return OBSNSTAT_ERR_WAIT;
   return OBSNSTAT_GOOD;
 }
 

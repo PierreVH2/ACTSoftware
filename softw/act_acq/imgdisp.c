@@ -9,7 +9,7 @@
 #include <GL/glu.h>
 #include <act_log.h>
 #include <act_site.h>
-#include "acq_marshallers.h"
+#include "marshallers.h"
 #include "ccd_img.h"
 #include "imgdisp.h"
 

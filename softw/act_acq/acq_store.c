@@ -563,6 +563,8 @@ static void acq_store_instance_dispose(GObject *acq_store)
       act_log_error(act_log_msg("Failed to join storage thread - %s", strerror(ret)));
       objs->status &= ~STAT_STORING;
     }
+    else
+      pthread_mutex_destroy(&objs->img_list_mutex);
   }
   if (objs->sqlhost != NULL)
   {
@@ -586,7 +588,6 @@ static void acq_store_instance_dispose(GObject *acq_store)
   }
   if (objs->img_pend != NULL)
     act_log_error(act_log_msg("There are images waiting to be stored."));
-  /// TODO: Destroy  mutex?
 }
 
 static void *store_pending_img(void *acq_store)
@@ -610,8 +611,8 @@ static void store_next_img(AcqStore *objs)
   int ret = pthread_mutex_lock(&objs->img_list_mutex);
   if (ret != 0)
   {
-    /// TODO: Error message
-    act_log_error(act_log_msg("Error returned while trying to obtain mutex lock on pending images list - %d", ret));
+    act_log_error(act_log_msg("Error returned while trying to obtain mutex lock on pending images list (%d - %s)", ret, strerror(abs(ret))));
+    return;
   }
   GSList *cur_el = objs->img_pend;
   objs->img_pend = objs->img_pend->next;
@@ -620,8 +621,8 @@ static void store_next_img(AcqStore *objs)
   ret = pthread_mutex_unlock(&objs->img_list_mutex);
   if (ret != 0)
   {
-    /// TODO: Error message
-    act_log_error(act_log_msg("Error returned while trying to release mutex lock on pending images list - %d", ret));
+    act_log_error(act_log_msg("Error returned while trying to release mutex lock on pending images list (%d - %s)", ret, strerror(abs(ret))));
+    return;
   }
   
   if ((objs->status & STAT_ERR_NO_RECOV) > 0)
@@ -753,7 +754,6 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
   gdouble cur_val;
   MYSQL_BIND  bind[3];
   memset(bind, 0, sizeof(bind));
-  /// TODO: Checked signed ints and data types in genl
   bind[0].buffer_type = MYSQL_TYPE_SHORT;
   bind[0].buffer = (char *)&cur_x;
   bind[0].is_null = 0;
@@ -849,7 +849,7 @@ static void store_img_fallback(CcdImg *img)
   }
   
   char filepath[strlen(fallback_path)+50];
-  sprintf(filepath, "%s%ld.dat", fallback_path, trunc(ccd_img_get_start_datetime(img)));
+  sprintf(filepath, "%s%ld.dat", fallback_path, (long)trunc(ccd_img_get_start_datetime(img)));
   FILE *fp = fopen(filepath, "ab");
   if (fp == NULL)
   {

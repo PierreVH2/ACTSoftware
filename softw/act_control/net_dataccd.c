@@ -11,7 +11,6 @@ struct act_msg_ccdcap G_msg_ccdcap;
 void init_ccdcap()
 {
   memset(&G_msg_ccdcap, 0, sizeof(struct act_msg_ccdcap));
-  G_msg_ccdcap.prebin_x = G_msg_ccdcap.prebin_y = 0;
   int i;
   for (i=0; i<IPC_MAX_NUM_FILTAPERS; i++)
     G_msg_ccdcap.filters[i].slot = IPC_MAX_NUM_FILTAPERS;
@@ -80,18 +79,18 @@ static void merge_ccdcaps(struct act_msg_ccdcap *msg_ccdcap)
       act_log_error(act_log_msg("Two identifiers for CCD reported (current: %s ; new: %s). Keeping current.", G_msg_ccdcap.ccd_id, msg_ccdcap->ccd_id));
   }
   
-  if (msg_ccdcap->min_exp_t_msec > 0)
+  if (msg_ccdcap->min_exp_t_s > 0)
   {
-    if (G_msg_ccdcap.min_exp_t_msec == 0)
-      G_msg_ccdcap.min_exp_t_msec = msg_ccdcap->min_exp_t_msec;
-    else if (msg_ccdcap->min_exp_t_msec > G_msg_ccdcap.min_exp_t_msec)
-      G_msg_ccdcap.min_exp_t_msec = msg_ccdcap->min_exp_t_msec;
+    if (G_msg_ccdcap.min_exp_t_s == 0)
+      G_msg_ccdcap.min_exp_t_s = msg_ccdcap->min_exp_t_s;
+    else if (msg_ccdcap->min_exp_t_s > G_msg_ccdcap.min_exp_t_s)
+      G_msg_ccdcap.min_exp_t_s = msg_ccdcap->min_exp_t_s;
   }
   
-  if (msg_ccdcap->max_exp_t_msec > 0)
+  if (msg_ccdcap->max_exp_t_s > 0)
   {
-    if (msg_ccdcap->max_exp_t_msec < G_msg_ccdcap.max_exp_t_msec)
-      G_msg_ccdcap.max_exp_t_msec = msg_ccdcap->max_exp_t_msec;
+    if (msg_ccdcap->max_exp_t_s < G_msg_ccdcap.max_exp_t_s)
+      G_msg_ccdcap.max_exp_t_s = msg_ccdcap->max_exp_t_s;
   }
   
   int i, j, new_pos;
@@ -124,50 +123,6 @@ static void merge_ccdcaps(struct act_msg_ccdcap *msg_ccdcap)
     if (new_pos < 0)
       continue;
     memcpy(&G_msg_ccdcap.filters[new_pos], &msg_ccdcap->filters[i], sizeof(struct filtaper));
-  }
-  
-  if (msg_ccdcap->prebin_x != 0)
-  {
-    if (G_msg_ccdcap.prebin_x == 0)
-      G_msg_ccdcap.prebin_x = msg_ccdcap->prebin_x;
-    else
-      G_msg_ccdcap.prebin_x &= msg_ccdcap->prebin_x;
-  }
-  if (msg_ccdcap->prebin_y != 0)
-  {
-    if (G_msg_ccdcap.prebin_y == 0)
-      G_msg_ccdcap.prebin_y = msg_ccdcap->prebin_y;
-    else
-      G_msg_ccdcap.prebin_y &= msg_ccdcap->prebin_y;
-  }
-  
-  for (i=0; i<IPC_CCD_MAX_NUM_WINDOW_MODES; i++)
-  {
-    if ((msg_ccdcap->windows[i].width_px == 0) || (msg_ccdcap->windows[i].height_px == 0))
-      break;
-    new_pos = -1;
-    for (j=0; j<IPC_CCD_MAX_NUM_WINDOW_MODES; j++)
-    {
-      if ((G_msg_ccdcap.windows[j].width_px == msg_ccdcap->windows[i].width_px) && (G_msg_ccdcap.windows[j].height_px == msg_ccdcap->windows[i].height_px))
-      {
-        act_log_debug(act_log_msg("Duplicate CCD window mode received."));
-        new_pos = IPC_CCD_MAX_NUM_WINDOW_MODES;
-        break;
-      }
-      if ((G_msg_ccdcap.windows[j].width_px == 0) || (G_msg_ccdcap.windows[j].height_px == 0))
-      {
-        new_pos = j;
-        break;
-      }
-    }
-    if (new_pos >= IPC_CCD_MAX_NUM_WINDOW_MODES)
-      continue;
-    if (new_pos < 0)
-    {
-      act_log_error(act_log_msg("New CCD window mode(s) received, but no space left in CCD capabilities structure. Ignoring new mode."));
-      break;
-    }
-    memcpy(&G_msg_ccdcap.windows[new_pos], &msg_ccdcap->windows[i], sizeof(struct ipc_ccd_window_mode));
   }
 }
 

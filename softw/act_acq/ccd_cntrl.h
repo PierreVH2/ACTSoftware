@@ -9,8 +9,6 @@
 
 G_BEGIN_DECLS
 
-/// TODO: Add cancelled status
-
 #define CCD_CMD_TYPE                (ccd_cmd_get_type())
 #define CCD_CMD(objs)               (G_TYPE_CHECK_INSTANCE_CAST ((objs), CCD_CMD_TYPE, CcdCmd))
 #define CCD_CMD_CLASS(klass)        (G_TYPE_CHECK_CLASS_CAST ((klass), CCD_CMD_TYPE, CcdCmdClass))

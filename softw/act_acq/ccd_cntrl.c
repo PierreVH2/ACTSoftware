@@ -8,7 +8,7 @@
 #include <ccd_defs.h>
 #include <act_log.h>
 #include <act_positastro.h>
-#include "ccdcntrl.h"
+#include "ccd_cntrl.h"
 #include "marshallers.h"
 
 #define DATETIME_TO_SEC 60
@@ -21,10 +21,9 @@ static void ccd_cmd_instance_dispose(GObject *ccd_cmd);
 static void ccd_cntrl_instance_init(GObject *ccd_cntrl);
 static void ccd_cntrl_class_init(CcdImgClass *klass);
 static void ccd_cntrl_instance_dispose(GObject *ccd_cntrl);
-static gboolean ccd_cntrl_ccd_init(GObject *ccd_cntrl);
+static gboolean ccd_cntrl_ccd_init(CcdCntrl *ccd_cntrl);
 static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_cntrl);
 static gboolean integ_timer(gpointer ccd_cntrl);
-static gboolean datetime_timeout(gpointer ccd_cntrl);
 static gboolean tel_pos_timeout(gpointer ccd_cntrl);
 
 
@@ -354,24 +353,6 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
   }
 
   CcdImg *new_img = CCD_IMG(g_object_new (ccd_img_get_type(), NULL));
-  if (objs->datetime_to_id == 0)
-  {
-    act_log_error(act_log_msg("Date and time information not available. Reading from system clock and hoping for the best."));
-    time_t syst = time(NULL);
-    struct tm *sys_gmt = gmtime(&syst);
-    struct datestruct start_unid;
-    struct timestruct start_unit;
-    start_unid.year = sys_gmt->tm_year;
-    start_unid.month = sys_gmt->tm_mon;
-    start_unid.day = sys_gmt->tm_mday-1;
-    start_unit.hours = sys_gmt->tm_hour;
-    start_unit.minutes = sys_gmt->tm_min;
-    start_unit.seconds = sys_gmt->tm_sec;
-    start_unit.milliseconds = 0;
-    ccd_img_set_start_datetime(new_img, &start_unid, &start_unit);
-  }
-  else
-    ccd_img_set_start_datetime(new_img, &objs->unid, &objs->unit);
   if (objs->tel_pos_to_id == 0)
   {
     act_log_error(act_log_msg("Telescope RA and Dec not available. Storing dummy RA and Dec in image header."));
@@ -405,7 +386,12 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
 void ccd_cntrl_cancel_exp(CcdCntrl *objs)
 {
   act_log_debug(act_log_msg("Not fully implemented yet. Not cancelling current integration, but will cancel future integrations in this series."));
-  objs->rpt_rem = 1;
+  objs->rpt_rem = 0;
+  if (objs->cur_img != NULL)
+  {
+    g_object_unref(objs->cur_img);
+    objs->cur_img = NULL;
+  }
 }
 
 guchar ccd_cntrl_get_stat(CcdCntrl *objs)
@@ -435,7 +421,7 @@ gboolean ccd_cntrl_stat_err_retry(guchar status)
   return (status & CCD_ERR_RETRY) > 0;
 }
 
-gboolean ccd_cntrl_stat_error_no_recov(guchar status)
+gboolean ccd_cntrl_stat_err_no_recov(guchar status)
 {
   return (status & CCD_ERR_NO_RECOV) > 0;
 }
@@ -488,7 +474,7 @@ static void ccd_cntrl_instance_init(GObject *ccd_cntrl)
 
 static void ccd_cntrl_class_init(CcdImgClass *klass)
 {
-  cntrl_signals[SIG_STAT_UPDATE] = g_signal_new("ccd-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_user_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
+  cntrl_signals[SIG_STAT_UPDATE] = g_signal_new("ccd-stat-update", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__UCHAR, G_TYPE_NONE, 1, G_TYPE_UCHAR);
   cntrl_signals[SIG_NEW_IMG] = g_signal_new("ccd-new-image", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST|G_SIGNAL_ACTION, 0, NULL, NULL, g_cclosure_marshal_VOID__OBJECT, G_TYPE_NONE, 1, G_TYPE_OBJECT);
   G_OBJECT_CLASS(klass)->dispose = ccd_cntrl_instance_dispose;
 }
@@ -525,11 +511,6 @@ static void ccd_cntrl_instance_dispose(GObject *ccd_cntrl)
   {
     g_object_unref(objs->exp_timer);
     objs->exp_timer = NULL;
-  }
-  if (objs->datetime_to_id != 0)
-  {
-    g_source_remove(objs->datetime_to_id);
-    objs->datetime_to_id = 0;
   }
   if (objs->tel_pos_to_id != 0)
   {
@@ -603,31 +584,59 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
   
   g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_STAT_UPDATE], 0,  tmp_stat);
   
-  if ((tmp_stat & CCD_IMG_READY) != 0)
+  if ((tmp_stat & CCD_IMG_READY) == 0)
+    return TRUE;
+  
+  struct merlin_img tmp_img;
+  ret = ioctl(g_io_channel_unix_get_fd(objs->drv_chan), IOCTL_GET_IMAGE, &tmp_img);
+  struct ccd_img_params *tmp_params = &tmp_img.img_params;
+  if (objs->cur_img == NULL)
   {
-    struct merlin_img tmp_img;
-    ret = ioctl(g_io_channel_unix_get_fd(objs->drv_chan), IOCTL_GET_IMAGE, &tmp_img);
-    struct ccd_img_params *tmp_params = &tmp_img.img_params;
-    
-    gfloat *tmp_data = malloc(tmp_params->img_len*sizeof(gfloat));
-    gulong i;
-    for (i=0; i<tmp_params->img_len; i++)
-      tmp_data[i] = (gfloat)tmp_img.img_data[i]/CCDPIX_MAX;
-    ccd_img_set_img_data(CCD_IMG(objs->cur_img), tmp_params->img_len, tmp_data);
-    ccd_img_set_window(CCD_IMG(objs->cur_img), tmp_params->win_start_x, tmp_params->win_start_y, tmp_params->win_width, tmp_params->win_height, tmp_params->prebin_x, tmp_params->prebin_y);
-    ccd_img_set_exp_t(CCD_IMG(objs->cur_img), ccd_img_exp_t((*tmp_params)));
-    ccd_img_set_start_datetime(CCD_IMG(objs->cur_img), tmp_params->start_sec + tmp_params->start_nanosec/(double)1e9);
-    g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_NEW_IMG], 0,  objs->cur_img);
+    act_log_debug(act_log_msg("New image received, but CCD control structure has no reference to a current image - integration was probably cancelled. Ignoring this image."));
+    return TRUE;
+  }
+  
+  gfloat *tmp_data = malloc(tmp_params->img_len*sizeof(gfloat));
+  gulong i;
+  for (i=0; i<tmp_params->img_len; i++)
+    tmp_data[i] = (gfloat)tmp_img.img_data[i]/CCDPIX_MAX;
+  CcdImg *img = CCD_IMG(objs->cur_img);
+  objs->cur_img = NULL;
+  ccd_img_set_img_data(img, tmp_params->img_len, tmp_data);
+  ccd_img_set_window(img, tmp_params->win_start_x, tmp_params->win_start_y, tmp_params->win_width, tmp_params->win_height, tmp_params->prebin_x, tmp_params->prebin_y);
+  ccd_img_set_exp_t(img, ccd_img_exp_t((*tmp_params)));
+  ccd_img_set_start_datetime(img, tmp_params->start_sec + tmp_params->start_nanosec/(double)1e9);
+  g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_NEW_IMG], 0,  img);
 
-    /// TODO :Implement repetitions    
-    if (--objs->rpt_rem <= 0)
+  objs->rpt_rem--;
+  gboolean done = TRUE;
+  if (objs->rpt_rem <= 0)
+  {
+    CcdCmd *cmd = CCD_CMD(g_object_new(ccd_cmd_get_type(), NULL));
+    ccd_cmd_set_img_type(cmd, ccd_img_get_img_type(img));
+    ccd_cmd_set_win_start_x(cmd, ccd_img_get_win_start_x(img));
+    ccd_cmd_set_win_start_y(cmd, ccd_img_get_win_start_y(img));
+    ccd_cmd_set_win_width(cmd, ccd_img_get_win_width(img));
+    ccd_cmd_set_win_height(cmd, ccd_img_get_win_height(img));
+    ccd_cmd_set_prebin_x(cmd, ccd_img_get_prebin_x(img));
+    ccd_cmd_set_prebin_y(cmd, ccd_img_get_prebin_y(img));
+    ccd_cmd_set_exp_t(cmd, ccd_img_get_exp_t(img));
+    ccd_cmd_set_rpt(cmd, objs->rpt_rem);
+    ccd_cmd_set_user(cmd, ccd_img_get_user_id(img), ccd_img_get_user_name(img));
+    ccd_cmd_set_target(cmd, ccd_img_get_targ_id(img), ccd_img_get_targ_name(img));
+    ret = ccd_cntrl_start_exp(objs, cmd);
+    if (ret < 0)
     {
+      act_log_error(act_log_msg("Failed to start next exposure repetition (%d - %s)", ret, strerror(abs(ret))));
+      objs->rpt_rem = 0;
     }
-    else if (objs->exp_trem_to_id != 0)
-    {
-      g_source_remove(objs->exp_trem_to_id);
-      objs->exp_trem_to_id = 0;
-    }
+    else
+      done = FALSE;
+  }
+  if ((done) && (objs->exp_trem_to_id != 0))
+  {
+    g_source_remove(objs->exp_trem_to_id);
+    objs->exp_trem_to_id = 0;
   }
   
   return TRUE;
@@ -644,13 +653,6 @@ static gboolean integ_timer(gpointer ccd_cntrl)
   }
   g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_STAT_UPDATE], 0,  objs->drv_stat);
   return TRUE;
-}
-
-static gboolean datetime_timeout(gpointer ccd_cntrl)
-{
-  act_log_debug(act_log_msg("Timed out while waiting for new date and time information."));
-  CCD_CNTRL(ccd_cntrl)->datetime_to_id = 0;
-  return FALSE;
 }
 
 static gboolean tel_pos_timeout(gpointer ccd_cntrl)

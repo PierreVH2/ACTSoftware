@@ -2,6 +2,7 @@
 #include <mysql/mysql.h>
 #include <argtable2.h>
 #include <string.h>
+#include <time.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <act_log.h>
@@ -11,6 +12,9 @@
 #define GUICHECK_TIMEOUT_PERIOD    3
 #define OBSN_WAIT_TIMEOUT          60
 #define SCHED_IDLE_TIMEOUT         10
+
+/// Converts time in seconds since the UNIX epoch to fractional number of years (for coordinates epoch)
+#define SEC_TO_YEAR(sec)   (1970 + sec/(float)31556926)
 
 struct formobjects
 {
@@ -29,6 +33,7 @@ gboolean timeout_check_gui(gpointer user_data);
 void destroy_plug(GtkWidget *plug, gpointer user_data);
 void request_guisock(GIOChannel *channel);
 void cancel_cur(gpointer user_data);
+float cur_epoch(void);
 void targset_finish(struct formobjects *objs, struct act_msg_targset *msg_targset);
 void datapmt_finish(struct formobjects *objs, struct act_msg_datapmt *msg_datapmt);
 void dataccd_finish(struct formobjects *objs, struct act_msg_dataccd *msg_dataccd);
@@ -189,7 +194,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
   (void)condition;
   struct formobjects *objs = (struct formobjects *)net_read_data;
   struct act_msg msgbuf;
-  unsigned int num_bytes;
+  gsize num_bytes;
   int status;
   GError *error = NULL;
   status = g_io_channel_read_chars (source, (gchar *)&msgbuf, sizeof(msgbuf), &num_bytes, &error);
@@ -336,7 +341,7 @@ gboolean read_net_message (GIOChannel *source, GIOCondition condition, gpointer 
 
 char net_send(GIOChannel *channel, struct act_msg *msg)
 {
-  unsigned int num_bytes;
+  gsize num_bytes;
   int status;
   GError *error = NULL;
   status = g_io_channel_write_chars (channel, (gchar *)msg, sizeof(struct act_msg), &num_bytes, &error);
@@ -411,6 +416,12 @@ void cancel_cur(gpointer user_data)
   if (net_send(objs->net_chan, &msg) < 0)
     act_log_error(act_log_msg("Failed to send dataccd cancel mesaage."));
   update_schedstat(objs, OBSNSTAT_CANCEL);
+}
+
+float cur_epoch(void)
+{
+  time_t unix_time = time(NULL);
+  return SEC_TO_YEAR(unix_time);
 }
 
 void targset_finish(struct formobjects *objs, struct act_msg_targset *msg_targset)
@@ -815,17 +826,16 @@ unsigned char sched_next_targset(struct formobjects *objs, int targset_id)
   msg_targset->targ_cent = FALSE;
   msg_targset->focus_pos = 0;
   msg_targset->autoguide= FALSE;
-  msg_targset->targ_epoch = 2013.9;
 
   msg_targset->mode_auto = mode_auto;
   msg_targset->targ_id = targ_id;
   memcpy(msg_targset->targ_name, targ_name, MAX_TARGID_LEN);
-  msg_targset->sky = sky;
+  /// TODO: Change target RA, Dec to account for star/sky
   struct rastruct tmp_ra;
   struct decstruct tmp_dec;
   convert_H_HMSMS_ra(ra_h, &tmp_ra);
   convert_D_DMS_dec(dec_d, &tmp_dec);
-  precess_coord(&tmp_ra, &tmp_dec, 2000.0, 2013.9, &msg_targset->targ_ra, &msg_targset->targ_dec);
+  precess_coord(&tmp_ra, &tmp_dec, 2000.0, cur_epoch(), &msg_targset->targ_ra, &msg_targset->targ_dec);
   msg_targset->adj_ra_h = 0.0;
   msg_targset->adj_dec_d = 0.0;
   
@@ -935,15 +945,12 @@ unsigned char sched_next_datapmt(struct formobjects *objs, int datapmt_id)
   
   msg_datapmt->status = OBSNSTAT_GOOD;
   msg_datapmt->datapmt_stage = DATAPMT_SCHED_PRE;
-  msg_datapmt->targ_epoch = 2000.0;
   msg_datapmt->pmt_mode = 0;
   
   msg_datapmt->mode_auto = mode_auto;
   msg_datapmt->targ_id = targ_id;
   memcpy(msg_datapmt->targ_name, targ_name, MAX_TARGID_LEN);
   msg_datapmt->sky = sky;
-  convert_H_HMSMS_ra(ra_h, &msg_datapmt->targ_ra);
-  convert_D_DMS_dec(dec_d, &msg_datapmt->targ_dec);
   msg_datapmt->user_id = user_id;
   msg_datapmt->sample_period_s = sample_period_s;
   msg_datapmt->prebin_num = prebin_num;
@@ -1040,16 +1047,14 @@ unsigned char sched_next_dataccd(struct formobjects *objs, int dataccd_id)
   
   msg_dataccd->status = OBSNSTAT_GOOD;
   msg_dataccd->dataccd_stage = DATACCD_SCHED_PRE;
-  msg_dataccd->targ_epoch = 2000.0;
   msg_dataccd->frame_transfer = TRUE;
-  msg_dataccd->prebin_x = msg_dataccd->prebin_y = 1;
-  msg_dataccd->window_mode_num = 0;
+  msg_dataccd->win_start_x = msg_dataccd->win_start_y = 0;
+  msg_dataccd->win_height = msg_dataccd->win_width = 0;
+  msg_dataccd->prebin_x = msg_dataccd->prebin_y = 0;
   
   msg_dataccd->mode_auto = mode_auto;
   msg_dataccd->targ_id = targ_id;
   memcpy(msg_dataccd->targ_name, targ_name, MAX_TARGID_LEN);
-  convert_H_HMSMS_ra(ra_h, &msg_dataccd->targ_ra);
-  convert_D_DMS_dec(dec_d, &msg_dataccd->targ_dec);
   msg_dataccd->user_id = user_id;
   msg_dataccd->exp_t_s = exp_t_s;
   msg_dataccd->repetitions = repetitions;
@@ -1144,21 +1149,21 @@ void update_schedline(struct formobjects *objs)
     {
       struct act_msg_targset *msg_targset = &objs->cur_msg->content.msg_targset;
       if (msg_targset->targ_cent)
-        sprintf(schedline, "SET TARGET:  %s %s (%d %s %s J%6.1f) %s CENTRED", msg_targset->mode_auto ? "AUTO" : "MANUAL", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->targ_epoch, msg_targset->sky ? "SKY" : "STAR");
+        sprintf(schedline, "SET TARGET:  %s %s (%d %s %s) CENTRED", msg_targset->mode_auto ? "AUTO" : "MANUAL", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec));
       else
-        sprintf(schedline, "SET TARGET:  %s %s (%d %s %s J%6.1f) %s ADJUST RA %fs %f\"", msg_targset->mode_auto ? "AUTO" : "MANUAL", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->targ_epoch, msg_targset->sky ? "SKY" : "STAR", msg_targset->adj_ra_h*3600.0, msg_targset->adj_dec_d*3600.0);
+        sprintf(schedline, "SET TARGET:  %s %s (%d %s %s) ADJUST RA %fs %f\"", msg_targset->mode_auto ? "AUTO" : "MANUAL", msg_targset->targ_name, msg_targset->targ_id, ra_to_str(&msg_targset->targ_ra), dec_to_str(&msg_targset->targ_dec), msg_targset->adj_ra_h*3600.0, msg_targset->adj_dec_d*3600.0);
       break;
     }
     case MT_DATA_PMT:
     {
       struct act_msg_datapmt *msg_datapmt = &objs->cur_msg->content.msg_datapmt;
-      sprintf(schedline, "DATA PMT:  %s %s (%d %s %s J%6.1f) %s %lu x %lu x %fs %s %s", msg_datapmt->mode_auto ? "AUTO" : "MANUAL", msg_datapmt->targ_name, msg_datapmt->targ_id, ra_to_str(&msg_datapmt->targ_ra), dec_to_str(&msg_datapmt->targ_dec), msg_datapmt->targ_epoch, msg_datapmt->sky ? "SKY" : "STAR", msg_datapmt->repetitions, msg_datapmt->prebin_num, msg_datapmt->sample_period_s, msg_datapmt->filter.name, msg_datapmt->aperture.name);
+      sprintf(schedline, "DATA PMT:  %s %s (%d) %s %lu x %lu x %fs %s %s", msg_datapmt->mode_auto ? "AUTO" : "MANUAL", msg_datapmt->targ_name, msg_datapmt->targ_id, msg_datapmt->sky ? "SKY" : "STAR", msg_datapmt->repetitions, msg_datapmt->prebin_num, msg_datapmt->sample_period_s, msg_datapmt->filter.name, msg_datapmt->aperture.name);
       break;
     }
     case MT_DATA_CCD:
     {
       struct act_msg_dataccd *msg_dataccd = &objs->cur_msg->content.msg_dataccd;
-      sprintf(schedline, "DATA PMT:  %s %s (%d %s %s J%6.1f) %lu x %fs %s", msg_dataccd->mode_auto ? "AUTO" : "MANUAL", msg_dataccd->targ_name, msg_dataccd->targ_id, ra_to_str(&msg_dataccd->targ_ra), dec_to_str(&msg_dataccd->targ_dec), msg_dataccd->targ_epoch, msg_dataccd->repetitions, msg_dataccd->exp_t_s, msg_dataccd->filter.name);
+      sprintf(schedline, "DATA PMT:  %s %s (%d) %lu x %fs %s", msg_dataccd->mode_auto ? "AUTO" : "MANUAL", msg_dataccd->targ_name, msg_dataccd->targ_id, msg_dataccd->repetitions, msg_dataccd->exp_t_s, msg_dataccd->filter.name);
       break;
     }
     default:
