@@ -596,8 +596,6 @@ static void start_exp_error(const char *err_str)
  */
 static void start_exp_now(void)
 {
-  unsigned long unit;
-  unsigned short unit_msec;
   static struct timespec ts;
   if (G_send_exp_ts != NULL)
   {

@@ -552,7 +552,7 @@ static void imgdisp_redraw(GtkWidget *imgdisp)
   Imgdisp *objs = IMGDISP(imgdisp);
   if (objs->glsl_prog == 0)
   {
-    act_log_debug(act_log_msg("Imgdisp widget not configured yet. Bright limit will be set when object is realised."));
+    act_log_debug(act_log_msg("Imgdisp widget not configured yet. Cannot redraw now."));
     return;
   }
   GtkWidget *dra_ccdimg = objs->dra_ccdimg;

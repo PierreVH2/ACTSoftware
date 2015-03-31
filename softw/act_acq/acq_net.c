@@ -291,7 +291,6 @@ static void acq_net_instance_dispose(GObject *acq_net)
     g_io_channel_unref(objs->net_chan);
     objs->net_chan = NULL;
   }
-  G_OBJECT_CLASS(acq_net)->dispose(acq_net);
 }
 
 static gint acq_net_send(GIOChannel *channel, struct act_msg *msg)

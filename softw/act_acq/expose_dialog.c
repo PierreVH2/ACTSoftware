@@ -45,6 +45,7 @@ GType expose_dialog_type(void)
 
 GtkWidget *expose_dialog_new(GtkWidget *parent, CcdCntrl *cntrl)
 {
+  act_log_debug(act_log_msg("Creating exposure parameters dialog (%f)", ccd_cntrl_get_max_exp_t_sec(cntrl)));
   ExposeDialog *objs = EXPOSE_DIALOG(g_object_new(expose_dialog_type(), NULL));
   gtk_window_set_transient_for(GTK_WINDOW(objs), GTK_WINDOW(parent));
   gtk_dialog_add_buttons (GTK_DIALOG(objs), GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
@@ -58,7 +59,8 @@ GtkWidget *expose_dialog_new(GtkWidget *parent, CcdCntrl *cntrl)
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_height), 1, ccd_height);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_x), 1, ccd_width);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_y), 1, ccd_height);
-  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, ccd_cntrl_get_max_exp_t_sec(cntrl));
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, 10.0);
+//   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, ccd_cntrl_get_max_exp_t_sec(cntrl));
   gtk_spin_button_set_increments(GTK_SPIN_BUTTON(objs->spn_exp_t_s), ccd_cntrl_get_min_exp_t_sec(cntrl), 1.0);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_repetitions), 1, 1000000);
   
@@ -238,11 +240,11 @@ static void instance_init(GtkWidget *expose_dialog)
   gtk_table_attach(GTK_TABLE(box_content), gtk_hseparator_new(), 0, 2, 8, 9, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
   gtk_table_attach(GTK_TABLE(box_content), gtk_label_new("Integ T (s)"), 0, 1, 9, 10, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
-  objs->spn_exp_t_s = gtk_spin_button_new_with_range(1, DEFAULT_MAX_CCD_SIZE, 1);
+  objs->spn_exp_t_s = gtk_spin_button_new_with_range(0.0, 1000.0, 1);
   gtk_table_attach(GTK_TABLE(box_content), objs->spn_exp_t_s, 1, 2, 9, 10, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
   gtk_table_attach(GTK_TABLE(box_content), gtk_label_new("Repeat"), 0, 1, 10, 11, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
-  objs->spn_repetitions = gtk_spin_button_new_with_range(1, DEFAULT_MAX_CCD_SIZE, 1);
+  objs->spn_repetitions = gtk_spin_button_new_with_range(1, 1000000, 1);
   gtk_table_attach(GTK_TABLE(box_content), objs->spn_repetitions, 1, 2, 10, 11, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
 }
 

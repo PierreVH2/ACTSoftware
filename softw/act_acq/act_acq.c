@@ -50,7 +50,7 @@
 
 enum
 {
-  MODE_IDLE,
+  MODE_IDLE=1,
   MODE_MANUAL_EXP,
   MODE_TARGSET_EXP,
   MODE_DATACCD_EXP,
@@ -120,11 +120,11 @@ int main(int argc, char** argv)
   act_log_open();
   act_log_normal(act_log_msg("Starting"));
   
-  const char *host, *port;
+  const char *host, *port, *sqlhost;
   gtk_init(&argc, &argv);
   struct arg_str *addrarg = arg_str1("a", "addr", "<str>", "The host to connect to. May be a hostname, IP4 address or IP6 address.");
   struct arg_str *portarg = arg_str1("p", "port", "<str>", "The port to connect to. Must be an unsigned short integer.");
-  struct arg_str *sqlconfigarg = arg_str0("s", "sqlconfighost", "<server ip/hostname>", "The hostname or IP address of the SQL server than contains act_control's configuration information");
+  struct arg_str *sqlconfigarg = arg_str1("s", "sqlconfighost", "<server ip/hostname>", "The hostname or IP address of the SQL server than contains act_control's configuration information");
   struct arg_end *endargs = arg_end(10);
   void* argtable[] = {addrarg, portarg, sqlconfigarg, endargs};
   if (arg_nullcheck(argtable) != 0)
@@ -137,19 +137,20 @@ int main(int argc, char** argv)
   }
   host = addrarg->sval[0];
   port = portarg->sval[0];
+  sqlhost = sqlconfigarg->sval[0];
   arg_freetable(argtable,sizeof(argtable)/sizeof(argtable[0]));
   
   CcdCntrl *cntrl = ccd_cntrl_new();
   if (cntrl == NULL)
   {
-    act_log_error(act_log_msg("Failed to create CCD control object"));
+    act_log_error(act_log_msg("Failed to create CCD control object."));
     return 1;
   }
   
-  AcqStore *store = acq_store_new(host);
+  AcqStore *store = acq_store_new(sqlhost);
   if (store == NULL)
   {
-    act_log_error(act_log_msg("Failed to create database storage link"));
+    act_log_error(act_log_msg("Failed to create database storage link."));
     g_object_unref(G_OBJECT(cntrl));
     return 1;
   }
@@ -198,7 +199,7 @@ int main(int argc, char** argv)
   
   struct acq_objects objs = 
   {
-    .mode = MODE_IDLE,
+    .mode = 0,
     .cntrl = cntrl,
     .store = store,
     .net = net,
@@ -211,11 +212,12 @@ int main(int argc, char** argv)
     .btn_expose = btn_expose,
     .btn_cancel = btn_cancel,
   };
+  prog_change_mode(&objs, MODE_IDLE);
   
   // Connect signals
-  g_signal_connect (G_OBJECT(btn_view_param), "click", G_CALLBACK (view_param_click), imgdisp);
-  g_signal_connect (G_OBJECT(btn_expose), "click", G_CALLBACK(expose_click), &objs);
-  g_signal_connect (G_OBJECT(btn_cancel), "click", G_CALLBACK(cancel_click), &objs);
+  g_signal_connect (G_OBJECT(btn_view_param), "clicked", G_CALLBACK (view_param_click), imgdisp);
+  g_signal_connect (G_OBJECT(btn_expose), "clicked", G_CALLBACK(expose_click), &objs);
+  g_signal_connect (G_OBJECT(btn_cancel), "clicked", G_CALLBACK(cancel_click), &objs);
   g_signal_connect (G_OBJECT(imgdisp), "motion-notify-event", G_CALLBACK (imgdisp_mouse_move_view), lbl_mouse_view);
   g_signal_connect (G_OBJECT(imgdisp), "motion-notify-event", G_CALLBACK (imgdisp_mouse_move_equat), lbl_mouse_equat);
   g_signal_connect (G_OBJECT(cntrl), "ccd-stat-update", G_CALLBACK (ccd_stat_update), &objs);
@@ -527,6 +529,7 @@ void ccd_stat_err_no_recov(struct acq_objects *objs)
 void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
 {
   struct acq_objects *objs = (struct acq_objects *)user_data;
+  g_object_ref(img);
   imgdisp_set_img(objs->imgdisp, CCD_IMG(img));
   
   gulong rpt_rem = ccd_cntrl_get_rpt_rem(CCD_CNTRL(ccd_cntrl));
@@ -543,8 +546,8 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
         prog_change_mode(objs, MODE_IDLE);
       break;
     case MODE_TARGSET_EXP:
-      image_auto_target_set(objs, CCD_IMG(img));
       // Do pattern matching
+      image_auto_target_set(objs, CCD_IMG(img));
       break;
     case MODE_DATACCD_EXP:
       // Check if there integration repetitions are complete, if so change mode to idle
@@ -573,6 +576,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
     {
       act_log_error(act_log_msg("Error occurred while attempting to start an auto target set exposure."));
       acq_net_send_targset_response(objs->net, obsnstat, 0.0, 0.0, FALSE);
+      prog_change_mode(objs, MODE_IDLE);
     }
     return;
   }
@@ -588,6 +592,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
   {
     act_log_error(act_log_msg("Failed to fetch Tycho catalog stars."));
     acq_net_send_targset_response(objs->net, OBSNSTAT_ERR_RETRY, 0.0, 0.0, FALSE);
+    prog_change_mode(objs, MODE_IDLE);
     return;
   }
   
@@ -867,23 +872,36 @@ void prog_change_mode(struct acq_objects *objs, guchar new_mode)
   if (objs->mode == new_mode)
     return;
   char stat_str[100];
+  gboolean idle = TRUE;
   switch (new_mode)
   {
     case MODE_IDLE:
       sprintf(stat_str, "IDLE");
+      idle = TRUE;
       break;
     case MODE_MANUAL_EXP:
       sprintf(stat_str, "MANUAL");
+      idle = FALSE;
       break;
     case MODE_TARGSET_EXP:
       sprintf(stat_str, "AUTO ACQ");
+      idle = FALSE;
       break;
     case MODE_DATACCD_EXP:
       sprintf(stat_str, "AUTO DATA");
+      idle = FALSE;
+      break;
+    case MODE_CANCEL:
+      sprintf(stat_str, "CANCELLING");
+      idle = FALSE;
       break;
     default:
-      act_log_debug(act_log_msg("UNKNWON"));
+      act_log_debug(act_log_msg("Unknown programme status %hhu", new_mode));
+      return;
   }
   gtk_label_set_text(GTK_LABEL(objs->lbl_prog_stat), stat_str);
+  gtk_widget_set_sensitive(objs->btn_expose, idle);
+  gtk_widget_set_sensitive(objs->btn_cancel, !idle);
+  objs->mode = new_mode;
 }
 

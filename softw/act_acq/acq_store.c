@@ -1,6 +1,8 @@
 #include <gtk/gtk.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
 #include <stdlib.h>
 #include <pwd.h>
 #include <errno.h>
@@ -89,18 +91,12 @@ AcqStore *acq_store_new(gchar const *sqlhost)
     act_log_error(act_log_msg("Error initialising MySQL image storage connection handler - %s.", mysql_error(store_conn)));
     return NULL;
   }
-  if (mysql_real_connect(store_conn, "localhost", "root", "nsW3", "tmp_sep", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
   {
-    act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
+    act_log_error(act_log_msg("Error establishing image storage connection to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);
     return NULL;
   }
-//   if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
-//   {
-//     act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
-//     mysql_close(store_conn);
-//     return NULL;
-//   }
   
   act_log_debug(act_log_msg("Creating general MySQL connection."));
   MYSQL *genl_conn;
@@ -111,20 +107,13 @@ AcqStore *acq_store_new(gchar const *sqlhost)
     mysql_close(store_conn);
     return NULL;
   }
-  if (mysql_real_connect(genl_conn, "localhost", "root", "nsW3", "tmp_sep", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(genl_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
   {
-    act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
+    act_log_error(act_log_msg("Error establishing general connection to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);
     mysql_close(genl_conn);
     return NULL;
   }
-//   if (mysql_real_connect(genl_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
-//   {
-//     act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(genl_conn)));
-//     mysql_close(store_conn);
-//     mysql_close(genl_conn);
-//     return NULL;
-//   }
   
   // create object
   AcqStore *objs = g_object_new (acq_store_get_type(), NULL);
@@ -498,19 +487,23 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d
 
 void acq_store_append_image(AcqStore *objs, CcdImg *new_img)
 {
+  act_log_debug(act_log_msg("Locking mutex"));
   int ret = pthread_mutex_lock(&objs->img_list_mutex);
   if (ret != 0)
   {
     act_log_error(act_log_msg("Failed to obtain mutex lock on pending images list - %d. New image will be lost", ret));
     return;
   }
+  act_log_debug(act_log_msg("Appending image to list"));
   objs->img_pend = g_slist_append(objs->img_pend, G_OBJECT(new_img));
   g_object_ref(G_OBJECT(new_img));
+  act_log_debug(act_log_msg("Unlocking mutex"));
   ret = pthread_mutex_unlock(&objs->img_list_mutex);
   if (ret != 0)
     act_log_error(act_log_msg("Failed to release mutex lock on pending images list - %d", ret));
   if ((objs->status & STAT_STORING) != 0)
     return;
+  act_log_debug(act_log_msg("No storage thread running, creating thread for storing images"));
   ret = pthread_create(&objs->store_thr, NULL, store_pending_img, (void *)objs);
   if (ret != 0)
     act_log_error(act_log_msg("Failed to create image store thread - %d", ret));
@@ -608,16 +601,19 @@ static void store_next_img(AcqStore *objs)
     act_log_debug(act_log_msg("Stored all images."));
     return;
   }
+  act_log_debug(act_log_msg("Locking mutex."));
   int ret = pthread_mutex_lock(&objs->img_list_mutex);
   if (ret != 0)
   {
     act_log_error(act_log_msg("Error returned while trying to obtain mutex lock on pending images list (%d - %s)", ret, strerror(abs(ret))));
     return;
   }
+  act_log_debug(act_log_msg("Grabbing image at head of list"));
+  CcdImg *cur_img = CCD_IMG(objs->img_pend->data);
   GSList *cur_el = objs->img_pend;
   objs->img_pend = objs->img_pend->next;
-  CcdImg *cur_img = CCD_IMG(objs->img_pend->data);
   g_slist_free_1 (cur_el);
+  act_log_debug(act_log_msg("Unlocking mutex"));
   ret = pthread_mutex_unlock(&objs->img_list_mutex);
   if (ret != 0)
   {
@@ -636,6 +632,7 @@ static void store_next_img(AcqStore *objs)
   guchar i;
   for (i=0; i<STORE_MAX_RETRIES; i++)
   {
+    act_log_debug(act_log_msg("Trying to save image (%d / %d)", i, STORE_MAX_RETRIES));
     img_saved = store_img(objs->store_conn, cur_img);
     if (img_saved)
       break;
@@ -687,15 +684,8 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
    */
   gfloat tel_ra, tel_dec;
   ccd_img_get_tel_pos(img, &tel_ra, &tel_dec);
-  char qrystr[256];
-  sprintf(qrystr, "INSERT INTO ccd_img \
-                     (targ_id, user_id, type, exp_t_s, start_date, start_time_h, \
-                     win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, \
-                     tel_ra_h, tel_dec_d) \
-                   VALUES \
-                     (%lu, %lu, %hhu, %f, \
-                     DATE(FROM_UNIXTIME(%lf)), (UNIX_TIMESTAMP(DATE(FROM_UNIXTIME(%lf))) - %lf)/3600.0, \
-                     %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
+  char qrystr[1024];
+  sprintf(qrystr, "INSERT INTO ccd_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, tel_ra_h, tel_dec_d) VALUES (%lu, %lu, %hhu, %f, DATE(FROM_UNIXTIME(%lf)),(UNIX_TIMESTAMP(DATE(FROM_UNIXTIME(%lf))) - %lf)/3600.0, %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
           ccd_img_get_targ_id(img),
           ccd_img_get_user_id(img),
           img_type_acq_to_db(ccd_img_get_img_type(img)),

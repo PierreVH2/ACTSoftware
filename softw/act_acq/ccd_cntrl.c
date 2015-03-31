@@ -375,23 +375,16 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
   g_timer_start(objs->exp_timer);
   if (cmd->exp_t_s > 1.0)
     objs->exp_trem_to_id = g_timeout_add(1, integ_timer, objs);
-  if (objs->cur_img != 0)
-  {
+  if (objs->cur_img != NULL)
     g_object_unref(objs->cur_img);
-    objs->cur_img = new_img;
-  }
+  objs->cur_img = new_img;
   return 0;
 }
 
 void ccd_cntrl_cancel_exp(CcdCntrl *objs)
 {
   act_log_debug(act_log_msg("Not fully implemented yet. Not cancelling current integration, but will cancel future integrations in this series."));
-  objs->rpt_rem = 0;
-  if (objs->cur_img != NULL)
-  {
-    g_object_unref(objs->cur_img);
-    objs->cur_img = NULL;
-  }
+  objs->rpt_rem = 1;
 }
 
 guchar ccd_cntrl_get_stat(CcdCntrl *objs)
@@ -489,7 +482,7 @@ static void ccd_cntrl_instance_dispose(GObject *ccd_cntrl)
   }
   if (objs->drv_chan != NULL)
   {
-    g_object_unref(objs->drv_chan);
+    g_io_channel_unref(objs->drv_chan);
     objs->drv_chan = NULL;
   }
   if (objs->ccd_id != NULL)
@@ -509,7 +502,7 @@ static void ccd_cntrl_instance_dispose(GObject *ccd_cntrl)
   }
   if (objs->exp_timer != NULL)
   {
-    g_object_unref(objs->exp_timer);
+    g_timer_destroy(objs->exp_timer);
     objs->exp_timer = NULL;
   }
   if (objs->tel_pos_to_id != 0)
@@ -607,10 +600,11 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
   ccd_img_set_exp_t(img, ccd_img_exp_t((*tmp_params)));
   ccd_img_set_start_datetime(img, tmp_params->start_sec + tmp_params->start_nanosec/(double)1e9);
   g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_NEW_IMG], 0,  img);
+  g_object_unref(G_OBJECT(img));
 
   objs->rpt_rem--;
   gboolean done = TRUE;
-  if (objs->rpt_rem <= 0)
+  if (objs->rpt_rem > 0)
   {
     CcdCmd *cmd = CCD_CMD(g_object_new(ccd_cmd_get_type(), NULL));
     ccd_cmd_set_img_type(cmd, ccd_img_get_img_type(img));
