@@ -14,8 +14,7 @@
 
 enum
 {
-  SIG_STATREQ = 0,
-  SIG_TELCOORD,
+  SIG_TELCOORD = 0,
   SIG_GUISOCK,
   SIG_CHANGE_USER,
   SIG_CHANGE_TARG,
@@ -365,7 +364,6 @@ static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer
       msgbuf.content.msg_stat.status = objs->status;
       if (acq_net_send(net_chan, &msgbuf) < 0)
         act_log_error(act_log_msg("Failed to send programme status response.\n"));
-      g_signal_emit(G_OBJECT(acq_net), acq_net_signals[SIG_STATREQ], 0);
       break;
     case MT_COORD:
       g_signal_emit(G_OBJECT(acq_net), acq_net_signals[SIG_TELCOORD], 0, convert_H_DEG(convert_HMSMS_H_ra(&msgbuf.content.msg_coord.ra)), convert_DMS_D_dec(&msgbuf.content.msg_coord.dec));

@@ -119,6 +119,7 @@ struct _CcdCntrlClass
 GType ccd_cntrl_get_type (void);
 CcdCntrl *ccd_cntrl_new (void);
 gboolean ccd_cntrl_reconnect(CcdCntrl *objs);
+void ccd_cntrl_gen_test_image(CcdCntrl *objs);
 gchar *ccd_cntrl_get_ccd_id(CcdCntrl *objs);
 // gint ccd_cntrl_set_window(CcdCntrl *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y);
 gfloat ccd_cntrl_get_min_exp_t_sec(CcdCntrl *objs);

@@ -99,6 +99,8 @@ void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data);
 void ccd_stat_err_retry(struct acq_objects *objs);
 void ccd_stat_err_no_recov(struct acq_objects *objs);
 void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data);
+void manual_pattern_match(struct acq_objects *objs, CcdImg *img);
+void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg);
 void image_auto_target_set(struct acq_objects *objs, CcdImg *img);
 PointList *image_extract_stars(CcdImg *img);
 guchar targset_exp_retry(CcdCntrl *cntrl, CcdImg *img);
@@ -164,18 +166,23 @@ int main(int argc, char** argv)
     return 1;
   }
   acq_net_init(net, store, cntrl);
+  acq_net_set_status(net, PROGSTAT_STARTUP);
   
   // Create GUI
   GtkWidget *box_main = gtk_vbox_new(FALSE, TABLE_PADDING);
   g_object_ref(box_main);
+  GtkWidget *box_imgdisp = gtk_hbox_new(FALSE, TABLE_PADDING);
+  gtk_box_pack_start(GTK_BOX(box_main), box_imgdisp, FALSE, FALSE, TABLE_PADDING);
   GtkWidget *imgdisp  = imgdisp_new();
-  gtk_box_pack_start(GTK_BOX(box_main), imgdisp, TRUE, TRUE, TABLE_PADDING);
+  gtk_box_pack_start(GTK_BOX(box_imgdisp), imgdisp, TRUE, FALSE, TABLE_PADDING);
   GtkWidget* box_controls = gtk_table_new(3,3,TRUE);
   gtk_box_pack_start(GTK_BOX(box_main), box_controls, TRUE, TRUE, TABLE_PADDING);
   
   gtk_widget_set_size_request(imgdisp, ccd_cntrl_get_max_width(cntrl), ccd_cntrl_get_max_height(cntrl));
   imgdisp_set_window(imgdisp, 0, 0, ccd_cntrl_get_max_width(cntrl), ccd_cntrl_get_max_height(cntrl));
-  
+  imgdisp_set_flip_ew(imgdisp, TRUE);
+  imgdisp_set_grid(imgdisp, IMGDISP_GRID_EQUAT, 1.0, 1.0);
+
   GtkWidget *lbl_mouse_view = gtk_label_new("X:           \nY:           ");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_mouse_view, 0,1,0,1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *lbl_mouse_equat = gtk_label_new("RA:           \nDec:           ");
@@ -232,11 +239,13 @@ int main(int argc, char** argv)
   g_signal_connect (G_OBJECT(net), "data-ccd-start", G_CALLBACK(data_ccd_start), &objs);
   g_signal_connect (G_OBJECT(net), "data-ccd-stop", G_CALLBACK(data_ccd_stop), &objs);
   gint guicheck_to_id = g_timeout_add(GUICHECK_LOOP_PERIOD, guicheck_timeout, &objs);
+  ccd_cntrl_gen_test_image(cntrl);
   
   act_log_debug(act_log_msg("Entering main loop."));
   gtk_main();
   
   act_log_normal(act_log_msg("Exiting"));
+  acq_net_set_status(net, PROGSTAT_STOPPING);
   g_source_remove(guicheck_to_id);
   g_object_unref(G_OBJECT(net));
   g_object_unref(G_OBJECT(store));
@@ -544,6 +553,8 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
     case MODE_MANUAL_EXP:
       // Check if there integration repetitions are complete, if so change mode to idle
       act_log_debug(act_log_msg("New manual image received (%d exposures remain).", rpt_rem));
+      if ((ccd_img_get_img_type(CCD_IMG(img)) == IMGT_ACQ_OBJ) || (ccd_img_get_img_type(CCD_IMG(img)) == IMGT_ACQ_SKY))
+        manual_pattern_match(objs, CCD_IMG(img));
       if (rpt_rem == 0)
         prog_change_mode(objs, MODE_IDLE);
       break;
@@ -567,9 +578,71 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
       return;
   }
   
+  gtk_widget_set_size_request(objs->imgdisp, ccd_cntrl_get_max_width(objs->cntrl), ccd_cntrl_get_max_height(objs->cntrl));
+  imgdisp_set_window(objs->imgdisp, 0, 0, ccd_img_get_img_width(CCD_IMG(img)), ccd_img_get_img_height(CCD_IMG(img)));
   imgdisp_set_img(objs->imgdisp, CCD_IMG(img));
   acq_store_append_image(objs->store, CCD_IMG(img));
   g_object_unref(G_OBJECT(img));
+}
+
+void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
+{
+  char msg_str[256] = "No error message";
+  // Extract stars from image
+  PointList *img_pts = image_extract_stars(img);
+  gint num_stars = point_list_get_num_used(img_pts);
+  act_log_debug(act_log_msg("Manual img - number of stars extracted from image: %d\n", num_stars));
+  if (num_stars < MIN_NUM_STARS)
+  {
+    sprintf(msg_str, "Too few stars in image (%d must be %d)", num_stars, MIN_NUM_STARS);
+    manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+    return;
+  }
+  
+  // Fetch nearby stars in Tycho2 catalog from database
+  gfloat img_ra, img_dec;
+  ccd_img_get_tel_pos(img, &img_ra, &img_dec);
+  gdouble img_start_sec = ccd_img_get_start_datetime(img);
+  PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RAD);
+  gint num_pat = point_list_get_num_used(pat_pts);
+  act_log_debug(act_log_msg("Manual img - number of catalog stars within search region: %d\n", num_pat));
+  if (num_pat < MIN_NUM_STARS)
+  {
+    sprintf(msg_str, "Failed to fetch Tycho catalog stars. (%d retrieved)", num_pat);
+    manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+    return;
+  }
+  
+  // Match the two lists of points
+  GSList *map = find_point_list_map(img_pts, pat_pts, DEFAULT_RADIUS);
+  gint num_match;
+  if (map == NULL)
+  {
+    sprintf(msg_str, "Failed to find point mapping.");
+    manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+    return;
+  }
+  num_match = g_slist_length(map);
+  gfloat rashift, decshift;
+  if (num_match / (float)num_stars < MIN_MATCH_FRAC)
+  {
+    sprintf(msg_str, "Too few stars mapped to pattern (%d mapped, %d required)", num_match, (int)MIN_MATCH_FRAC*num_stars);
+    manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+    return;
+  }
+  point_list_map_calc_offset(map, &rashift, &decshift, NULL, NULL);
+  point_list_map_free(map);
+  g_slist_free(map);
+  
+  sprintf(msg_str, "Shift: %f\"  %f\"\nTrue: %f d  %f d", rashift, decshift, img_ra+rashift/3600.0, img_dec+decshift/3600.0);
+  manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_INFO, msg_str);
+}
+
+void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)
+{
+  GtkWidget *msg_dialog = gtk_message_dialog_new (GTK_WINDOW(parent), GTK_DIALOG_DESTROY_WITH_PARENT, type, GTK_BUTTONS_CLOSE, msg);
+  g_signal_connect_swapped (msg_dialog, "response", G_CALLBACK (gtk_widget_destroy), msg_dialog);
+  gtk_widget_show_all(msg_dialog);  
 }
 
 void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
@@ -772,6 +845,7 @@ void guisock_received(GObject *acq_net, gulong win_id, gpointer box_main)
   gtk_container_add(GTK_CONTAINER(plg_new), box_main);
   g_signal_connect(G_OBJECT(plg_new),"destroy",G_CALLBACK(destroy_gui_plug), box_main);
   gtk_widget_show_all(plg_new);
+  acq_net_set_status(ACQ_NET(acq_net), PROGSTAT_RUNNING);
 }
 
 void destroy_gui_plug(GtkWidget *plug, gpointer box_main)

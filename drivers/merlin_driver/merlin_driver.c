@@ -89,9 +89,11 @@
 /// Height of CCD in pixels in full-frame mode (no prebinning, no windowing)
 #define   HEIGHT_PX    288
 /// On-sky width of CCD in full-frame mode (no prebinning, no windowing), in arcminutes
-#define   RA_WIDTH     900
+// #define   RA_WIDTH     900   (replaced on 2015-04-02 after refined value became available from SEP/pattern matching tests)
+#define   RA_WIDTH     931
 /// On-sky height of CCD in full-frame mode (no prebinning, no windowing), in arcminutes
-#define   DEC_HEIGHT   656
+// #define   DEC_HEIGHT   656   (replaced on 2015-04-02 after refined value became available from SEP/pattern matching tests)
+#define   DEC_HEIGHT   686
 /** \} */
 
 /// Convenience definition for converting from seconds+nanoseconds to milliseconds

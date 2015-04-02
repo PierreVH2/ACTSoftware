@@ -300,6 +300,25 @@ gboolean ccd_cntrl_reconnect(CcdCntrl *objs)
   return ccd_cntrl_ccd_init(objs);
 }
 
+void ccd_cntrl_gen_test_image(CcdCntrl *objs)
+{
+  int i;
+  gushort width=objs->max_width_px, height=objs->max_height_px;
+  gfloat tmp_data[width*height];
+  for (i=0; i<width*height; i++)
+    tmp_data[i] = (i%CCDPIX_MAX)/(gfloat)CCDPIX_MAX;
+  CcdImg *img = CCD_IMG(g_object_new (ccd_img_get_type(), NULL));
+  ccd_img_set_img_data(img, width*height, tmp_data);
+  ccd_img_set_window(img, 0, 0, width, height, 1, 1);
+  ccd_img_set_tel_pos(img, 0.0, 0.0);
+  ccd_img_set_pixel_size(img, objs->ra_width_asec, objs->dec_height_asec);
+  ccd_img_set_exp_t(img, 0.0);
+  time_t cur_time = time(NULL); 
+  ccd_img_set_start_datetime(img, cur_time);
+  g_signal_emit(G_OBJECT(objs), cntrl_signals[SIG_NEW_IMG], 0,  img);
+  g_object_unref(G_OBJECT(img));
+}
+
 gchar *ccd_cntrl_get_ccd_id(CcdCntrl *objs)
 {
   return g_strdup(objs->ccd_id);
@@ -549,8 +568,8 @@ static gboolean ccd_cntrl_ccd_init(CcdCntrl *objs)
   objs->max_exp_t_s = tmp_modes.max_exp_t_sec + tmp_modes.max_exp_t_nanosec/1000000000.0;
   objs->max_width_px = tmp_modes.max_width_px;
   objs->max_height_px = tmp_modes.max_height_px;
-  objs->ra_width_asec = tmp_modes.ra_width_asec;
-  objs->dec_height_asec = tmp_modes.dec_height_asec;
+  objs->ra_width_asec = tmp_modes.ra_width_asec/(gfloat)tmp_modes.max_width_px;
+  objs->dec_height_asec = tmp_modes.dec_height_asec/(gfloat)tmp_modes.max_height_px;
   /// TODO: When windowing implemented, implement proper treatment of initial window - i.e. either select a default starting window mode and send that to the driver here or read the last used window from the driver and set it in the cntrl structure here.
   objs->win_start_x = 0;
   objs->win_start_y = 0;
@@ -601,6 +620,7 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
   ccd_img_set_window(img, tmp_params->win_start_x, tmp_params->win_start_y, tmp_params->win_width, tmp_params->win_height, tmp_params->prebin_x, tmp_params->prebin_y);
   ccd_img_set_exp_t(img, ccd_img_exp_t((*tmp_params)));
   ccd_img_set_start_datetime(img, tmp_params->start_sec + tmp_params->start_nanosec/(double)1e9);
+  ccd_img_set_pixel_size(img, objs->ra_width_asec, objs->dec_height_asec);
   g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_NEW_IMG], 0,  img);
   g_object_unref(G_OBJECT(img));
 
