@@ -45,7 +45,7 @@ GType expose_dialog_type(void)
 
 GtkWidget *expose_dialog_new(GtkWidget *parent, CcdCntrl *cntrl)
 {
-  act_log_debug(act_log_msg("Creating exposure parameters dialog (%f)", ccd_cntrl_get_max_exp_t_sec(cntrl)));
+  act_log_debug(act_log_msg("Creating exposure parameters dialog (%f)", ccd_cntrl_get_min_exp_t_sec(cntrl)));
   ExposeDialog *objs = EXPOSE_DIALOG(g_object_new(expose_dialog_type(), NULL));
   gtk_window_set_transient_for(GTK_WINDOW(objs), GTK_WINDOW(parent));
   gtk_dialog_add_buttons (GTK_DIALOG(objs), GTK_STOCK_OK, GTK_RESPONSE_OK, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, NULL);
@@ -59,9 +59,9 @@ GtkWidget *expose_dialog_new(GtkWidget *parent, CcdCntrl *cntrl)
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_win_height), 1, ccd_height);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_x), 1, ccd_width);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_prebin_y), 1, ccd_height);
-  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, 10.0);
-//   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, ccd_cntrl_get_max_exp_t_sec(cntrl));
+  gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 0.0, ccd_cntrl_get_max_exp_t_sec(cntrl));
   gtk_spin_button_set_increments(GTK_SPIN_BUTTON(objs->spn_exp_t_s), ccd_cntrl_get_min_exp_t_sec(cntrl), 1.0);
+  gtk_spin_button_set_digits(GTK_SPIN_BUTTON(objs->spn_exp_t_s), 3);
   gtk_spin_button_set_range(GTK_SPIN_BUTTON(objs->spn_repetitions), 1, 1000000);
   
   return GTK_WIDGET(objs);

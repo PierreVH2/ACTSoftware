@@ -384,7 +384,8 @@ gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd)
 void ccd_cntrl_cancel_exp(CcdCntrl *objs)
 {
   act_log_debug(act_log_msg("Not fully implemented yet. Not cancelling current integration, but will cancel future integrations in this series."));
-  objs->rpt_rem = 1;
+  if (objs->rpt_rem > 0)
+    objs->rpt_rem = 1;
 }
 
 guchar ccd_cntrl_get_stat(CcdCntrl *objs)
@@ -589,6 +590,7 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
     return TRUE;
   }
   
+  objs->rpt_rem--;
   gfloat *tmp_data = malloc(tmp_params->img_len*sizeof(gfloat));
   gulong i;
   for (i=0; i<tmp_params->img_len; i++)
@@ -602,7 +604,6 @@ static gboolean drv_watch(GIOChannel *drv_chan, GIOCondition cond, gpointer ccd_
   g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_NEW_IMG], 0,  img);
   g_object_unref(G_OBJECT(img));
 
-  objs->rpt_rem--;
   gboolean done = TRUE;
   if (objs->rpt_rem > 0)
   {

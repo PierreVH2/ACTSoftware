@@ -249,6 +249,7 @@ static void acq_net_instance_init(GObject *acq_net)
   objs->status = PROGSTAT_STARTUP;
   objs->ccdcap_msg = malloc(sizeof(struct act_msg));
   ((struct act_msg *)objs->ccdcap_msg)->mtype = 0;
+  OBJS_CCDCAP_MSG(objs)->dataccd_stage = DATACCD_PHOTOM;
   objs->ccdcap_pending = FALSE;
 }
 
@@ -391,8 +392,11 @@ static gboolean net_read_ready(GIOChannel *net_chan, GIOCondition cond, gpointer
       // ignore
       break;
     case MT_CCD_CAP:
+      if (msgbuf.content.msg_ccdcap.dataccd_stage != 0)
+        break; // Ignore
       if (((struct act_msg *)objs->ccdcap_msg)->mtype == MT_CCD_CAP)
       {
+        act_log_debug(act_log_msg("Sending DATACCD capabilities response."));
         if (acq_net_send(net_chan, (struct act_msg *)objs->ccdcap_msg) < 0)
           act_log_error(act_log_msg("Failed to send CCD capabilities response message."));
       }

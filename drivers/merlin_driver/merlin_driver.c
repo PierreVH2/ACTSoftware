@@ -97,7 +97,7 @@
 /// Convenience definition for converting from seconds+nanoseconds to milliseconds
 #define SECNSEC_MSEC(sec,nsec)         sec*1000 + nsec/1000000
 /// Convenience definition for converting from milliseconds to seconds+nanoseconds
-#define MSEC_SECNSEC(msec,sec,nsec)    sec = msec/1000 ; nsec = (msec%1000)/1000000
+#define MSEC_SECNSEC(msec,sec,nsec)    sec = msec/1000 ; nsec = (msec%1000)*1000000
 
 /** \name Gloval variables
  * \{ */

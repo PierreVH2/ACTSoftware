@@ -373,7 +373,11 @@ void cancel_click(GtkWidget *btn_cancel, gpointer user_data)
   (void) btn_cancel;
   struct acq_objects *objs = (struct acq_objects *)user_data;
   ccd_cntrl_cancel_exp(objs->cntrl);
-  prog_change_mode(objs, MODE_CANCEL);
+  guchar ccd_stat = ccd_cntrl_get_stat(objs->cntrl);
+  if ((!ccd_cntrl_stat_readout(ccd_stat)) && (!ccd_cntrl_stat_integrating(ccd_stat)))
+    prog_change_mode(objs, MODE_IDLE);
+  else
+    prog_change_mode(objs, MODE_CANCEL);
 }
 
 gboolean imgdisp_mouse_move_view(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_mouse_equat)
@@ -437,7 +441,6 @@ void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
   }
   
   gtk_label_set_text(GTK_LABEL(objs->lbl_ccd_stat), stat_str);
-  gtk_widget_set_sensitive(GTK_WIDGET(objs->btn_expose), objs->mode == MODE_IDLE);
 }
 
 void ccd_stat_err_retry(struct acq_objects *objs)
@@ -530,7 +533,6 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
 {
   struct acq_objects *objs = (struct acq_objects *)user_data;
   g_object_ref(img);
-  imgdisp_set_img(objs->imgdisp, CCD_IMG(img));
   
   gulong rpt_rem = ccd_cntrl_get_rpt_rem(CCD_CNTRL(ccd_cntrl));
   switch (objs->mode)
@@ -541,7 +543,7 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
       break;
     case MODE_MANUAL_EXP:
       // Check if there integration repetitions are complete, if so change mode to idle
-      act_log_debug(act_log_msg("New manual image received."));
+      act_log_debug(act_log_msg("New manual image received (%d exposures remain).", rpt_rem));
       if (rpt_rem == 0)
         prog_change_mode(objs, MODE_IDLE);
       break;
@@ -555,10 +557,17 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
       if (rpt_rem == 0)
         prog_change_mode(objs, MODE_IDLE);
       break;
+    case MODE_CANCEL:
+      // Integration was cancelled, only update programme status, then exit (do not display image, do not save image)
+      prog_change_mode(objs, MODE_IDLE);
+      return;
     default:
+      // Unknown mode. Ignore this image (do not display, do not save)
       act_log_debug(act_log_msg("New CCD iamge received, but an invalid ACQ mode is in operation. Ignoring."));
+      return;
   }
   
+  imgdisp_set_img(objs->imgdisp, CCD_IMG(img));
   acq_store_append_image(objs->store, CCD_IMG(img));
   g_object_unref(G_OBJECT(img));
 }

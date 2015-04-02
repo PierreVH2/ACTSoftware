@@ -47,7 +47,7 @@ static void acq_store_instance_init(GObject *acq_store);
 static void acq_store_class_init(AcqStoreClass *klass);
 static void acq_store_instance_dispose(GObject *acq_store);
 static void *store_pending_img(void *acq_store);
-static void store_next_img(AcqStore *objs);
+static gboolean store_next_img(AcqStore *objs);
 static gboolean store_img(MYSQL *conn, CcdImg *img);
 static void store_img_fallback(CcdImg *img);
 static gboolean store_reconnect(AcqStore *objs);
@@ -588,37 +588,38 @@ static void *store_pending_img(void *acq_store)
   AcqStore *objs = ACQ_STORE(acq_store);
   objs->status |= STAT_STORING;
   g_object_ref(G_OBJECT(objs));
-  store_next_img(objs);
+  for (;;)
+  {
+    if (!store_next_img(objs))
+      break;
+  }
   g_object_unref(G_OBJECT(objs));
   objs->status &= ~STAT_STORING;
   return 0;
 }
 
-static void store_next_img(AcqStore *objs)
+static gboolean store_next_img(AcqStore *objs)
 {
   if (objs->img_pend == NULL)
   {
     act_log_debug(act_log_msg("Stored all images."));
-    return;
+    return FALSE;
   }
-  act_log_debug(act_log_msg("Locking mutex."));
   int ret = pthread_mutex_lock(&objs->img_list_mutex);
   if (ret != 0)
   {
     act_log_error(act_log_msg("Error returned while trying to obtain mutex lock on pending images list (%d - %s)", ret, strerror(abs(ret))));
-    return;
+    return FALSE;
   }
-  act_log_debug(act_log_msg("Grabbing image at head of list"));
   CcdImg *cur_img = CCD_IMG(objs->img_pend->data);
   GSList *cur_el = objs->img_pend;
   objs->img_pend = objs->img_pend->next;
   g_slist_free_1 (cur_el);
-  act_log_debug(act_log_msg("Unlocking mutex"));
   ret = pthread_mutex_unlock(&objs->img_list_mutex);
   if (ret != 0)
   {
     act_log_error(act_log_msg("Error returned while trying to release mutex lock on pending images list (%d - %s)", ret, strerror(abs(ret))));
-    return;
+    return FALSE;
   }
   
   if ((objs->status & STAT_ERR_NO_RECOV) > 0)
@@ -626,7 +627,7 @@ static void store_next_img(AcqStore *objs)
     act_log_error(act_log_msg("Need to save an image, but data store is currently unavailable."));
     store_img_fallback(cur_img);
     g_object_unref(cur_img);
-    return;
+    return FALSE;
   }
   gboolean img_saved;
   guchar i;
@@ -656,15 +657,18 @@ static void store_next_img(AcqStore *objs)
       objs->status |= STAT_ERR_NO_RECOV;
       store_img_fallback(cur_img);
       g_object_unref(cur_img);
-      return;
+      return FALSE;
     }
   }
   if ((objs->status & (STAT_ERR_NO_RECOV | STAT_ERR_RETRY)) > 0)
   {
     objs->status &= ~(STAT_ERR_NO_RECOV | STAT_ERR_RETRY);
     g_signal_emit(G_OBJECT(objs), acq_store_signals[STATUS_UPDATE], 0);
+    g_object_unref(cur_img);
+    return FALSE;
   }
   g_object_unref(cur_img);
+  return TRUE;
 }
 
 static gboolean store_img(MYSQL *conn, CcdImg *img)
@@ -707,7 +711,6 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
     mysql_query(conn, "ROLLBACK;");
     return FALSE;
   }
-  act_log_debug(act_log_msg("Inserted image header."));
   
   gulong img_id = mysql_insert_id(conn);
   if (img_id == 0)
@@ -793,6 +796,7 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
     return FALSE;
   }
   mysql_query(conn, "COMMIT;");
+  act_log_debug(act_log_msg("Finished saving image %lu", img_id));
   return TRUE;
 }
 
