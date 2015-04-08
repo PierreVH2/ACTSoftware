@@ -827,7 +827,7 @@ void store_stat_update(GObject *acq_store, gpointer lbl_store_stat)
 
 void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer user_data)
 {
-  act_log_debug(act_log_msg("Updated coordinates received: %f %f", tel_ra, tel_dec));
+//  act_log_debug(act_log_msg("Updated coordinates received: %f %f", tel_ra, tel_dec));
   (void) acq_net;
   struct acq_objects *objs = (struct acq_objects *)user_data;
   ccd_cntrl_set_tel_pos(objs->cntrl, tel_ra, tel_dec);

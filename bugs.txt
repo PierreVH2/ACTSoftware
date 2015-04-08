@@ -1,5 +1,7 @@
 Current bugs/notes:
 
+DTI - adjusting coordinates while tracking causes telescope to move off massively
+ACQ - Images never get correct coordinates, always get dummy coordinates
 In motor_driver/motor_intfce.c - change return value in start_goto when at target coordinates
 Determine proper treatment of SuperWASP cloud data
 act_environ - status light must remain red when weather data outdated

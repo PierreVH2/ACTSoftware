@@ -451,10 +451,12 @@ gboolean ccd_cntrl_stat_readout(guchar status)
 
 void ccd_cntrl_set_tel_pos(CcdCntrl *objs, gfloat tel_ra_d, gfloat tel_dec_d)
 {
+  act_log_debug(act_log_msg("Updated coordinates received - %f %f", tel_ra_d, tel_dec_d));
   objs->ra_d = tel_ra_d;
   objs->dec_d = tel_dec_d;
   if (objs->tel_pos_to_id != 0)
   {
+    act_log_debug(act_log_msg("Resetting coordinates timer"));
     g_source_remove(objs->tel_pos_to_id);
     objs->tel_pos_to_id = g_timeout_add_seconds(TEL_POS_TO_SEC, tel_pos_timeout, objs);
   }
