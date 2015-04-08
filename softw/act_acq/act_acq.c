@@ -230,7 +230,7 @@ int main(int argc, char** argv)
   g_signal_connect (G_OBJECT(cntrl), "ccd-stat-update", G_CALLBACK (ccd_stat_update), &objs);
   g_signal_connect (G_OBJECT(cntrl), "ccd-new-image", G_CALLBACK (ccd_new_image), &objs);
   g_signal_connect (G_OBJECT(store), "store-status-update", G_CALLBACK(store_stat_update), lbl_store_stat);
-  g_signal_connect (G_OBJECT(net), "coord-received", G_CALLBACK(coord_received), cntrl);
+  g_signal_connect (G_OBJECT(net), "coord-received", G_CALLBACK(coord_received), &objs);
   g_signal_connect (G_OBJECT(net), "gui-socket", G_CALLBACK(guisock_received), box_main);
   g_signal_connect (G_OBJECT(net), "change-user", G_CALLBACK(change_user), &objs);
   g_signal_connect (G_OBJECT(net), "change-target", G_CALLBACK(change_target), &objs);
@@ -827,6 +827,7 @@ void store_stat_update(GObject *acq_store, gpointer lbl_store_stat)
 
 void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer user_data)
 {
+  act_log_debug(act_log_msg("Updated coordinates received: %f %f", tel_ra, tel_dec));
   (void) acq_net;
   struct acq_objects *objs = (struct acq_objects *)user_data;
   ccd_cntrl_set_tel_pos(objs->cntrl, tel_ra, tel_dec);
@@ -834,7 +835,6 @@ void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer 
 
 void guisock_received(GObject *acq_net, gulong win_id, gpointer box_main)
 {
-  (void) acq_net;
   act_log_debug(act_log_msg("Received GUI socket message."));
   if (gtk_widget_get_parent(GTK_WIDGET(box_main)) != NULL)
   {
