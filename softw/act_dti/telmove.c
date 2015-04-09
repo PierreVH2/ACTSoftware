@@ -457,13 +457,13 @@ static void coord_update(gpointer telmove, GActTelcoord *new_coord)
   {
     gdouble hadiff_h = convert_HMSMS_H_ra(&msg_coord->ra) - convert_HMSMS_H_ra(&objs->targ_ra);
     gdouble decdiff_d = convert_DMS_D_dec(&objs->targ_dec) - convert_DMS_D_dec(&msg_coord->dec);
-    if ((fabs(hadiff_h) > TRACK_ADJ_MIN_HA_H) || (fabs(decdiff_d) > TRACK_ADJ_MIN_DEC_D))
-    {
-      act_log_debug(act_log_msg("Sending adjustment %f %f", hadiff_h, decdiff_d));
-      gint ret = dti_motor_track_adj(objs->dti_motor, hadiff_h, decdiff_d);
-      if (ret != 0)
-        act_log_error(act_log_msg("Failed to send tracking adjustment (%f h, %f d) - %s", hadiff_h, decdiff_d, strerror(ret)));
-    }
+//     if ((fabs(hadiff_h) > TRACK_ADJ_MIN_HA_H) || (fabs(decdiff_d) > TRACK_ADJ_MIN_DEC_D))
+//     {
+//       act_log_debug(act_log_msg("Sending adjustment %f %f", hadiff_h, decdiff_d));
+//       gint ret = dti_motor_track_adj(objs->dti_motor, hadiff_h, decdiff_d);
+//       if (ret != 0)
+//         act_log_error(act_log_msg("Failed to send tracking adjustment (%f h, %f d) - %s", hadiff_h, decdiff_d, strerror(ret)));
+//     }
   }
 }
 

@@ -458,8 +458,8 @@ void ccd_cntrl_set_tel_pos(CcdCntrl *objs, gfloat tel_ra_d, gfloat tel_dec_d)
   {
     act_log_debug(act_log_msg("Resetting coordinates timer"));
     g_source_remove(objs->tel_pos_to_id);
-    objs->tel_pos_to_id = g_timeout_add_seconds(TEL_POS_TO_SEC, tel_pos_timeout, objs);
   }
+  objs->tel_pos_to_id = g_timeout_add_seconds(TEL_POS_TO_SEC, tel_pos_timeout, objs);
 }
 
 static void ccd_cntrl_instance_init(GObject *ccd_cntrl)
