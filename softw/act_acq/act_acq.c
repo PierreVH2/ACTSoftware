@@ -101,6 +101,7 @@ void ccd_stat_err_no_recov(struct acq_objects *objs);
 void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data);
 void manual_pattern_match(struct acq_objects *objs, CcdImg *img);
 void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg);
+void print_point_list(const char *heading, PointList *list);
 void image_auto_target_set(struct acq_objects *objs, CcdImg *img);
 PointList *image_extract_stars(CcdImg *img);
 guchar targset_exp_retry(CcdCntrl *cntrl, CcdImg *img);
@@ -626,8 +627,10 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   gfloat rashift, decshift;
   if (num_match / (float)num_stars < MIN_MATCH_FRAC)
   {
-    sprintf(msg_str, "Too few stars mapped to pattern (%d mapped, %d required)", num_match, (int)MIN_MATCH_FRAC*num_stars);
+    sprintf(msg_str, "Too few stars mapped to pattern (%d mapped, %d required)", num_match, (int)(MIN_MATCH_FRAC*num_stars));
     manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+    print_point_list("Image points", img_pts);
+    print_point_list("Pattern points", pat_pts);
     return;
   }
   point_list_map_calc_offset(map, &rashift, &decshift, NULL, NULL);
@@ -643,6 +646,19 @@ void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)
   GtkWidget *msg_dialog = gtk_message_dialog_new (GTK_WINDOW(parent), GTK_DIALOG_DESTROY_WITH_PARENT, type, GTK_BUTTONS_CLOSE, msg);
   g_signal_connect_swapped (msg_dialog, "response", G_CALLBACK (gtk_widget_destroy), msg_dialog);
   gtk_widget_show_all(msg_dialog);  
+}
+
+void print_point_list(const char *heading, PointList *list)
+{
+  int i, num=point_list_get_num_used(list);
+  gdouble x, y;
+  act_log_debug(act_log_msg("%s", heading));
+  for (i=0; i<num; i++)
+  {
+    if (!point_list_get_coord(list, i, &x, &y))
+      continue;
+    act_log_debug(act_log_msg("  %6.1f  %6.1f", x, y));
+  }
 }
 
 void image_auto_target_set(struct acq_objects *objs, CcdImg *img)

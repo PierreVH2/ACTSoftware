@@ -1,7 +1,9 @@
 Current bugs/notes:
 
+ACQ - imgdisp widget gives incorrect RA
+ACQ - Pattern matching with manual exposures are not working
+ACQ - Exposure time remaining not being shown
 DTI - adjusting coordinates while tracking causes telescope to move off massively
-ACQ - Images never get correct coordinates, always get dummy coordinates
 In motor_driver/motor_intfce.c - change return value in start_goto when at target coordinates
 Determine proper treatment of SuperWASP cloud data
 act_environ - status light must remain red when weather data outdated
@@ -21,6 +23,13 @@ Should domeshutter close when programme exits/restarts?
 Dome shutter does not close when DTI not running
 Sched cancel does not work
 DTI does not start tracking with auto target set
+
+
+
+Changes revision 577
+
+DTI - Disabled coordinate adjustments (using pointing model) - this is a temporary fix to incorrect adjustments being sent to motors
+ACQ - Fixed image coordinates, image objects now get correct telescope coordinates when created
 
 
 
