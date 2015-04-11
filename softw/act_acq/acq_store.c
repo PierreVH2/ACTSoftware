@@ -742,12 +742,31 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
     mysql_query(conn, "ROLLBACK;");
     return FALSE;
   }
-  
-  gushort cur_x, cur_y;
-  gdouble cur_val;
-  MYSQL_BIND  bind[3];
+
+  gulong i, j;
+  gushort img_width = ccd_img_get_img_width(img), img_height = ccd_img_get_img_height(img);
+  gushort cur_x[img_height], cur_y[img_height];
+  gdouble cur_val[img_height];
+  MYSQL_BIND  bind[3*img_height];
   memset(bind, 0, sizeof(bind));
-  bind[0].buffer_type = MYSQL_TYPE_SHORT;
+  for (j=0; j<img_height; j++)
+  {
+    bind[j+3+0].buffer_type = MYSQL_TYPE_SHORT;
+    bind[j*3+0].buffer = (char *)&cur_x[j];
+    bind[j*3+0].is_null = 0;
+    bind[j*3+0].length = 0;
+    bind[j*3+0].is_unsigned = TRUE;
+    bind[j*3+1].buffer_type = MYSQL_TYPE_SHORT;
+    bind[j*3+1].buffer = (char *)&cur_y[j];
+    bind[j*3+1].is_null = 0;
+    bind[j*3+1].length = 0;
+    bind[j*3+1].is_unsigned = TRUE;
+    bind[j*3+2].buffer_type = MYSQL_TYPE_DOUBLE;
+    bind[j*3+2].buffer = (char *)&cur_val[j];
+    bind[j*3+2].is_null = 0;
+    bind[j*3+2].length = 0;
+  }
+/*  bind[0].buffer_type = MYSQL_TYPE_SHORT;
   bind[0].buffer = (char *)&cur_x;
   bind[0].is_null = 0;
   bind[0].length = 0;
@@ -760,7 +779,7 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
   bind[2].buffer_type = MYSQL_TYPE_DOUBLE;
   bind[2].buffer = (char *)&cur_val;
   bind[2].is_null = 0;
-  bind[2].length = 0;
+  bind[2].length = 0;*/
   if (mysql_stmt_bind_param(stmt, bind))
   {
     act_log_error(act_log_msg("Failed to bind parameters for prepared statement - %s", mysql_stmt_error(stmt)));
@@ -769,19 +788,28 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
   }
   
   gfloat const *img_data = ccd_img_get_img_data(img);
-  gulong i, img_len = ccd_img_get_img_len(img);
-  gushort img_width = ccd_img_get_win_width(img)/ccd_img_get_prebin_x(img), img_height = ccd_img_get_win_height(img)/ccd_img_get_prebin_y(img);
+//  gulong img_len = ccd_img_get_img_len(img);
+//  gushort img_width = ccd_img_get_win_width(img)/ccd_img_get_prebin_x(img), img_height = ccd_img_get_win_height(img)/ccd_img_get_prebin_y(img);
   gboolean ret = TRUE;
-  if ((gulong)(img_width*img_height) != img_len)
+/*  if ((gulong)(img_width*img_height) != img_len)
   {
     act_log_debug(act_log_msg("Image width and height parameters contradicts image length (width %hu, height %hu, length %lu). Choosing smallest.", img_width, img_height, img_len));
     img_len = (gulong)(img_width*img_height) < img_len ? (gulong)(img_width*img_height) : img_len;
-  }
-  for (i=0; i<img_len; i++)
+  }*/
+  act_log_debug(act_log_msg("Starting image %d save", img_id));
+  for (i=0; i<img_width; i++)
   {
-    cur_x = i%img_width;
+//    if (i%100 == 0)
+    act_log_debug(act_log_msg("Saved row %d of image %d", i, img_id));
+    for (j=0; j<img_width; j++)
+    {
+      cur_x[j] = j;
+      cur_y[j] = i;
+      cur_val[j] = img_data[i*img_height+j];
+    }
+/*    cur_x = i%img_width;
     cur_y = i/img_width;
-    cur_val = img_data[i];
+    cur_val = img_data[i];*/
     if (mysql_stmt_execute(stmt))
     {
       act_log_error(act_log_msg("Failed to execute prepared statement to insert pixel datum into database - %s", mysql_stmt_error(stmt)));
