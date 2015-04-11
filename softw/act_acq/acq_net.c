@@ -167,14 +167,14 @@ void acq_net_set_ccdcap_ready(AcqNet *objs, gboolean ready)
   }
 }
 
-void acq_net_set_min_exp_t_s(AcqNet *objs, gfloat exp_t)
+void acq_net_set_min_integ_t_s(AcqNet *objs, gfloat integ_t)
 {
-  OBJS_CCDCAP_MSG(objs)->min_exp_t_s = exp_t;
+  OBJS_CCDCAP_MSG(objs)->min_exp_t_s = integ_t;
 }
 
-void acq_net_set_max_exp_t_s(AcqNet *objs, gfloat exp_t)
+void acq_net_set_max_integ_t_s(AcqNet *objs, gfloat integ_t)
 {
-  OBJS_CCDCAP_MSG(objs)->max_exp_t_s = exp_t;
+  OBJS_CCDCAP_MSG(objs)->max_exp_t_s = integ_t;
 }
 
 void acq_net_set_ccd_id(AcqNet *objs, const gchar *ccd_id)

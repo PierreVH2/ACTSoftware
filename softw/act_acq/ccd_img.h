@@ -41,9 +41,9 @@ struct _CcdImg
   gushort win_width, win_height;
   /// Prebinning mode
   gushort prebin_x, prebin_y;
-  /// The length of the exposure
-  gfloat exp_t_s;
-  /// Starting date and time of exposure
+  /// The length of the integration
+  gfloat integ_t_s;
+  /// Starting date and time of integration
   gdouble start_sec;
   /// Target name and DB id
   gchar *targ_name;
@@ -51,7 +51,7 @@ struct _CcdImg
   /// User name and DB id
   gchar *user_name;
   gulong user_id;
-  /// Telescope coordinates at exposure start
+  /// Telescope coordinates at integration start
   gfloat ra_d, dec_d;
   /// Size of pixels in arcseconds
   gfloat pix_size_ra;
@@ -70,8 +70,8 @@ struct _CcdImgClass
 GType ccd_img_get_type(void);
 guchar ccd_img_get_img_type(CcdImg const *objs);
 void ccd_img_set_img_type(CcdImg *objs, guchar img_type);
-gfloat ccd_img_get_exp_t(CcdImg const *objs);
-void ccd_img_set_exp_t(CcdImg *objs, gfloat exp_t_s);
+gfloat ccd_img_get_integ_t(CcdImg const *objs);
+void ccd_img_set_integ_t(CcdImg *objs, gfloat integ_t_s);
 gushort ccd_img_get_img_width(CcdImg const *objs);
 gushort ccd_img_get_img_height(CcdImg const *objs);
 gushort ccd_img_get_win_start_x(CcdImg const *objs);

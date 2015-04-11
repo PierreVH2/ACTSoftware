@@ -29,8 +29,8 @@ struct _CcdCmd
   gushort win_width, win_height;
   /// Prebinning mode
   gushort prebin_x, prebin_y;
-  /// The length of the exposure
-  gfloat exp_t_s;
+  /// The length of the integration
+  gfloat integ_t_s;
   /// Number of repetitions
   gulong repetitions;
   /// Target name and DB id
@@ -47,7 +47,7 @@ struct _CcdCmdClass
 };
 
 GType ccd_cmd_get_type(void);
-CcdCmd *ccd_cmd_new(guchar img_type, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y, gfloat exp_t_s, gulong repetitions, gulong targ_id, gchar const *targ_name);
+CcdCmd *ccd_cmd_new(guchar img_type, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y, gfloat integ_t_s, gulong repetitions, gulong targ_id, gchar const *targ_name);
 guchar ccd_cmd_get_img_type(CcdCmd *objs);
 void ccd_cmd_set_img_type(CcdCmd *objs, guchar img_type);
 gushort ccd_cmd_get_win_start_x(CcdCmd *objs);
@@ -62,8 +62,8 @@ gushort ccd_cmd_get_prebin_x(CcdCmd *objs);
 void ccd_cmd_set_prebin_x(CcdCmd *objs, gushort prebin_x);
 gushort ccd_cmd_get_prebin_y(CcdCmd *objs);
 void ccd_cmd_set_prebin_y(CcdCmd *objs, gushort prebin_y);
-gfloat ccd_cmd_get_exp_t(CcdCmd *objs);
-void ccd_cmd_set_exp_t(CcdCmd *objs, gfloat exp_t_s);
+gfloat ccd_cmd_get_integ_t(CcdCmd *objs);
+void ccd_cmd_set_integ_t(CcdCmd *objs, gfloat integ_t_s);
 gulong ccd_cmd_get_rpt(CcdCmd *objs);
 void ccd_cmd_set_rpt(CcdCmd *objs, gulong repetitions);
 gulong ccd_cmd_get_targ_id(CcdCmd *objs);
@@ -91,7 +91,7 @@ struct _CcdCntrl
   guchar drv_stat;
   
   gchar *ccd_id;
-  gfloat min_exp_t_s, max_exp_t_s;
+  gfloat min_integ_t_s, max_integ_t_s;
   gushort max_width_px, max_height_px;
   gushort ra_width_asec, dec_height_asec;
 
@@ -100,8 +100,8 @@ struct _CcdCntrl
   
   CcdImg *cur_img;
   gulong rpt_rem;
-  GTimer *exp_timer;
-  gint exp_trem_to_id;
+  GTimer *integ_timer;
+  gint integ_trem_to_id;
   
   /// Start x,y of window
   gushort win_start_x, win_start_y;
@@ -122,12 +122,12 @@ gboolean ccd_cntrl_reconnect(CcdCntrl *objs);
 void ccd_cntrl_gen_test_image(CcdCntrl *objs);
 gchar *ccd_cntrl_get_ccd_id(CcdCntrl *objs);
 // gint ccd_cntrl_set_window(CcdCntrl *objs, gushort win_start_x, gushort win_start_y, gushort win_width, gushort win_height, gushort prebin_x, gushort prebin_y);
-gfloat ccd_cntrl_get_min_exp_t_sec(CcdCntrl *objs);
-gfloat ccd_cntrl_get_max_exp_t_sec(CcdCntrl *objs);
+gfloat ccd_cntrl_get_min_integ_t_sec(CcdCntrl *objs);
+gfloat ccd_cntrl_get_max_integ_t_sec(CcdCntrl *objs);
 gushort ccd_cntrl_get_max_width(CcdCntrl *objs);
 gushort ccd_cntrl_get_max_height(CcdCntrl *objs);
-gint ccd_cntrl_start_exp(CcdCntrl *objs, CcdCmd *cmd);
-void ccd_cntrl_cancel_exp(CcdCntrl *objs);
+gint ccd_cntrl_start_integ(CcdCntrl *objs, CcdCmd *cmd);
+void ccd_cntrl_cancel_integ(CcdCntrl *objs);
 gfloat ccd_cntrl_get_integ_trem(CcdCntrl *objs);
 gulong ccd_cntrl_get_rpt_rem(CcdCntrl *objs);
 guchar ccd_cntrl_get_stat(CcdCntrl *objs);

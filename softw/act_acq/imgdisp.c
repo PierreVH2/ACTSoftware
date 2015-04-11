@@ -600,7 +600,7 @@ static gboolean imgdisp_configure(GtkWidget *imgdisp)
     objs->img = g_object_new (imgdisp_get_type(), NULL);
     g_object_ref(objs->img);
     ccd_img_set_img_type(objs->img, IMGT_NONE);
-    ccd_img_set_exp_t(objs->img, 0.0);
+    ccd_img_set_integ_t(objs->img, 0.0);
     ccd_img_set_window(objs->img, 0, 0, width, height, 1, 1);
     srand(time(NULL));
     gfloat img_data[width * height];

@@ -49,20 +49,20 @@
 #endif /* !G_ENABLE_DEBUG */
 
 
-/* VOID:UCHAR,FLOAT (./marshallers.txt:2) */
+/* VOID:FLOAT,ULONG (./marshallers.txt:2) */
 void
-g_cclosure_user_marshal_VOID__UCHAR_FLOAT (GClosure     *closure,
+g_cclosure_user_marshal_VOID__FLOAT_ULONG (GClosure     *closure,
                                            GValue       *return_value G_GNUC_UNUSED,
                                            guint         n_param_values,
                                            const GValue *param_values,
                                            gpointer      invocation_hint G_GNUC_UNUSED,
                                            gpointer      marshal_data)
 {
-  typedef void (*GMarshalFunc_VOID__UCHAR_FLOAT) (gpointer     data1,
-                                                  guchar       arg_1,
-                                                  gfloat       arg_2,
+  typedef void (*GMarshalFunc_VOID__FLOAT_ULONG) (gpointer     data1,
+                                                  gfloat       arg_1,
+                                                  gulong       arg_2,
                                                   gpointer     data2);
-  register GMarshalFunc_VOID__UCHAR_FLOAT callback;
+  register GMarshalFunc_VOID__FLOAT_ULONG callback;
   register GCClosure *cc = (GCClosure*) closure;
   register gpointer data1, data2;
 
@@ -78,11 +78,11 @@ g_cclosure_user_marshal_VOID__UCHAR_FLOAT (GClosure     *closure,
       data1 = g_value_peek_pointer (param_values + 0);
       data2 = closure->data;
     }
-  callback = (GMarshalFunc_VOID__UCHAR_FLOAT) (marshal_data ? marshal_data : cc->callback);
+  callback = (GMarshalFunc_VOID__FLOAT_ULONG) (marshal_data ? marshal_data : cc->callback);
 
   callback (data1,
-            g_marshal_value_peek_uchar (param_values + 1),
-            g_marshal_value_peek_float (param_values + 2),
+            g_marshal_value_peek_float (param_values + 1),
+            g_marshal_value_peek_ulong (param_values + 2),
             data2);
 }
 
@@ -123,46 +123,7 @@ g_cclosure_user_marshal_VOID__DOUBLE_DOUBLE (GClosure     *closure,
             data2);
 }
 
-/* VOID:DOUBLE,DOUBLE,FLOAT (./marshallers.txt:6) */
-void
-g_cclosure_user_marshal_VOID__DOUBLE_DOUBLE_FLOAT (GClosure     *closure,
-                                                   GValue       *return_value G_GNUC_UNUSED,
-                                                   guint         n_param_values,
-                                                   const GValue *param_values,
-                                                   gpointer      invocation_hint G_GNUC_UNUSED,
-                                                   gpointer      marshal_data)
-{
-  typedef void (*GMarshalFunc_VOID__DOUBLE_DOUBLE_FLOAT) (gpointer     data1,
-                                                          gdouble      arg_1,
-                                                          gdouble      arg_2,
-                                                          gfloat       arg_3,
-                                                          gpointer     data2);
-  register GMarshalFunc_VOID__DOUBLE_DOUBLE_FLOAT callback;
-  register GCClosure *cc = (GCClosure*) closure;
-  register gpointer data1, data2;
-
-  g_return_if_fail (n_param_values == 4);
-
-  if (G_CCLOSURE_SWAP_DATA (closure))
-    {
-      data1 = closure->data;
-      data2 = g_value_peek_pointer (param_values + 0);
-    }
-  else
-    {
-      data1 = g_value_peek_pointer (param_values + 0);
-      data2 = closure->data;
-    }
-  callback = (GMarshalFunc_VOID__DOUBLE_DOUBLE_FLOAT) (marshal_data ? marshal_data : cc->callback);
-
-  callback (data1,
-            g_marshal_value_peek_double (param_values + 1),
-            g_marshal_value_peek_double (param_values + 2),
-            g_marshal_value_peek_float (param_values + 3),
-            data2);
-}
-
-/* VOID:ULONG,STRING (./marshallers.txt:8) */
+/* VOID:ULONG,STRING (./marshallers.txt:6) */
 void
 g_cclosure_user_marshal_VOID__ULONG_STRING (GClosure     *closure,
                                             GValue       *return_value G_GNUC_UNUSED,

@@ -46,14 +46,14 @@ void ccd_img_set_img_type(CcdImg *objs, guchar img_type)
   objs->img_type = img_type;
 }
 
-gfloat ccd_img_get_exp_t(CcdImg const *objs)
+gfloat ccd_img_get_integ_t(CcdImg const *objs)
 {
-  return objs->exp_t_s;
+  return objs->integ_t_s;
 }
 
-void ccd_img_set_exp_t(CcdImg *objs, gfloat exp_t_s)
+void ccd_img_set_integ_t(CcdImg *objs, gfloat integ_t_s)
 {
-  objs->exp_t_s = exp_t_s;
+  objs->integ_t_s = integ_t_s;
 }
 
 gushort ccd_img_get_img_width(CcdImg const *objs)
@@ -207,7 +207,7 @@ static void ccd_img_instance_init(GObject *ccd_img)
   objs->img_type = IMGT_NONE;
   objs->win_start_x = objs->win_start_y = 0;
   objs->win_width = objs->win_height = 0;
-  objs->exp_t_s = 0.0;
+  objs->integ_t_s = 0.0;
   objs->start_sec = 0.0;
   objs->targ_name = NULL;
   objs->targ_id = 0;

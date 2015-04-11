@@ -70,7 +70,7 @@ struct acq_objects
   
   GtkWidget *lbl_prog_stat;
   GtkWidget *lbl_ccd_stat;
-  GtkWidget *lbl_exp_rem;
+  GtkWidget *lbl_integ_rem;
   
   GtkWidget *lbl_store_stat;
   GtkWidget *btn_expose;
@@ -82,7 +82,7 @@ struct acq_objects
   gchar *cur_user_name;
   
   guchar last_imgt;
-  gfloat last_exp_t;
+  gfloat last_integ_t;
   guint last_repeat;
 };
 
@@ -96,6 +96,7 @@ void cancel_click(GtkWidget *btn_cancel, gpointer user_data);
 gboolean imgdisp_mouse_move_view(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_mouse_equat);
 gboolean imgdisp_mouse_move_equat(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_mouse_view);
 void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data);
+void ccd_integt_update(GObject *ccd_cntrl, gfloat integt_rem, gulong rpt_rem, gpointer lbl_integ_rem);
 void ccd_stat_err_retry(struct acq_objects *objs);
 void ccd_stat_err_no_recov(struct acq_objects *objs);
 void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data);
@@ -104,7 +105,7 @@ void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg);
 void print_point_list(const char *heading, PointList *list);
 void image_auto_target_set(struct acq_objects *objs, CcdImg *img);
 PointList *image_extract_stars(CcdImg *img);
-guchar targset_exp_retry(CcdCntrl *cntrl, CcdImg *img);
+guchar targset_integ_retry(CcdCntrl *cntrl, CcdImg *img);
 gboolean reconnect_timeout(gpointer user_data);
 void store_stat_update(GObject *acq_store, gpointer lbl_store_stat);
 void coord_received(GObject *acq_net, gdouble tel_ra, gdouble tel_dec, gpointer user_data);
@@ -195,8 +196,8 @@ int main(int argc, char** argv)
   gtk_table_attach(GTK_TABLE(box_controls), lbl_prog_stat, 0,1,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   GtkWidget *lbl_ccd_stat = gtk_label_new("CCD OK");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_ccd_stat, 1,2,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
-  GtkWidget *lbl_exp_rem = gtk_label_new("");
-  gtk_table_attach(GTK_TABLE(box_controls), lbl_exp_rem, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
+  GtkWidget *lbl_integ_rem = gtk_label_new("");
+  gtk_table_attach(GTK_TABLE(box_controls), lbl_integ_rem, 2,3,1,2, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
   
   GtkWidget *lbl_store_stat = gtk_label_new("Store OK");
   gtk_table_attach(GTK_TABLE(box_controls), lbl_store_stat, 0,1,2,3, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
@@ -215,7 +216,7 @@ int main(int argc, char** argv)
     .imgdisp = imgdisp,
     .lbl_prog_stat = lbl_prog_stat,
     .lbl_ccd_stat = lbl_ccd_stat,
-    .lbl_exp_rem = lbl_exp_rem,
+    .lbl_integ_rem = lbl_integ_rem,
     .lbl_store_stat = lbl_store_stat,
     .btn_expose = btn_expose,
     .btn_cancel = btn_cancel,
@@ -229,6 +230,7 @@ int main(int argc, char** argv)
   g_signal_connect (G_OBJECT(imgdisp), "motion-notify-event", G_CALLBACK (imgdisp_mouse_move_view), lbl_mouse_view);
   g_signal_connect (G_OBJECT(imgdisp), "motion-notify-event", G_CALLBACK (imgdisp_mouse_move_equat), lbl_mouse_equat);
   g_signal_connect (G_OBJECT(cntrl), "ccd-stat-update", G_CALLBACK (ccd_stat_update), &objs);
+  g_signal_connect (G_OBJECT(cntrl), "ccd-integ-rem", G_CALLBACK (ccd_integt_update), lbl_integ_rem);
   g_signal_connect (G_OBJECT(cntrl), "ccd-new-image", G_CALLBACK (ccd_new_image), &objs);
   g_signal_connect (G_OBJECT(store), "store-status-update", G_CALLBACK(store_stat_update), lbl_store_stat);
   g_signal_connect (G_OBJECT(net), "coord-received", G_CALLBACK(coord_received), &objs);
@@ -256,8 +258,8 @@ int main(int argc, char** argv)
 
 void acq_net_init(AcqNet *net, AcqStore *store, CcdCntrl *cntrl)
 {
-  acq_net_set_min_exp_t_s(net, ccd_cntrl_get_min_exp_t_sec(cntrl));
-  acq_net_set_max_exp_t_s(net, ccd_cntrl_get_max_exp_t_sec(cntrl));
+  acq_net_set_min_integ_t_s(net, ccd_cntrl_get_min_integ_t_sec(cntrl));
+  acq_net_set_max_integ_t_s(net, ccd_cntrl_get_max_integ_t_sec(cntrl));
   gchar *ccd_id = ccd_cntrl_get_ccd_id(cntrl);
   acq_net_set_ccd_id(net, ccd_id);
   g_free(ccd_id);
@@ -319,7 +321,7 @@ void expose_click(GtkWidget *btn_expose, gpointer user_data)
   expose_dialog_set_win_height(dialog, ccd_cntrl_get_max_height(objs->cntrl));
   expose_dialog_set_prebin_x(dialog, 1);
   expose_dialog_set_prebin_y(dialog, 1);
-  expose_dialog_set_exp_t(dialog, objs->last_exp_t);
+  expose_dialog_set_exp_t(dialog, objs->last_integ_t);
   expose_dialog_set_repetitions(dialog, objs->last_repeat);
   g_signal_connect(G_OBJECT(dialog), "response", G_CALLBACK(expose_response), user_data);
   gtk_widget_show_all(dialog);
@@ -355,16 +357,16 @@ void expose_response(GtkWidget *dialog, gint response_id, gpointer user_data)
   ccd_cmd_set_win_height(cmd, expose_dialog_get_win_height(dialog));
   ccd_cmd_set_prebin_x(cmd, expose_dialog_get_prebin_x(dialog));
   ccd_cmd_set_prebin_y(cmd, expose_dialog_get_prebin_y(dialog));
-  ccd_cmd_set_exp_t(cmd, expose_dialog_get_exp_t(dialog));
+  ccd_cmd_set_integ_t(cmd, expose_dialog_get_exp_t(dialog));
   ccd_cmd_set_rpt(cmd, expose_dialog_get_repetitions(dialog));
   ccd_cmd_set_target(cmd, objs->cur_targ_id, objs->cur_targ_name);
   ccd_cmd_set_user(cmd, objs->cur_user_id, objs->cur_user_name);
   
   objs->last_imgt = expose_dialog_get_image_type(dialog);
-  objs->last_exp_t = expose_dialog_get_exp_t(dialog);
+  objs->last_integ_t = expose_dialog_get_exp_t(dialog);
   objs->last_repeat = expose_dialog_get_repetitions(dialog);
   
-  gint ret = ccd_cntrl_start_exp(objs->cntrl, cmd);
+  gint ret = ccd_cntrl_start_integ(objs->cntrl, cmd);
   if (ret < 0)
   {
     prog_change_mode(objs, MODE_IDLE);
@@ -382,7 +384,7 @@ void cancel_click(GtkWidget *btn_cancel, gpointer user_data)
 {
   (void) btn_cancel;
   struct acq_objects *objs = (struct acq_objects *)user_data;
-  ccd_cntrl_cancel_exp(objs->cntrl);
+  ccd_cntrl_cancel_integ(objs->cntrl);
   guchar ccd_stat = ccd_cntrl_get_stat(objs->cntrl);
   if ((!ccd_cntrl_stat_readout(ccd_stat)) && (!ccd_cntrl_stat_integrating(ccd_stat)))
     prog_change_mode(objs, MODE_IDLE);
@@ -423,6 +425,7 @@ gboolean imgdisp_mouse_move_equat(GtkWidget* imgdisp, GdkEventMotion* motdata, g
 
 void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
 {
+  (void) ccd_cntrl;
   struct acq_objects *objs = (struct acq_objects *)user_data;
   gchar stat_str[100];
   if (ccd_cntrl_stat_err_retry(new_stat))
@@ -436,11 +439,7 @@ void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
     ccd_stat_err_no_recov(objs);
   }
   else if (ccd_cntrl_stat_integrating(new_stat))
-  {
-    sprintf(stat_str, "%5.1f s / %lu", ccd_cntrl_get_integ_trem(CCD_CNTRL(ccd_cntrl)), ccd_cntrl_get_rpt_rem(CCD_CNTRL(ccd_cntrl)));
-    gtk_label_set_text(GTK_LABEL(objs->lbl_exp_rem), stat_str);
     sprintf(stat_str, "INTEG");
-  }
   else if (ccd_cntrl_stat_readout(new_stat))
     sprintf(stat_str, "READ");
   else 
@@ -451,6 +450,14 @@ void ccd_stat_update(GObject *ccd_cntrl, guchar new_stat, gpointer user_data)
   }
   
   gtk_label_set_text(GTK_LABEL(objs->lbl_ccd_stat), stat_str);
+}
+
+void ccd_integt_update(GObject *ccd_cntrl, gfloat integt_rem, gulong rpt_rem, gpointer lbl_integ_rem)
+{
+  (void) ccd_cntrl;
+  gchar stat_str[100];
+  sprintf(stat_str, "%5.1f s / %lu", integt_rem, rpt_rem);
+  gtk_label_set_text(GTK_LABEL(lbl_integ_rem), stat_str);
 }
 
 void ccd_stat_err_retry(struct acq_objects *objs)
@@ -669,7 +676,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
   act_log_debug(act_log_msg("Number of stars extracted from image: %d\n", num_stars));
   if (num_stars < MIN_NUM_STARS)
   {
-    guchar obsnstat = targset_exp_retry(objs->cntrl, img);
+    guchar obsnstat = targset_integ_retry(objs->cntrl, img);
     if (obsnstat != OBSNSTAT_GOOD)
     {
       act_log_error(act_log_msg("Error occurred while attempting to start an auto target set exposure."));
@@ -769,13 +776,13 @@ PointList *image_extract_stars(CcdImg *img)
   return star_list;
 }
 
-guchar targset_exp_retry(CcdCntrl *cntrl, CcdImg *img)
+guchar targset_integ_retry(CcdCntrl *cntrl, CcdImg *img)
 {
   CcdCmd *cmd = CCD_CMD(g_object_new (ccd_cmd_get_type(), NULL));
-  gfloat exp_t_s = ccd_img_get_exp_t(img)*TARGSET_EXP_RETRY_FACT;
-  if (exp_t_s > TARGSET_EXP_MAX_T)
+  gfloat integ_t_s = ccd_img_get_integ_t(img)*TARGSET_EXP_RETRY_FACT;
+  if (integ_t_s > TARGSET_EXP_MAX_T)
   {
-    act_log_debug(act_log_msg("Need to retry auto target set exposure with longer exposure time, but exposure time is already too long (%f s, max %f s). Rejecting this target.", exp_t_s, TARGSET_EXP_MAX_T));
+    act_log_debug(act_log_msg("Need to retry auto target set exposure with longer exposure time, but exposure time is already too long (%f s, max %f s). Rejecting this target.", integ_t_s, TARGSET_EXP_MAX_T));
     return OBSNSTAT_ERR_NEXT;
   }
   act_log_debug(act_log_msg("Retrying auto target set exposure with longer exposure time (%f s)"));
@@ -786,11 +793,11 @@ guchar targset_exp_retry(CcdCntrl *cntrl, CcdImg *img)
   ccd_cmd_set_win_height(cmd, ccd_img_get_win_height(img));
   ccd_cmd_set_prebin_x(cmd, ccd_img_get_prebin_x(img));
   ccd_cmd_set_prebin_y(cmd, ccd_img_get_prebin_y(img));
-  ccd_cmd_set_exp_t(cmd, exp_t_s);
+  ccd_cmd_set_integ_t(cmd, integ_t_s);
   ccd_cmd_set_rpt(cmd, 1);
   ccd_cmd_set_user(cmd, ccd_img_get_user_id(img), ccd_img_get_user_name(img));
   ccd_cmd_set_target(cmd, ccd_img_get_targ_id(img), ccd_img_get_targ_name(img));
-  gint ret = ccd_cntrl_start_exp(cntrl, cmd);
+  gint ret = ccd_cntrl_start_integ(cntrl, cmd);
   if (ret < 0)
   {
     act_log_error(act_log_msg("Failed to start auto targset retry exposure."));
@@ -906,7 +913,7 @@ void targset_start(GObject *acq_net, gdouble targ_ra, gdouble targ_dec, gpointer
     return;
   }
   CcdCmd *cmd = ccd_cmd_new(IMGT_ACQ_OBJ, 1, 1, ccd_cntrl_get_max_width(objs->cntrl), ccd_cntrl_get_max_height(objs->cntrl), 1, 1, 0.4, 1, objs->cur_targ_id, objs->cur_targ_name);
-  gint ret = ccd_cntrl_start_exp(objs->cntrl, cmd);
+  gint ret = ccd_cntrl_start_integ(objs->cntrl, cmd);
   if (ret < 0)
   {
     act_log_error(act_log_msg("Error occurred while attempting to start an auto target set exposure - %s.", strerror(abs(ret))));
@@ -927,7 +934,7 @@ void targset_stop(GObject *acq_net, gpointer user_data)
     act_log_error(act_log_msg("Auto target set cancel message received, but the ACQ system is not in auto target set mode (mode %hhu).", objs->mode));
     return;
   }
-  ccd_cntrl_cancel_exp(objs->cntrl);
+  ccd_cntrl_cancel_integ(objs->cntrl);
   prog_change_mode(objs, MODE_CANCEL);
 }
 
@@ -941,7 +948,7 @@ void data_ccd_start(GObject *acq_net, gpointer ccd_cmd, gpointer user_data)
       act_log_error(act_log_msg("Failed to send auto CCD data message response."));
     return;
   }
-  gint ret = ccd_cntrl_start_exp(objs->cntrl, CCD_CMD(ccd_cmd));
+  gint ret = ccd_cntrl_start_integ(objs->cntrl, CCD_CMD(ccd_cmd));
   if (ret < 0)
   {
     act_log_error(act_log_msg("Error occurred while attempting to start an auto CCD data exposure - %s.", strerror(abs(ret))));
@@ -962,7 +969,7 @@ void data_ccd_stop(GObject *acq_net, gpointer user_data)
     act_log_error(act_log_msg("Auto CCD data cancel message received, but the ACQ system is not in auto CCD data mode (mode %hhu).", objs->mode));
     return;
   }
-  ccd_cntrl_cancel_exp(objs->cntrl);
+  ccd_cntrl_cancel_integ(objs->cntrl);
   prog_change_mode(objs, MODE_CANCEL);
 }
 
