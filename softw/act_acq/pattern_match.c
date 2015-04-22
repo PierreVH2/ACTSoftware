@@ -44,7 +44,12 @@ GSList *find_point_list_map(PointList *list1, PointList *list2, gfloat radius)
       continue;
     tmp_map = g_malloc(sizeof(point_map_t));
     if (tmp_map == NULL)
+    {
+      // Failed to allocate memory
+      point_list_map_free(ret);
+      ret = NULL;
       break;
+    }
     tmp_map->idx1 = i;
     tmp_map->idx2 = point_map[i];
     tmp_map->x1 = points1[i].x;

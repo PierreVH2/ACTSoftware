@@ -19,6 +19,10 @@
 
 #define STORE_MAX_RETRIES 3
 
+#define IMG_QRY_MIN_LEN    1024
+#define IMG_QRY_PREF_LEN   60
+#define IMG_QRY_PIX_LEN    22
+
 enum
 {
   STATUS_UPDATE,
@@ -686,9 +690,18 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
    * date is kept as a standard MySQL DATE type so the date can be set with relative ease and using the MySQL 
    * conversion routines.
    */
+  gushort img_width = ccd_img_get_img_width(img), img_height = ccd_img_get_img_height(img);
   gfloat tel_ra, tel_dec;
   ccd_img_get_tel_pos(img, &tel_ra, &tel_dec);
-  char qrystr[1024];
+  long len = IMG_QRY_PREF_LEN + IMG_QRY_PIX_LEN*img_width;
+  if (len < IMG_QRY_MIN_LEN)
+    len = IMG_QRY_MIN_LEN;
+  char *qrystr = malloc(len*sizeof(char));
+  if (qrystr == NULL)
+  {
+    act_log_error(act_log_msg("Failed to allocate memory for SQL query string."));
+    return FALSE;
+  }
   sprintf(qrystr, "INSERT INTO ccd_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, tel_ra_h, tel_dec_d) VALUES (%lu, %lu, %hhu, %f, DATE(FROM_UNIXTIME(%lf)),(UNIX_TIMESTAMP(DATE(FROM_UNIXTIME(%lf))) - %lf)/3600.0, %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
           ccd_img_get_targ_id(img),
           ccd_img_get_user_id(img),
@@ -709,6 +722,7 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
     act_log_error(act_log_msg("Failed to save CCD image header to database - %s.", mysql_error(conn)));
     act_log_debug(act_log_msg("SQL query: %s", qrystr));
     mysql_query(conn, "ROLLBACK;");
+    free(qrystr);
     return FALSE;
   }
   
@@ -717,41 +731,47 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
   {
     act_log_error(act_log_msg("Could not retrieve unique ID for saved CCD photometry image."));
     mysql_query(conn, "ROLLBACK;");
+    free(qrystr);
     return FALSE;
   }
   act_log_debug(act_log_msg("Image ID: %lu", img_id));
   
+  gulong i, j;
   MYSQL_STMT  *stmt;
   stmt = mysql_stmt_init(conn);
   if (!stmt)
   {
     act_log_error(act_log_msg("Failed to initialise MySQL prepared statement object - out of memory."));
     mysql_query(conn, "ROLLBACK;");
+    free(qrystr);
     return FALSE;
   }
-  sprintf(qrystr, "INSERT INTO ccd_img_data (ccd_img_id, x, y, value) VALUES (%lu, ?, ?, ?);", img_id);
+  len = sprintf(qrystr, "INSERT INTO ccd_img_data (ccd_img_id, x, y, value) VALUES ");
+  for (j=0; j<img_width; j++)
+    len += sprintf(&qrystr[len], "(%10lu, ?, ?, ?),", img_id);
+  qrystr[len-1] = ';';
   if (mysql_stmt_prepare(stmt, qrystr, strlen(qrystr)))
   {
     act_log_error(act_log_msg("Failed to prepare statement for inserting image pixel data - %s", mysql_stmt_error(stmt)));
     mysql_query(conn, "ROLLBACK;");
+    free(qrystr);
     return FALSE;
   }
-  if (mysql_stmt_param_count(stmt) != 3)
+  if (mysql_stmt_param_count(stmt) != 3*img_width)
   {
     act_log_error(act_log_msg("Invalid number of parameters in prepared statement - %d",  mysql_stmt_param_count(stmt)));
     mysql_query(conn, "ROLLBACK;");
+    free(qrystr);
     return FALSE;
   }
 
-  gulong i, j;
-  gushort img_width = ccd_img_get_img_width(img), img_height = ccd_img_get_img_height(img);
-  gushort cur_x[img_height], cur_y[img_height];
-  gdouble cur_val[img_height];
-  MYSQL_BIND  bind[3*img_height];
+  gushort cur_x[img_width], cur_y[img_width];
+  gfloat cur_val[img_width];
+  MYSQL_BIND  bind[3*img_width];
   memset(bind, 0, sizeof(bind));
-  for (j=0; j<img_height; j++)
+  for (j=0; j<img_width; j++)
   {
-    bind[j+3+0].buffer_type = MYSQL_TYPE_SHORT;
+    bind[j*3+0].buffer_type = MYSQL_TYPE_SHORT;
     bind[j*3+0].buffer = (char *)&cur_x[j];
     bind[j*3+0].is_null = 0;
     bind[j*3+0].length = 0;
@@ -761,44 +781,50 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
     bind[j*3+1].is_null = 0;
     bind[j*3+1].length = 0;
     bind[j*3+1].is_unsigned = TRUE;
-    bind[j*3+2].buffer_type = MYSQL_TYPE_DOUBLE;
+    bind[j*3+2].buffer_type = MYSQL_TYPE_FLOAT;
     bind[j*3+2].buffer = (char *)&cur_val[j];
     bind[j*3+2].is_null = 0;
     bind[j*3+2].length = 0;
+    cur_x[j] = j;
   }
   if (mysql_stmt_bind_param(stmt, bind))
   {
     act_log_error(act_log_msg("Failed to bind parameters for prepared statement - %s", mysql_stmt_error(stmt)));
     mysql_query(conn, "ROLLBACK;");
+    free(qrystr);
     return FALSE;
   }
   
-  gfloat const *img_data = ccd_img_get_img_data(img);
   gboolean ret = TRUE;
+  gfloat *img_data = ccd_img_get_img_data(img);
   act_log_debug(act_log_msg("Starting image %d save", img_id));
-  for (i=0; i<img_width; i++)
+  for (i=0; i<img_height; i++)
   {
     for (j=0; j<img_width; j++)
     {
-      cur_x[j] = j;
       cur_y[j] = i;
-      cur_val[j] = img_data[i*img_height+j];
+//       cur_val[j] = ccd_img_get_pixel(img, j, i);
     }
+    memcpy(cur_val, &img_data[i*img_width], sizeof(cur_val));
     if (mysql_stmt_execute(stmt))
     {
-      act_log_error(act_log_msg("Failed to execute prepared statement to insert pixel datum into database - %s", mysql_stmt_error(stmt)));
+      act_log_error(act_log_msg("Failed to execute prepared statement to insert image %lu row %d into database - %s", img_id, i, mysql_stmt_error(stmt)));
       ret = FALSE;
       break;
     }
+    else if (i%10 == 0)
+      act_log_debug(act_log_msg("Image %lu row %d inserted into database", img_id, i));
   }
   if (!ret)
   {
     act_log_error(act_log_msg("Entire image not saved. Rolling back database transactions."));
     mysql_query(conn, "ROLLBACK;");
+    free(qrystr);
     return FALSE;
   }
   mysql_query(conn, "COMMIT;");
   act_log_debug(act_log_msg("Finished saving image %lu", img_id));
+  free(qrystr);
   return TRUE;
 }
 

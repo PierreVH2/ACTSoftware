@@ -96,6 +96,7 @@ void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat *tel_dec_d
 void ccd_img_set_tel_pos(CcdImg *objs, gfloat tel_ra_d, gfloat tel_dec_d);
 gulong ccd_img_get_img_len(CcdImg const *objs);
 gfloat *ccd_img_get_img_data(CcdImg const *objs);
+gfloat ccd_img_get_pixel(CcdImg const *objs, gushort x, gushort y);
 void ccd_img_set_img_data(CcdImg *objs, gulong img_len, gfloat const *img_data);
 
 G_END_DECLS

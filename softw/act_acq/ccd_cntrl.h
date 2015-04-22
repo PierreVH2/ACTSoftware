@@ -93,7 +93,7 @@ struct _CcdCntrl
   gchar *ccd_id;
   gfloat min_integ_t_s, max_integ_t_s;
   gushort max_width_px, max_height_px;
-  gushort ra_width_asec, dec_height_asec;
+  gfloat ra_width_asec, dec_height_asec;
 
   gfloat ra_d, dec_d;
   gint tel_pos_to_id;

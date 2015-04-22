@@ -557,7 +557,7 @@ void ccd_new_image(GObject *ccd_cntrl, GObject *img, gpointer user_data)
     case MODE_IDLE:
       // This should not happen
       act_log_error(act_log_msg("New CCD image received, but ACQ system should be idle."));
-      break;
+      return;
     case MODE_MANUAL_EXP:
       // Check if there integration repetitions are complete, if so change mode to idle
       act_log_debug(act_log_msg("New manual image received (%d exposures remain).", rpt_rem));
