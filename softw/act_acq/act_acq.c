@@ -41,7 +41,7 @@
 #define TARGSET_EXP_RETRY_FACT   3
 #define MIN_NUM_STARS            6
 #define MIN_MATCH_FRAC           0.4
-#define PAT_SEARCH_RAD           0.5
+#define PAT_SEARCH_RAD           1.0
 #define TARGSET_CENT_RAD         0.002777777777777778
 /** \} */
 
