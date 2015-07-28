@@ -606,6 +606,7 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
     manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
     return;
   }
+  print_point_list("Image points", img_pts);
   
   // Fetch nearby stars in Tycho2 catalog from database
   gfloat img_ra, img_dec;
@@ -620,6 +621,7 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
     manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
     return;
   }
+  print_point_list("Pattern points", pat_pts);
   
   // Match the two lists of points
   GSList *map = find_point_list_map(img_pts, pat_pts, DEFAULT_RADIUS);
@@ -636,8 +638,6 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   {
     sprintf(msg_str, "Too few stars mapped to pattern (%d mapped, %d required)", num_match, (int)(MIN_MATCH_FRAC*num_stars));
     manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
-    print_point_list("Image points", img_pts);
-    print_point_list("Pattern points", pat_pts);
     return;
   }
   point_list_map_calc_offset(map, &rashift, &decshift, NULL, NULL);
@@ -650,6 +650,10 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
 
 void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)
 {
+  if (type == GTK_MESSAGE_INFO)
+    act_log_normal(act_log_msg("Successfully did manual pattern match - %s", msg));
+  else
+    act_log_error(act_log_msg("Failed to do manual pattern match - %s", msg));
   GtkWidget *msg_dialog = gtk_message_dialog_new (GTK_WINDOW(parent), GTK_DIALOG_DESTROY_WITH_PARENT, type, GTK_BUTTONS_CLOSE, msg);
   g_signal_connect_swapped (msg_dialog, "response", G_CALLBACK (gtk_widget_destroy), msg_dialog);
   gtk_widget_show_all(msg_dialog);  

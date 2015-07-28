@@ -251,18 +251,18 @@ GActTelcoord *dti_motor_get_coord(Dtimotor *objs)
 
 void dti_motor_apply_pointing_tel_sky(GActTelcoord *coord)
 {
-//   if (IS_GACT_TELCOORD(coord))
-//     pointing_model_tel_sky(&coord->ha, &coord->dec);
-//   else
-//     act_log_error(act_log_msg("Invalid input parameters."));
+  if (IS_GACT_TELCOORD(coord))
+    pointing_model_tel_sky(&coord->ha, &coord->dec);
+  else
+    act_log_error(act_log_msg("Invalid input parameters."));
 }
 
 void dti_motor_apply_pointing_sky_tel(GActTelcoord *coord)
 {
-//   if (IS_GACT_TELCOORD(coord))
-//     pointing_model_sky_tel(&coord->ha, &coord->dec);
-//   else
-//     act_log_error(act_log_msg("Invalid input parameters."));
+  if (IS_GACT_TELCOORD(coord))
+    pointing_model_sky_tel(&coord->ha, &coord->dec);
+  else
+    act_log_error(act_log_msg("Invalid input parameters."));
 }
 
 gint dti_motor_move_card (Dtimotor *objs, guchar dir, guchar speed)

@@ -185,7 +185,7 @@ static void instance_init(GtkWidget *expose_dialog)
   ExposeDialog *objs = EXPOSE_DIALOG(expose_dialog);
   
   GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(objs));
-  GtkWidget *box_content = gtk_table_new(7,6,TRUE);
+  GtkWidget *box_content = gtk_table_new(11,2,TRUE);
   gtk_container_add(GTK_CONTAINER(content), box_content);
   
   gtk_table_attach(GTK_TABLE(box_content), gtk_label_new("Type"), 0, 1, 0, 1, GTK_FILL|GTK_EXPAND, GTK_FILL|GTK_EXPAND, TABLE_PADDING, TABLE_PADDING);
