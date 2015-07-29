@@ -569,6 +569,7 @@ static gboolean ccd_cntrl_ccd_init(CcdCntrl *objs)
   objs->max_integ_t_s = tmp_modes.max_exp_t_sec + tmp_modes.max_exp_t_nanosec/1000000000.0;
   objs->max_width_px = tmp_modes.max_width_px;
   objs->max_height_px = tmp_modes.max_height_px;
+  act_log_debug(act_log_msg("Pixel size:  %f  %f  %f    %f  %f  %f", tmp_modes.ra_width_asec, tmp_modes.max_width_px, tmp_modes.ra_width_asec/(gfloat)tmp_modes.max_width_px, tmp_modes.dec_height_asec, tmp_modes.max_height_px, tmp_modes.dec_height_asec/(gfloat)tmp_modes.max_height_px));
   objs->ra_width_asec = tmp_modes.ra_width_asec/(gfloat)tmp_modes.max_width_px;
   objs->dec_height_asec = tmp_modes.dec_height_asec/(gfloat)tmp_modes.max_height_px;
   /// TODO: When windowing implemented, implement proper treatment of initial window - i.e. either select a default starting window mode and send that to the driver here or read the last used window from the driver and set it in the cntrl structure here.

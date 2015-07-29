@@ -600,14 +600,15 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   PointList *img_pts = image_extract_stars(img);
   gint num_stars = point_list_get_num_used(img_pts);
   act_log_debug(act_log_msg("Manual img - number of stars extracted from image: %d\n", num_stars));
-  if (num_stars < MIN_NUM_STARS)
-  {
-    sprintf(msg_str, "Too few stars in image (%d must be %d)", num_stars, MIN_NUM_STARS);
-    manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
-    return;
-  }
+//   if (num_stars < MIN_NUM_STARS)
+//   {
+//     sprintf(msg_str, "Too few stars in image (%d must be %d)", num_stars, MIN_NUM_STARS);
+//     manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+//     return;
+//   }
   print_point_list("Image points", img_pts);
   
+  /*
   // Fetch nearby stars in Tycho2 catalog from database
   gfloat img_ra, img_dec;
   ccd_img_get_tel_pos(img, &img_ra, &img_dec);
@@ -645,7 +646,7 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   g_slist_free(map);
   
   sprintf(msg_str, "Shift: %f\"  %f\"\nTrue: %f d  %f d", rashift, decshift, img_ra+rashift/3600.0, img_dec+decshift/3600.0);
-  manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_INFO, msg_str);
+  manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_INFO, msg_str);*/
 }
 
 void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)
@@ -765,10 +766,21 @@ PointList *image_extract_stars(CcdImg *img)
     act_log_error(act_log_msg("Failed to extract stars from image - SEP error code %d", ret));
     return point_list_new();
   }
+/*  PointList *star_list = point_list_new_with_length(num_stars);
+  for (i=0; i<num_stars; i++)
+  {
+    static double x, y;
+    x = obj[i].x-XAPERTURE;
+    y = -obj[i].y+YAPERTURE;
+    if (!point_list_append(star_list, x, y))
+      act_log_debug(act_log_msg("Failed to add identified star %d to stars list."));
+  }*/
   
+  act_log_debug(act_log_msg("Pixel size: %f %f", ccd_img_get_pixel_size_ra(img), ccd_img_get_pixel_size_dec(img)));
   PointList *star_list = point_list_new_with_length(num_stars);
   gfloat tmp_ra, tmp_dec;
   ccd_img_get_tel_pos(img, &tmp_ra, &tmp_dec);
+  act_log_debug(act_log_msg("Telescope dec: %f", tmp_dec));
   for (i=0; i<num_stars; i++)
   {
     static double x, y;
