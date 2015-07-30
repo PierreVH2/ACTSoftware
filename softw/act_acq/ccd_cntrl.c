@@ -11,8 +11,10 @@
 #include "ccd_cntrl.h"
 #include "marshallers.h"
 
-#define DATETIME_TO_SEC 60
-#define TEL_POS_TO_SEC 60
+// #define DATETIME_TO_MSEC    60000
+// TEL_POS_TO_MSEC gets rounded off to nearest second
+#define TEL_POS_TO_MSEC     60000
+#define SIG_INTEG_TO_MSEC     100
 
 static void ccd_cmd_instance_init(GObject *ccd_cmd);
 static void ccd_cmd_class_init(CcdCmdClass *klass);
@@ -394,7 +396,7 @@ gint ccd_cntrl_start_integ(CcdCntrl *objs, CcdCmd *cmd)
   }
   g_timer_start(objs->integ_timer);
   if (cmd->integ_t_s > 1.0)
-    objs->integ_trem_to_id = g_timeout_add_seconds(1, integ_timer, objs);
+    objs->integ_trem_to_id = g_timeout_add(100, integ_timer, objs);
   if (objs->cur_img != NULL)
     g_object_unref(objs->cur_img);
   objs->cur_img = new_img;
@@ -457,7 +459,7 @@ void ccd_cntrl_set_tel_pos(CcdCntrl *objs, gfloat tel_ra_d, gfloat tel_dec_d)
   objs->dec_d = tel_dec_d;
   if (objs->tel_pos_to_id != 0)
     g_source_remove(objs->tel_pos_to_id);
-  objs->tel_pos_to_id = g_timeout_add_seconds(TEL_POS_TO_SEC, tel_pos_timeout, objs);
+  objs->tel_pos_to_id = g_timeout_add_seconds(TEL_POS_TO_MSEC/1000, tel_pos_timeout, objs);
 }
 
 static void ccd_cntrl_instance_init(GObject *ccd_cntrl)
@@ -679,7 +681,10 @@ static gboolean integ_timer(gpointer ccd_cntrl)
   gulong tmp_usec;
   gfloat integ_elapsed = g_timer_elapsed (objs->integ_timer, &tmp_usec);
   integ_elapsed += tmp_usec/1000000.0;
-  g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_INTEG_REM], 0,  ccd_img_get_integ_t(objs->cur_img) - integ_elapsed, objs->rpt_rem);
+  if (ccd_img_get_integ_t(objs->cur_img) < integ_elapsed)
+    g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_INTEG_REM], 0,  0.0);
+  else
+    g_signal_emit(G_OBJECT(ccd_cntrl), cntrl_signals[SIG_INTEG_REM], 0,  ccd_img_get_integ_t(objs->cur_img) - integ_elapsed, objs->rpt_rem);
   return TRUE;
 }
 

@@ -426,11 +426,79 @@ glong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 
 gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 {
+//   Imgdisp *objs = IMGDISP(imgdisp);
+//   if (objs->img == NULL)
+//   {
+//     act_log_debug(act_log_msg("No image available, cannot calculate mouse RA."));
+//     return 0.0;
+//   }
+// 
+//   GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
+//   GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
+// 
+//   if (!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
+//   {
+//     act_log_error(act_log_msg("Could not access GTK drawable GL context to draw GL scene."));
+//     return TRUE;
+//   }
+// 
+//   GLint viewport[4];
+//   GLdouble modelview[16];
+//   GLdouble projection[16];
+//   GLfloat winX, winY, winZ;
+//   GLdouble posX, posY, posZ;
+//   
+//   glMatrixMode(GL_MODELVIEW_MATRIX);
+//   glPopMatrix();
+//   glGetDoublev (GL_MODELVIEW_MATRIX, modelview);
+//   glGetDoublev (GL_PROJECTION_MATRIX, projection);
+//   glGetIntegerv (GL_VIEWPORT, viewport);
+//  
+//   winX = (float) imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
+//   winY = (float) viewport[3] - (float)imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+//   glReadPixels ((int)winX, (int)winY, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &winZ);
+//  
+//   gluUnProject (winX, winY, winZ, modelview, projection, viewport, &posX, &posY, &posZ);
+//   glPushMatrix();
+//  
+//   gdk_gl_drawable_gl_end (gldrawable);
+//   
+//   return posX;
+  gfloat mouse_ra_h;
+  gint ret = imgdisp_coord_equat(imgdisp, mouse_x, mouse_y, &mouse_ra_h, NULL);
+  if (ret < 0)
+    return 0.0;
+  return mouse_ra_h;
+
+}
+
+gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
+{
+//   Imgdisp *objs = IMGDISP(imgdisp);
+//   if (objs->img == NULL)
+//   {
+//     act_log_debug(act_log_msg("No image available, cannot calculate mouse RA."));
+//     return 0.0;
+//   }
+//   
+//   long img_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
+//   gfloat dec;
+//   ccd_img_get_tel_pos(objs->img, NULL, &dec);
+//   return dec - (img_y - ccd_img_get_img_height(objs->img)/2.0) * ccd_img_get_pixel_size_dec(objs->img) / 3600.0;
+  gfloat mouse_dec_d;
+  gint ret = imgdisp_coord_equat(imgdisp, mouse_x, mouse_y, NULL, &mouse_dec_d);
+  if (ret < 0)
+    return 0.0;
+  return mouse_dec_d;
+}
+
+gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfloat *mouse_ra_h, gfloat *mouse_dec_d)
+{
   Imgdisp *objs = IMGDISP(imgdisp);
   if (objs->img == NULL)
   {
     act_log_debug(act_log_msg("No image available, cannot calculate mouse RA."));
-    return 0.0;
+    return -1;
   }
 
   GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
@@ -439,46 +507,44 @@ gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
   if (!gdk_gl_drawable_gl_begin (gldrawable, glcontext))
   {
     act_log_error(act_log_msg("Could not access GTK drawable GL context to draw GL scene."));
-    return TRUE;
+    return -1;
   }
 
   GLint viewport[4];
   GLdouble modelview[16];
   GLdouble projection[16];
-  GLfloat winX, winY, winZ;
+  GLfloat winX, winY;
   GLdouble posX, posY, posZ;
   
   glMatrixMode(GL_MODELVIEW_MATRIX);
-  glPopMatrix();
   glGetDoublev (GL_MODELVIEW_MATRIX, modelview);
   glGetDoublev (GL_PROJECTION_MATRIX, projection);
   glGetIntegerv (GL_VIEWPORT, viewport);
- 
-  winX = (float) imgdisp_coord_pixel_x(imgdisp, mouse_x, mouse_y);
-  winY = (float) viewport[3] - (float)imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
-  glReadPixels ((int)winX, (int)winY, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &winZ);
- 
-  gluUnProject (winX, winY, winZ, modelview, projection, viewport, &posX, &posY, &posZ);
-  glPushMatrix();
+  
+  winX = (float) mouse_x;
+  winY = (float) viewport[3] - (float)mouse_y;
+  
+  gluUnProject (winX, winY, 1.0, modelview, projection, viewport, &posX, &posY, &posZ);
  
   gdk_gl_drawable_gl_end (gldrawable);
   
-  return posX;
-}
-
-gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
-{
-  Imgdisp *objs = IMGDISP(imgdisp);
-  if (objs->img == NULL)
+  gfloat ret_ra, ret_dec;
+  if (abs(posY) < 0.99999)
   {
-    act_log_debug(act_log_msg("No image available, cannot calculate mouse RA."));
-    return 0.0;
+    ret_ra = atan2(posX, posZ);
+    ret_dec = atan2(posY, pow(pow(posX,2.0)+pow(posZ,2.0),0.5));
+  }
+  else
+  {
+    ret_ra = 0.0;
+    ret_dec = posY > 0.0 ? ONEPI/2.0 : ONEPI/-2.0;
   }
   
-  long img_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
-  gfloat dec;
-  ccd_img_get_tel_pos(objs->img, NULL, &dec);
-  return dec - (img_y - ccd_img_get_img_height(objs->img)/2.0) * ccd_img_get_pixel_size_dec(objs->img) / 3600.0;
+  if (mouse_ra_h != NULL)
+    *mouse_ra_h = convert_RAD_H(ret_ra);
+  if (mouse_dec_d != NULL)
+    *mouse_dec_d = convert_RAD_DEG(ret_dec);
+  return 0;
 }
 
 static void imgdisp_instance_init(GtkWidget *imgdisp)
@@ -838,6 +904,9 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   else
     glFlush ();
 
+  // Pop last modelview matrix so equatorial matrix is on top of stack
+  glMatrixMode(GL_MODELVIEW);
+  glPopMatrix();
   gdk_gl_drawable_gl_end (gldrawable);
 
   return TRUE;

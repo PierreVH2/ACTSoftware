@@ -97,10 +97,10 @@ int main(int argc, char **argv)
     
   CcdImg *img = g_object_new (ccd_img_get_type(), NULL);
   ccd_img_set_img_type(img, IMGT_ACQ_OBJ);
-  ccd_img_set_exp_t(img, 1.0);
+  ccd_img_set_integ_t(img, 1.0);
   gulong width=407, height=288;
   ccd_img_set_window(img, 0, 0, width, height, 1, 1);
-  ccd_img_set_tel_pos(img, 0.0, -33.5);
+  ccd_img_set_tel_pos(img, 15.0, -33.0);
   ccd_img_set_pixel_size(img, 1.5, 1.5);
   gfloat img_data[width * height];
   srand(time(NULL));
