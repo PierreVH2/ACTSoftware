@@ -32,7 +32,7 @@
  * multiplied by TARGSET_EXP_RETRY_FACT until either MIN_NUM_STARS stars are identified in the image (in which
  * case pattern matching is done) or the exposure time exceeds TARGSET_EXP_MAX_T (in which case a failure is 
  * reported). MIN_MATCH_FRAC specifies the minimum fraction of identified stars in the field that could be
- * mapped to stars in the Tycho catalog for the map to be deemed a success. PAT_SEARCH_RAD sets the 
+ * mapped to stars in the Tycho catalog for the map to be deemed a success. PAT_SEARCH_RADIUS sets the 
  * rectangular region about the telescope coordinates within which stars are extracted from the Tycho catalog 
  * for matching the star pattern against.
  * \{ */
@@ -41,8 +41,8 @@
 #define TARGSET_EXP_RETRY_FACT   3
 #define MIN_NUM_STARS            6
 #define MIN_MATCH_FRAC           0.4
-#define PAT_SEARCH_RAD           1.0
-#define TARGSET_CENT_RAD         0.002777777777777778
+#define PAT_SEARCH_RADIUS        1.0
+#define TARGSET_CENT_RADIUS      0.002777777777777778
 /** \} */
 
 /// Converts time in seconds since the UNIX epoch to fractional number of years (for coordinates epoch)
@@ -613,7 +613,7 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   gfloat img_ra, img_dec;
   ccd_img_get_tel_pos(img, &img_ra, &img_dec);
   gdouble img_start_sec = ccd_img_get_start_datetime(img);
-  PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RAD);
+  PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RADIUS);
   gint num_pat = point_list_get_num_used(pat_pts);
   act_log_debug(act_log_msg("Manual img - number of catalog stars within search region: %d\n", num_pat));
   if (num_pat < MIN_NUM_STARS)
@@ -695,7 +695,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
   gfloat img_ra, img_dec;
   ccd_img_get_tel_pos(img, &img_ra, &img_dec);
   gdouble img_start_sec = ccd_img_get_start_datetime(img);
-  PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RAD);
+  PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RADIUS);
   gint num_pat = point_list_get_num_used(pat_pts);
   act_log_debug(act_log_msg("Number of catalog stars within search region: %d\n", num_pat));
   if (num_pat < MIN_NUM_STARS)
@@ -737,7 +737,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
   }
   
   // Send response
-  if ((rashift < TARGSET_CENT_RAD) && (decshift < TARGSET_CENT_RAD))
+  if ((rashift < TARGSET_CENT_RADIUS) && (decshift < TARGSET_CENT_RADIUS))
     acq_net_send_targset_response(objs->net, obsnstat, rashift, decshift, TRUE);
   else
     acq_net_send_targset_response(objs->net, obsnstat, rashift, decshift, FALSE);

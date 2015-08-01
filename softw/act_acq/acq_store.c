@@ -43,6 +43,14 @@ enum
   DB_TYPE_MASTER_FLAT
 };
 
+struct _pat_reg
+{
+  gdouble ra_min_d, ra_max_d;
+  goudlbe dec_min_d, dec_max_d;
+  ghcar quad_shift;
+}
+typedef struct _pat_reg pat_reg;
+
 
 static guint acq_store_signals[LAST_SIGNAL] = { 0 };
 
@@ -397,7 +405,6 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d
     act_log_error(act_log_msg("MySQL connection not available."));
     return ret;
   }
-  double ra_radius = radius_deg / cos(convert_DEG_RAD(dec_d));
   gchar qrystr[256];
   gchar quad_shift = 0;
   if (dec_d + radius_deg >= 90.0)
@@ -487,6 +494,10 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d
   if (point_list_get_num_used(list) != (guint)rowcount)
     act_log_normal(act_log_msg("Not all catalog stars extracted from database (%u should be %d).", point_list_get_num_used(list), rowcount));
   return list;
+}
+
+PointList *acq_store_get_gsc1_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg)
+{
 }
 
 void acq_store_append_image(AcqStore *objs, CcdImg *new_img)
@@ -937,4 +948,37 @@ static guchar img_type_acq_to_db(guchar acq_img_type)
       ret = DB_TYPE_ANY;
   }
   return ret;
+}
+
+void pattern_region_constraint(gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg, pat_reg *reg)
+{
+  double ra_radius = radius_deg / cos(convert_DEG_RAD(dec_d));
+  if (dec_d + radius_deg >= 90.0)
+  {
+    reg->ra_min_d = 0.0;
+    reg->ra_max_d = 360.0;
+    reg->dec_min_d = 
+    sprintf(reg_str, "DECmdeg>%lf AND DECmdeg<90.0", ra_d-radius_deg);
+    *quad_shift = 0;
+  }
+  else if (dec_d - radius_deg <= -90.0)
+  {
+    sprintf(reg_str, "DECmdeg>%lf AND DECmdeg>-90.0", ra_d+radius_deg);
+    *quad_shift = 0;
+  }
+  else if (ra_d - ra_radius < 0.0)
+  {
+    sprintf(reg_str, "DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg<%lf OR RAmdeg>%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d+ra_radius, ra_d-ra_radius+360.0);
+    *quad_shift = -1;
+  }
+  else if (ra_d + ra_radius >= 360.0)
+  {
+    sprintf(reg_str, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg>%lf OR RAmdeg<%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius-360.0);
+    *quad_shift = 1;
+  }
+  else
+  {
+    sprintf(reg_str, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND RAmdeg>%lf AND RAmdeg<%lf", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius);
+    *quad_shift = 0;
+  }
 }

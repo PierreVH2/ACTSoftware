@@ -1,3 +1,9 @@
+/* Compile from local directory with:
+ * gcc -Wall -Wextra `pkg-config --cflags gtk+-2.0 gtkglext-1.0` -I../ -I../../../libs/ 
+ * ./imgdisp_test.c ../ccd_img.c ../imgdisp.c ../view_param_dialog.c ../../../libs/act_log.c ../../../libs/act_timecoord.c 
+ * `pkg-config --libs gtk+-2.0 gtkglext-1.0` -lm -o ./imgdisp_test
+ */
+
 #include <gtk/gtk.h>
 #include <act_log.h>
 #include <imgdisp.h>
@@ -85,7 +91,7 @@ void show_view_param(GtkWidget *btn_view_param, gpointer imgdisp)
 int main(int argc, char **argv)
 {
   act_log_open();
-  act_log_normal(act_log_msg("Starting"));
+  act_log_normal(act_log_msg("Starting %s", argv[1]));
   gtk_init(&argc, &argv);
   
   GtkWidget *wnd_main = gtk_window_new(GTK_WINDOW_TOPLEVEL);
