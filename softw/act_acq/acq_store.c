@@ -43,13 +43,7 @@ enum
   DB_TYPE_MASTER_FLAT
 };
 
-struct _pat_reg
-{
-  gdouble ra_min_d, ra_max_d;
-  goudlbe dec_min_d, dec_max_d;
-  ghcar quad_shift;
-}
-typedef struct _pat_reg pat_reg;
+typedef gchar string256[256];
 
 
 static guint acq_store_signals[LAST_SIGNAL] = { 0 };
@@ -64,6 +58,9 @@ static gboolean store_img(MYSQL *conn, CcdImg *img);
 static void store_img_fallback(CcdImg *img);
 static gboolean store_reconnect(AcqStore *objs);
 static guchar img_type_acq_to_db(guchar acq_img_type);
+static void precess_fk5(gfloat ra_d, gfloat dec_d, gfloat equinox, gfloat *ra_d_fk5, gfloat *dec_d_fk5);
+static void pattern_region_constraint(gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 constr_str);
+static PointList *get_catalog_stars(MYSQL *conn, string256 qrystr);
 
 
 GType acq_store_get_type (void)
@@ -397,107 +394,50 @@ gboolean acq_store_get_filt_list(AcqStore *objs, acq_filters_list_t *ccd_filters
   return TRUE;
 }
 
-PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg)
+PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat equinox, gfloat radius_d)
 {
-  PointList *ret = point_list_new();
   if (objs->genl_conn == NULL)
   {
     act_log_error(act_log_msg("MySQL connection not available."));
-    return ret;
+    return NULL;
   }
-  gchar qrystr[256];
-  gchar quad_shift = 0;
-  if (dec_d + radius_deg >= 90.0)
-  {
-    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<90.0", ra_d-radius_deg);
-    quad_shift = 0;
-  }
-  else if (dec_d - radius_deg <= -90.0)
-  {
-    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg>-90.0", ra_d+radius_deg);
-    quad_shift = 0;
-  }
-  else if (ra_d - ra_radius < 0.0)
-  {
-    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg<%lf OR RAmdeg>%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d+ra_radius, ra_d-ra_radius+360.0);
-    quad_shift = -1;
-  }
-  else if (ra_d + ra_radius >= 360.0)
-  {
-    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg>%lf OR RAmdeg<%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius-360.0);
-    quad_shift = 1;
-  }
-  else
-  {
-    sprintf(qrystr, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND RAmdeg>%lf AND RAmdeg<%lf", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius);
-    quad_shift = 0;
-  }
+  
+  gfloat ra_d_fk5, dec_d_fk5;
+  precess_fk5(ra_d, dec_d, equinox, &ra_d_fk5, &dec_d_fk5);
+  
+  string256 reg_constr, qrystr;
+  pattern_region_constraint(ra_d_fk5, dec_d_fk5, radius_d, reg_constr);
+  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM tycho2 WHERE %s", reg_constr);
   act_log_debug(act_log_msg("SQL query: %s\n", qrystr));
   
-  MYSQL_RES *result;
-  MYSQL_ROW row;
-  mysql_query(objs->genl_conn,qrystr);
-  result = mysql_store_result(objs->genl_conn);
-  if (result == NULL)
-  {
-    act_log_error(act_log_msg("Could not retrieve star catalog entries - %s.", mysql_error(objs->genl_conn)));
-    return ret;
-  }
-  int rowcount = mysql_num_rows(result);
-  if ((rowcount <= 0) || (mysql_num_fields(result) != 4))
-  {
-    act_log_error(act_log_msg("Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
-    mysql_free_result(result);
-    return ret;
-  }
-  act_log_debug(act_log_msg("%d objects to retrieve.", rowcount));
-  
-  PointList *list = point_list_new_with_length(rowcount);
+  PointList *list = get_catalog_stars(objs->genl_conn, qrystr);
   if (list == NULL)
-  {
-    act_log_error(act_log_msg("Failed to create point list for star catalog entries."));
-    mysql_free_result(result);
-    return ret;
-  }
-  g_object_unref(ret);
+    act_log_error(act_log_msg("Failed to retrieve Tycho2 catalog stars"));
   
-  double point_ra, point_dec;
-  double point_pmra, point_pmdec;
-  struct rastruct orig_ra, prec_ra;
-  struct decstruct orig_dec, prec_dec;
-  while ((row = mysql_fetch_row(result)) != NULL)
-  {
-    int extr = 0;
-    extr += sscanf(row[0], "%lf", &point_ra);
-    extr += sscanf(row[1], "%lf", &point_dec);
-    extr += sscanf(row[2], "%lf", &point_pmra);
-    extr += sscanf(row[3], "%lf", &point_pmdec);
-    if (extr != 4)
-    {
-      act_log_error(act_log_msg("Failed to extract all parameters for point from database."));
-      continue;
-    }
-    point_ra += point_pmra * (epoch-2000.0) / 1000.0 / 3600.0;
-    point_dec += point_pmdec * (epoch-2000.0) / 1000.0 / 3600.0;
-    convert_H_HMSMS_ra(convert_DEG_H(point_ra), &orig_ra);
-    convert_D_DMS_dec(point_dec, &orig_dec);
-    precess_coord(&orig_ra, &orig_dec, 2000.0, epoch, &prec_ra, &prec_dec);
-    point_ra = convert_H_DEG(convert_HMSMS_H_ra(&prec_ra));
-    point_dec = convert_DMS_D_dec(&prec_dec);
-    if ((quad_shift < 0) && (point_ra > 360.0))
-      point_ra -= 360.0;
-    if ((quad_shift > 0) && (point_ra < 360.0))
-      point_ra += 360.0;
-    point_list_append(list, (point_ra-ra_d)*3600.0, (point_dec-dec_d)*3600.0);
-  }
-  act_log_debug(act_log_msg("Stars retrieved from database: %u", point_list_get_num_used(list)));
-  if (point_list_get_num_used(list) != (guint)rowcount)
-    act_log_normal(act_log_msg("Not all catalog stars extracted from database (%u should be %d).", point_list_get_num_used(list), rowcount));
   return list;
 }
 
-PointList *acq_store_get_gsc1_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg)
+PointList *acq_store_get_gsc1_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d, gfloat equinox, gfloat radius_d)
 {
+  if (objs->genl_conn == NULL)
+  {
+    act_log_error(act_log_msg("MySQL connection not available."));
+    return NULL;
+  }
+  
+  gfloat ra_d_fk5, dec_d_fk5;
+  precess_fk5(ra_d, dec_d, equinox, &ra_d_fk5, &dec_d_fk5);
+  
+  string256 reg_constr, qrystr;
+  pattern_region_constraint(ra_d_fk5, dec_d_fk5, radius_d, reg_constr);
+  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM gsc12 WHERE %s", reg_constr);
+  act_log_debug(act_log_msg("SQL query: %s\n", qrystr));
+  
+  PointList *list = get_catalog_stars(objs->genl_conn, qrystr);
+  if (list == NULL)
+    act_log_error(act_log_msg("Failed to retrieve GSC-1.2 catalog stars"));
+  
+  return list;
 }
 
 void acq_store_append_image(AcqStore *objs, CcdImg *new_img)
@@ -950,35 +890,77 @@ static guchar img_type_acq_to_db(guchar acq_img_type)
   return ret;
 }
 
-void pattern_region_constraint(gfloat ra_d, gfloat dec_d, gfloat epoch, gfloat radius_deg, pat_reg *reg)
+static void precess_fk5(gfloat ra_d, gfloat dec_d, gfloat equinox, gfloat *ra_d_fk5, gfloat *dec_d_fk5)
 {
-  double ra_radius = radius_deg / cos(convert_DEG_RAD(dec_d));
-  if (dec_d + radius_deg >= 90.0)
+  struct rastruct ra_sex_cureq, ra_sex_fk5;
+  struct decstruct dec_sex_cureq, dec_sex_fk5;
+  convert_H_HMSMS_ra(convert_DEG_H(ra_d),&ra_sex_cureq);
+  convert_D_DMS_dec(dec_d,&dec_sex_cureq);
+  precess_coord(&ra_sex_cureq, &dec_sex_cureq, equinox, 2000.0, &ra_sex_fk5, &dec_sex_fk5);
+  *ra_d_fk5 = convert_H_DEG(convert_HMSMS_H_ra(&ra_sex_fk5));
+  *dec_d_fk5 = convert_DMS_D_dec(&dec_sex_fk5);
+}
+
+static void pattern_region_constraint(gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 constr_str)
+{
+  gdouble ra_radius_d = radius_d / cos(convert_DEG_RAD(dec_d_fk5));
+  if (dec_d_fk5 + radius_d >= 90.0)
+    sprintf(constr_str, "dec_d_fk5>%lf AND dec_d_fk5<90.0", dec_d_fk5-radius_d);
+  else if (dec_d_fk5 - radius_d <= -90.0)
+    sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>-90.0", dec_d_fk5+radius_d);
+  else if (ra_d_fk5 - ra_radius_d < 0.0)
+    sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>%lf AND (ra_d_fk5<%lf OR ra_d_fk5>%lf)", dec_d_fk5+radius_d, dec_d_fk5-radius_d, ra_d_fk5+ra_radius_d, ra_d_fk5-ra_radius_d+360.0);
+  else if (ra_d_fk5 + ra_radius_d >= 24.0)
+    sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>%lf AND (ra_d_fk5<%lf OR ra_d_fk5>%lf)", dec_d_fk5+radius_d, dec_d_fk5-radius_d, ra_d_fk5+ra_radius_d-360.0, ra_d_fk5-ra_radius_d);
+  else 
+    sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>%lf AND ra_d_fk5<%lf AND ra_d_fk5>%lf", dec_d_fk5+radius_d, dec_d_fk5-radius_d, ra_d_fk5+ra_radius_d, ra_d_fk5-ra_radius_d);
+}
+
+static PointList *get_catalog_stars(MYSQL *conn, string256 qrystr)
+{
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(conn, qrystr);
+  result = mysql_store_result(conn);
+  if (result == NULL)
   {
-    reg->ra_min_d = 0.0;
-    reg->ra_max_d = 360.0;
-    reg->dec_min_d = 
-    sprintf(reg_str, "DECmdeg>%lf AND DECmdeg<90.0", ra_d-radius_deg);
-    *quad_shift = 0;
+    act_log_error(act_log_msg("Could not retrieve catalog stars - %s.", mysql_error(conn)));
+    return NULL;
   }
-  else if (dec_d - radius_deg <= -90.0)
+  int rowcount = mysql_num_rows(result);
+  if ((rowcount <= 0) || (mysql_num_fields(result) != 2))
   {
-    sprintf(reg_str, "DECmdeg>%lf AND DECmdeg>-90.0", ra_d+radius_deg);
-    *quad_shift = 0;
+    act_log_error(act_log_msg("Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return NULL;
   }
-  else if (ra_d - ra_radius < 0.0)
+  act_log_debug(act_log_msg("%d objects to retrieve.", rowcount));
+  
+  PointList *list = point_list_new_with_length(rowcount);
+  if (list == NULL)
   {
-    sprintf(reg_str, "DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg<%lf OR RAmdeg>%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d+ra_radius, ra_d-ra_radius+360.0);
-    *quad_shift = -1;
+    act_log_error(act_log_msg("Failed to create point list for star catalog entries."));
+    mysql_free_result(result);
+    return NULL;
   }
-  else if (ra_d + ra_radius >= 360.0)
+  
+  double point_ra, point_dec;
+  while ((row = mysql_fetch_row(result)) != NULL)
   {
-    sprintf(reg_str, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND (RAmdeg>%lf OR RAmdeg<%lf)", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius-360.0);
-    *quad_shift = 1;
+    char OK = 1;
+    if (sscanf(row[0], "%lf", &point_ra) != 1)
+      OK = 0;
+    if (sscanf(row[1], "%lf", &point_dec) != 1)
+      OK = 0;
+    if (!OK)
+    {
+      act_log_error(act_log_msg("Failed to extract all parameters for point from database."));
+      continue;
+    }
+    point_list_append(list, point_ra, point_dec);
   }
-  else
-  {
-    sprintf(reg_str, "SELECT RAmdeg, DECmdeg, pmRA, pmDEC FROM tycho2 WHERE DECmdeg>%lf AND DECmdeg<%lf AND RAmdeg>%lf AND RAmdeg<%lf", dec_d-radius_deg, dec_d+radius_deg, ra_d-ra_radius, ra_d+ra_radius);
-    *quad_shift = 0;
-  }
+  act_log_debug(act_log_msg("Stars retrieved from database: %u", point_list_get_num_used(list)));
+  if (point_list_get_num_used(list) != (guint)rowcount)
+    act_log_error(act_log_msg("Not all catalog stars extracted from database (%u should be %d).", point_list_get_num_used(list), rowcount));
+  return list;
 }

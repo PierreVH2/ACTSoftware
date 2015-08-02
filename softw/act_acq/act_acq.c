@@ -32,7 +32,7 @@
  * multiplied by TARGSET_EXP_RETRY_FACT until either MIN_NUM_STARS stars are identified in the image (in which
  * case pattern matching is done) or the exposure time exceeds TARGSET_EXP_MAX_T (in which case a failure is 
  * reported). MIN_MATCH_FRAC specifies the minimum fraction of identified stars in the field that could be
- * mapped to stars in the Tycho catalog for the map to be deemed a success. PAT_SEARCH_RADIUS sets the 
+ * mapped to stars in the Tycho/GSC-1.2 catalog for the map to be deemed a success. PAT_SEARCH_RADIUS sets the 
  * rectangular region about the telescope coordinates within which stars are extracted from the Tycho catalog 
  * for matching the star pattern against.
  * \{ */
@@ -104,7 +104,7 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img);
 void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg);
 void print_point_list(const char *heading, PointList *list);
 void image_auto_target_set(struct acq_objects *objs, CcdImg *img);
-PointList *image_extract_stars(CcdImg *img);
+PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp);
 guchar targset_integ_retry(CcdCntrl *cntrl, CcdImg *img);
 gboolean reconnect_timeout(gpointer user_data);
 void store_stat_update(GObject *acq_store, gpointer lbl_store_stat);
@@ -597,28 +597,27 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
 {
   char msg_str[256] = "No error message";
   // Extract stars from image
-  PointList *img_pts = image_extract_stars(img);
+  PointList *img_pts = image_extract_stars(img, objs->imgdisp);
   gint num_stars = point_list_get_num_used(img_pts);
   act_log_debug(act_log_msg("Manual img - number of stars extracted from image: %d\n", num_stars));
-//   if (num_stars < MIN_NUM_STARS)
-//   {
-//     sprintf(msg_str, "Too few stars in image (%d must be %d)", num_stars, MIN_NUM_STARS);
-//     manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
-//     return;
-//   }
+  if (num_stars < MIN_NUM_STARS)
+  {
+    sprintf(msg_str, "Too few stars in image (%d must be %d)", num_stars, MIN_NUM_STARS);
+    manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+    return;
+  }
   print_point_list("Image points", img_pts);
   
-  /*
-  // Fetch nearby stars in Tycho2 catalog from database
+  // Fetch nearby stars in GSC-1.2 catalog from database
   gfloat img_ra, img_dec;
   ccd_img_get_tel_pos(img, &img_ra, &img_dec);
   gdouble img_start_sec = ccd_img_get_start_datetime(img);
-  PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RADIUS);
+  PointList *pat_pts = acq_store_get_gsc1_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RADIUS);
   gint num_pat = point_list_get_num_used(pat_pts);
   act_log_debug(act_log_msg("Manual img - number of catalog stars within search region: %d\n", num_pat));
   if (num_pat < MIN_NUM_STARS)
   {
-    sprintf(msg_str, "Failed to fetch Tycho catalog stars. (%d retrieved)", num_pat);
+    sprintf(msg_str, "Failed to fetch GSC catalog stars. (%d retrieved)", num_pat);
     manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
     return;
   }
@@ -646,7 +645,7 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   g_slist_free(map);
   
   sprintf(msg_str, "Shift: %f\"  %f\"\nTrue: %f d  %f d", rashift, decshift, img_ra+rashift/3600.0, img_dec+decshift/3600.0);
-  manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_INFO, msg_str);*/
+  manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_INFO, msg_str);
 }
 
 void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)
@@ -655,7 +654,7 @@ void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)
     act_log_normal(act_log_msg("Successfully did manual pattern match - %s", msg));
   else
     act_log_error(act_log_msg("Failed to do manual pattern match - %s", msg));
-  GtkWidget *msg_dialog = gtk_message_dialog_new (GTK_WINDOW(parent), GTK_DIALOG_DESTROY_WITH_PARENT, type, GTK_BUTTONS_CLOSE, msg);
+  GtkWidget *msg_dialog = gtk_message_dialog_new (GTK_WINDOW(parent), GTK_DIALOG_DESTROY_WITH_PARENT, type, GTK_BUTTONS_CLOSE, "%s", msg);
   g_signal_connect_swapped (msg_dialog, "response", G_CALLBACK (gtk_widget_destroy), msg_dialog);
   gtk_widget_show_all(msg_dialog);  
 }
@@ -676,7 +675,7 @@ void print_point_list(const char *heading, PointList *list)
 void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
 {
   // Extract stars from image
-  PointList *img_pts = image_extract_stars(img);
+  PointList *img_pts = image_extract_stars(img, objs->imgdisp);
   gint num_stars = point_list_get_num_used(img_pts);
   act_log_debug(act_log_msg("Number of stars extracted from image: %d\n", num_stars));
   if (num_stars < MIN_NUM_STARS)
@@ -744,7 +743,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
   prog_change_mode(objs, MODE_IDLE);
 }
 
-PointList *image_extract_stars(CcdImg *img)
+PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
 {
   float conv[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1};
   float mean=0.0, stddev=0.0;
@@ -766,29 +765,22 @@ PointList *image_extract_stars(CcdImg *img)
     act_log_error(act_log_msg("Failed to extract stars from image - SEP error code %d", ret));
     return point_list_new();
   }
-/*  PointList *star_list = point_list_new_with_length(num_stars);
-  for (i=0; i<num_stars; i++)
-  {
-    static double x, y;
-    x = obj[i].x-XAPERTURE;
-    y = -obj[i].y+YAPERTURE;
-    if (!point_list_append(star_list, x, y))
-      act_log_debug(act_log_msg("Failed to add identified star %d to stars list."));
-  }*/
   
-  act_log_debug(act_log_msg("Pixel size: %f %f", ccd_img_get_pixel_size_ra(img), ccd_img_get_pixel_size_dec(img)));
   PointList *star_list = point_list_new_with_length(num_stars);
   gfloat tmp_ra, tmp_dec;
-  ccd_img_get_tel_pos(img, &tmp_ra, &tmp_dec);
-  act_log_debug(act_log_msg("Telescope dec: %f", tmp_dec));
   for (i=0; i<num_stars; i++)
   {
-    static double x, y;
-    x = (obj[i].x-XAPERTURE)*ccd_img_get_pixel_size_ra(img)/cos(convert_DEG_RAD(tmp_dec));
-    y = (-obj[i].y+YAPERTURE)*ccd_img_get_pixel_size_dec(img);
-    if (!point_list_append(star_list, x, y))
+    ret = imgdisp_coord_equat(imgdisp, obj[i].x, obj[i].y, &tmp_ra, &tmp_dec);
+    if (ret < 0)
+    {
+      act_log_error(act_log_msg("Failed to calculate RA and Dec of star %d in star list."));
+      continue;
+    }
+    ret = point_list_append(star_list, tmp_ra, tmp_dec);
+    if (!ret)
       act_log_debug(act_log_msg("Failed to add identified star %d to stars list."));
   }
+
   return star_list;
 }
 
