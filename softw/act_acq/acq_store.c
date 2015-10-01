@@ -59,7 +59,8 @@ static void store_img_fallback(CcdImg *img);
 static gboolean store_reconnect(AcqStore *objs);
 static guchar img_type_acq_to_db(guchar acq_img_type);
 static void precess_fk5(gfloat ra_d, gfloat dec_d, gfloat equinox, gfloat *ra_d_fk5, gfloat *dec_d_fk5);
-static void pattern_region_constraint(gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 constr_str);
+static void region_list(MYSQL *conn, gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 reg_str);
+static void coord_constraint(gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 constr_str);
 static PointList *get_catalog_stars(MYSQL *conn, string256 qrystr);
 
 
@@ -405,9 +406,9 @@ PointList *acq_store_get_tycho_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d
   gfloat ra_d_fk5, dec_d_fk5;
   precess_fk5(ra_d, dec_d, equinox, &ra_d_fk5, &dec_d_fk5);
   
-  string256 reg_constr, qrystr;
-  pattern_region_constraint(ra_d_fk5, dec_d_fk5, radius_d, reg_constr);
-  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM tycho2 WHERE %s", reg_constr);
+  string256 coord_constr, qrystr;
+  coord_constraint(ra_d_fk5, dec_d_fk5, radius_d, coord_constr);
+  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM tycho2 WHERE %s", coord_constr);
   act_log_debug(act_log_msg("SQL query: %s\n", qrystr));
   
   PointList *list = get_catalog_stars(objs->genl_conn, qrystr);
@@ -428,9 +429,11 @@ PointList *acq_store_get_gsc1_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d,
   gfloat ra_d_fk5, dec_d_fk5;
   precess_fk5(ra_d, dec_d, equinox, &ra_d_fk5, &dec_d_fk5);
   
-  string256 reg_constr, qrystr;
-  pattern_region_constraint(ra_d_fk5, dec_d_fk5, radius_d, reg_constr);
-  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM gsc12 WHERE %s", reg_constr);
+  string256 reg_list, coord_constr, qrystr;
+  region_list(objs->genl_conn, ra_d_fk5, dec_d_fk5, radius_d, reg_list);
+  
+  coord_constraint(ra_d_fk5, dec_d_fk5, radius_d, coord_constr);
+  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM gsc12 WHERE reg_id IN (%s) AND (%s)", reg_list, coord_constr);
   act_log_debug(act_log_msg("SQL query: %s\n", qrystr));
   
   PointList *list = get_catalog_stars(objs->genl_conn, qrystr);
@@ -901,7 +904,65 @@ static void precess_fk5(gfloat ra_d, gfloat dec_d, gfloat equinox, gfloat *ra_d_
   *dec_d_fk5 = convert_DMS_D_dec(&dec_sex_fk5);
 }
 
-static void pattern_region_constraint(gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 constr_str)
+static void region_list(MYSQL *conn, gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 reg_str)
+{
+  reg_str[0] = '\0';
+
+  string256 qry_str, constr_str;
+  gdouble ra_radius_d = radius_d / cos(convert_DEG_RAD(dec_d_fk5));
+  if (dec_d_fk5 + radius_d >= 90.0)
+    sprintf(constr_str, "dec_min<=%f AND dec_max>=90.0", dec_d_fk5-radius_d);
+  else if (dec_d_fk5 - radius_d <= -90.0)
+    sprintf(constr_str, "dec_min<=-90.0 AND dec_max>=%f", dec_d_fk5+radius_d);
+  else if (ra_d_fk5 - ra_radius_d < 0.0)
+    sprintf(constr_str, "dec_max>=%f AND dec_min<=%f AND ((ra_max>=360.0 AND ra_min<=%f) OR (ra_max>=%f AND ra_min<=0.0))", dec_d_fk5-radius_d, dec_d_fk5+radius_d, ra_d_fk5-ra_radius_d+360.0, ra_d_fk5+ra_radius_d);
+  else if (ra_d_fk5 + ra_radius_d >= 360.0)
+    sprintf(constr_str, "dec_max>=%f AND dec_min<=%f AND ((ra_max>=360.0 AND ra_min<=%f) OR (ra_max>=%f AND ra_min<=0.0))", dec_d_fk5-radius_d, dec_d_fk5+radius_d, ra_d_fk5-ra_radius_d, ra_d_fk5+ra_radius_d-360.0);
+  else 
+    sprintf(constr_str, "dec_max>=%f AND dec_min<=%f AND ra_max>=%f AND ra_min<=%f", dec_d_fk5-radius_d, dec_d_fk5+radius_d, ra_d_fk5-ra_radius_d, ra_d_fk5+ra_radius_d);
+  sprintf(qry_str, "SELECT id FROM gsc1_reg WHERE %s;", constr_str);
+
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+  mysql_query(conn, qry_str);
+  result = mysql_store_result(conn);
+  if (result == NULL)
+  {
+    act_log_error(act_log_msg("Could not retrieve catalog stars - %s.", mysql_error(conn)));
+    return;
+  }
+  gint rowcount = mysql_num_rows(result);
+  if ((rowcount <= 0) || (mysql_num_fields(result) != 1))
+  {
+    act_log_error(act_log_msg("Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
+    mysql_free_result(result);
+    return;
+  }
+  
+  int reg_id, ret, len=0;
+  while ((row = mysql_fetch_row(result)) != NULL)
+  {
+    ret = sscanf(row[0], "%d", &reg_id);
+    if (ret != 1)
+    {
+      act_log_error(act_log_msg("Failed to extract region ID."));
+      break;
+    }
+    ret = sprintf(&constr_str[len], "%d", reg_id);
+    if (ret <= 0)
+    {
+      act_log_error(act_log_msg("Failed to write region ID to region list."));
+      break;
+    }
+    len += ret;
+  }
+  if ((ret <= 0) || (len ==0))
+    return;
+  
+  strcpy(reg_str, constr_str);
+}
+
+static void coord_constraint(gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d, string256 constr_str)
 {
   gdouble ra_radius_d = radius_d / cos(convert_DEG_RAD(dec_d_fk5));
   if (dec_d_fk5 + radius_d >= 90.0)
