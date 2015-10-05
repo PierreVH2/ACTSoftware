@@ -694,7 +694,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
   gfloat img_ra, img_dec;
   ccd_img_get_tel_pos(img, &img_ra, &img_dec);
   gdouble img_start_sec = ccd_img_get_start_datetime(img);
-  PointList *pat_pts = acq_store_get_tycho_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RADIUS);
+  PointList *pat_pts = acq_store_get_gsc1_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RADIUS);
   gint num_pat = point_list_get_num_used(pat_pts);
   act_log_debug(act_log_msg("Number of catalog stars within search region: %d\n", num_pat));
   if (num_pat < MIN_NUM_STARS)

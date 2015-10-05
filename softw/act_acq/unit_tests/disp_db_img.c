@@ -89,7 +89,7 @@ int main(int argc, char **argv)
     act_log_error(act_log_msg("Error initialising MySQL database connection handler - %s.", mysql_error(conn)));
     return 2;
   }
-  if (mysql_real_connect(conn, IMGDB_HOST, IMGDB_UNAME, IMGDB_PASSWD, "actnew", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(conn, IMGDB_HOST, IMGDB_UNAME, IMGDB_PASSWD, "act", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error establishing connection to MySQL database - %s.", mysql_error(conn)));
     mysql_close(conn);

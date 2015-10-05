@@ -28,7 +28,7 @@ char parse_config(const char *sqlhost, struct act_msg_targcap *targcap_msg, stru
   MYSQL *sql_conn = mysql_init(NULL);
   if (sql_conn == NULL)
     act_log_error(act_log_msg("Error initialising MySQL connection handler."));
-  else if (mysql_real_connect(sql_conn, sqlhost, "act_dti", NULL, "actnew", 0, NULL, 0) == NULL)
+  else if (mysql_real_connect(sql_conn, sqlhost, "act_dti", NULL, "act", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error connecting to MySQL database - %s.", mysql_error(sql_conn)));
     sql_conn = NULL;

@@ -92,7 +92,7 @@ int main(int argc, char** argv)
     g_io_channel_unref(formobjs.net_chan);
     return 1;
   }
-  else if (mysql_real_connect(formobjs.mysql_conn, sqlconfig, "act_sched", NULL, "actnew", 0, NULL, 0) == NULL)
+  else if (mysql_real_connect(formobjs.mysql_conn, sqlconfig, "act_sched", NULL, "act", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error connecting to MySQL database - %s.", mysql_error(formobjs.mysql_conn)));
     g_io_channel_unref(formobjs.net_chan);

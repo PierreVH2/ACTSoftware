@@ -101,7 +101,7 @@ AcqStore *acq_store_new(gchar const *sqlhost)
     act_log_error(act_log_msg("Error initialising MySQL image storage connection handler - %s.", mysql_error(store_conn)));
     return NULL;
   }
-  if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(store_conn, sqlhost, "act_acq", NULL, "act", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error establishing image storage connection to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);
@@ -117,7 +117,7 @@ AcqStore *acq_store_new(gchar const *sqlhost)
     mysql_close(store_conn);
     return NULL;
   }
-  if (mysql_real_connect(genl_conn, sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(genl_conn, sqlhost, "act_acq", NULL, "act", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error establishing general connection to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);
@@ -851,7 +851,7 @@ static gboolean store_reconnect(AcqStore *objs)
     act_log_error(act_log_msg("Error initialising MySQL image storage connection handler - %s.", mysql_error(store_conn)));
     return FALSE;
   }
-  if (mysql_real_connect(store_conn, objs->sqlhost, "act_acq", NULL, "actnew", 0, NULL, 0) == NULL)
+  if (mysql_real_connect(store_conn, objs->sqlhost, "act_acq", NULL, "act", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error establishing image storage connecting to MySQL database - %s.", mysql_error(store_conn)));
     mysql_close(store_conn);

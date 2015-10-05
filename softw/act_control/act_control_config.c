@@ -17,7 +17,7 @@ int control_config_programmes(const char *sqldb_host, struct act_prog **prog_arr
   conn = mysql_init(NULL);
   if (conn == NULL)
     act_log_error(act_log_msg("Error initialising MySQL connection handler - %d (%s).", mysql_errno(conn), mysql_error(conn)));
-  else if (mysql_real_connect(conn, sqldb_host, "act_control", NULL, "actnew", 0, NULL, 0) == NULL)
+  else if (mysql_real_connect(conn, sqldb_host, "act_control", NULL, "act", 0, NULL, 0) == NULL)
   {
     act_log_error(act_log_msg("Error connecting to MySQL database - %d (%s).", mysql_errno(conn), mysql_error(conn)));
     conn = NULL;
