@@ -613,6 +613,12 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   ccd_img_get_tel_pos(img, &img_ra, &img_dec);
   gdouble img_start_sec = ccd_img_get_start_datetime(img);
   PointList *pat_pts = acq_store_get_gsc1_pattern(objs->store, img_ra, img_dec, SEC_TO_YEAR(img_start_sec), PAT_SEARCH_RADIUS);
+  if (pat_pts == NULL)
+  {
+    sprintf(msg_str, "Failed to fetch GSC catalog stars.");
+    manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_ERROR, msg_str);
+    return;
+  }
   gint num_pat = point_list_get_num_used(pat_pts);
   act_log_debug(act_log_msg("Manual img - number of catalog stars within search region: %d\n", num_pat));
   if (num_pat < MIN_NUM_STARS)
@@ -668,7 +674,7 @@ void print_point_list(const char *heading, PointList *list)
   {
     if (!point_list_get_coord(list, i, &x, &y))
       continue;
-    act_log_debug(act_log_msg("  %6.1f  %6.1f", x, y));
+    act_log_debug(act_log_msg("  %10.5f  %10.5f", x, y));
   }
 }
 
@@ -765,6 +771,7 @@ PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
     act_log_error(act_log_msg("Failed to extract stars from image - SEP error code %d", ret));
     return point_list_new();
   }
+  act_log_debug(act_log_msg("  %d stars in image", num_stars));
   
   PointList *star_list = point_list_new_with_length(num_stars);
   gfloat tmp_ra, tmp_dec;
@@ -776,6 +783,7 @@ PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
       act_log_error(act_log_msg("Failed to calculate RA and Dec of star %d in star list."));
       continue;
     }
+    act_log_debug(act_log_msg("    %6.2lf  %6.2lf      %10.5f  %10.5f", obj[i].x, obj[i].y, tmp_ra, tmp_dec));
     ret = point_list_append(star_list, tmp_ra, tmp_dec);
     if (!ret)
       act_log_debug(act_log_msg("Failed to add identified star %d to stars list."));

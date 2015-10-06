@@ -433,7 +433,7 @@ PointList *acq_store_get_gsc1_pattern(AcqStore *objs, gfloat ra_d, gfloat dec_d,
   region_list(objs->genl_conn, ra_d_fk5, dec_d_fk5, radius_d, reg_list);
   
   coord_constraint(ra_d_fk5, dec_d_fk5, radius_d, coord_constr);
-  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM gsc12 WHERE reg_id IN (%s) AND (%s)", reg_list, coord_constr);
+  sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM gsc1 WHERE reg_id IN (%s) AND (%s)", reg_list, coord_constr);
   act_log_debug(act_log_msg("SQL query: %s\n", qrystr));
   
   PointList *list = get_catalog_stars(objs->genl_conn, qrystr);
@@ -928,13 +928,13 @@ static void region_list(MYSQL *conn, gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat r
   result = mysql_store_result(conn);
   if (result == NULL)
   {
-    act_log_error(act_log_msg("Could not retrieve catalog stars - %s.", mysql_error(conn)));
+    act_log_error(act_log_msg("Could not retrieve catalog star regions - %s.", mysql_error(conn)));
     return;
   }
   gint rowcount = mysql_num_rows(result);
   if ((rowcount <= 0) || (mysql_num_fields(result) != 1))
   {
-    act_log_error(act_log_msg("Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
+    act_log_error(act_log_msg("Could not retrieve star catalog region entries - Invalid number of rows/columns returned (%d rows, %d columns).", rowcount, mysql_num_fields(result)));
     mysql_free_result(result);
     return;
   }

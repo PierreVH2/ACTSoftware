@@ -1,8 +1,10 @@
 Current bugs/notes:
 
-ACQ - Pattern matching not working
+ACQ - Pattern matching improving - all images seem to be offset by a few arcmin
 ACQ - Images stored in actnew.ccd_img database table have negative start times
 ACQ - Bright/faint scalers not really useful, change maths behind it
+ACQ - Time left indicator freaks out when elapsed and waiting for image
+ACQ - IMGDISP Ra, Dec display incorrect (probably due to recent switch from ra hours to ra deg in imgdisp)
 
 
 Revision 466 fixes:

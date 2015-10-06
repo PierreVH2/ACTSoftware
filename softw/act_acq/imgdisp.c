@@ -464,11 +464,11 @@ gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 //   gdk_gl_drawable_gl_end (gldrawable);
 //   
 //   return posX;
-  gfloat mouse_ra_h;
-  gint ret = imgdisp_coord_equat(imgdisp, mouse_x, mouse_y, &mouse_ra_h, NULL);
+  gfloat mouse_ra_d;
+  gint ret = imgdisp_coord_equat(imgdisp, mouse_x, mouse_y, &mouse_ra_d, NULL);
   if (ret < 0)
     return 0.0;
-  return mouse_ra_h;
+  return mouse_ra_d;
 
 }
 
@@ -492,7 +492,7 @@ gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
   return mouse_dec_d;
 }
 
-gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfloat *mouse_ra_h, gfloat *mouse_dec_d)
+gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfloat *mouse_ra_d, gfloat *mouse_dec_d)
 {
   Imgdisp *objs = IMGDISP(imgdisp);
   if (objs->img == NULL)
@@ -517,14 +517,22 @@ gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfl
   GLdouble posX, posY, posZ;
   
   glMatrixMode(GL_MODELVIEW_MATRIX);
+  
   glGetDoublev (GL_MODELVIEW_MATRIX, modelview);
   glGetDoublev (GL_PROJECTION_MATRIX, projection);
   glGetIntegerv (GL_VIEWPORT, viewport);
+  
+  int i;
+  for (i=0; i<16; i++)
+  {
+    act_log_debug(act_log_msg("%10.5f    %10.5f", modelview[i], projection[i]));
+  }
   
   winX = (float) mouse_x;
   winY = (float) viewport[3] - (float)mouse_y;
   
   gluUnProject (winX, winY, 1.0, modelview, projection, viewport, &posX, &posY, &posZ);
+  act_log_debug(act_log_msg("Unproject (%f %f ; %lf %lf %lf)", winX, winY, posX, posY, posZ));
  
   gdk_gl_drawable_gl_end (gldrawable);
   
@@ -540,8 +548,8 @@ gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfl
     ret_dec = posY > 0.0 ? ONEPI/2.0 : ONEPI/-2.0;
   }
   
-  if (mouse_ra_h != NULL)
-    *mouse_ra_h = convert_RAD_H(ret_ra);
+  if (mouse_ra_d != NULL)
+    *mouse_ra_d = convert_RAD_DEG(ret_ra);
   if (mouse_dec_d != NULL)
     *mouse_dec_d = convert_RAD_DEG(ret_dec);
   return 0;
@@ -728,10 +736,12 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   
   gfloat ra_rad, dec_rad;
   ccd_img_get_tel_pos(objs->img, &ra_rad, &dec_rad);
+  act_log_debug(act_log_msg("Tel RA, Dec:  %f %f", ra_rad, dec_rad));
   ra_rad = convert_DEG_RAD(ra_rad);
   dec_rad = convert_DEG_RAD(dec_rad);
   gdouble img_height_rad = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
   gdouble img_width_rad = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
+  act_log_debug(act_log_msg("Image RA, Dec, Height, Width:  %f %f   %f (%f)  %f (%f)", ra_rad, dec_rad, img_height_rad, img_height*ccd_img_get_pixel_size_dec(objs->img), img_width_rad, img_width*ccd_img_get_pixel_size_ra(objs->img)));
   
   GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
   GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
