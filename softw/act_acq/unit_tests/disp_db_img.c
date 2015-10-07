@@ -26,7 +26,7 @@ gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_co
   glong pixel_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
   gfloat viewp_x = imgdisp_coord_viewport_x(imgdisp, mouse_x, mouse_y);
   gfloat viewp_y = imgdisp_coord_viewport_y(imgdisp, mouse_x, mouse_y);
-  gfloat ra_h = imgdisp_coord_ra(imgdisp, mouse_x, mouse_y);
+  gfloat ra_h = imgdisp_coord_ra(imgdisp, mouse_x, mouse_y)/15.0;
   gfloat dec_d = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
   
   struct rastruct ra;

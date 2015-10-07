@@ -404,7 +404,7 @@ gboolean imgdisp_mouse_move_view(GtkWidget* imgdisp, GdkEventMotion* motdata, gp
 
 gboolean imgdisp_mouse_move_equat(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_mouse_view)
 {
-  gfloat ra_h = imgdisp_coord_ra(imgdisp, motdata->x, motdata->y);
+  gfloat ra_h = imgdisp_coord_ra(imgdisp, motdata->x, motdata->y) / 15.0;
   gfloat dec_d = imgdisp_coord_dec(imgdisp, motdata->x, motdata->y);
   
   struct rastruct ra;

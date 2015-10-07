@@ -224,7 +224,7 @@ GType imgdisp_get_type (void)
 
 GtkWidget *imgdisp_new (void)
 {
-  act_log_debug(act_log_msg("Creating imgdisp object."));
+//   act_log_debug(act_log_msg("Creating imgdisp object."));
   return GTK_WIDGET(g_object_new (imgdisp_get_type(), NULL));
 }
 
@@ -522,17 +522,17 @@ gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfl
   glGetDoublev (GL_PROJECTION_MATRIX, projection);
   glGetIntegerv (GL_VIEWPORT, viewport);
   
-  int i;
-  for (i=0; i<16; i++)
-  {
-    act_log_debug(act_log_msg("%10.5f    %10.5f", modelview[i], projection[i]));
-  }
+//   int i;
+//   for (i=0; i<16; i++)
+//   {
+//     act_log_debug(act_log_msg("%10.5f    %10.5f", modelview[i], projection[i]));
+//   }
   
   winX = (float) mouse_x;
   winY = (float) viewport[3] - (float)mouse_y;
   
   gluUnProject (winX, winY, 1.0, modelview, projection, viewport, &posX, &posY, &posZ);
-  act_log_debug(act_log_msg("Unproject (%f %f ; %lf %lf %lf)", winX, winY, posX, posY, posZ));
+//   act_log_debug(act_log_msg("Unproject (%f %f ; %lf %lf %lf)", winX, winY, posX, posY, posZ));
  
   gdk_gl_drawable_gl_end (gldrawable);
   
@@ -599,7 +599,7 @@ static void imgdisp_instance_init(GtkWidget *imgdisp)
 
 static void imgdisp_instance_destroy(GtkWidget *imgdisp)
 {
-  act_log_debug(act_log_msg("Destroying imgdisp instance"));
+//   act_log_debug(act_log_msg("Destroying imgdisp instance"));
   Imgdisp *objs = IMGDISP(imgdisp);
   
   if (objs->dra_ccdimg != NULL)
@@ -696,6 +696,8 @@ static gboolean imgdisp_configure(GtkWidget *imgdisp)
   glBindTexture(GL_TEXTURE_2D, tmp_tex_name);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   if (objs->lut == NULL)
   {
     act_log_debug(act_log_msg("Loading default LUT."));
@@ -736,12 +738,12 @@ static gboolean imgdisp_expose (GtkWidget *imgdisp)
   
   gfloat ra_rad, dec_rad;
   ccd_img_get_tel_pos(objs->img, &ra_rad, &dec_rad);
-  act_log_debug(act_log_msg("Tel RA, Dec:  %f %f", ra_rad, dec_rad));
+//   act_log_debug(act_log_msg("Tel RA, Dec:  %f %f", ra_rad, dec_rad));
   ra_rad = convert_DEG_RAD(ra_rad);
   dec_rad = convert_DEG_RAD(dec_rad);
   gdouble img_height_rad = convert_DEG_RAD(img_height*ccd_img_get_pixel_size_dec(objs->img)/3600.0);
   gdouble img_width_rad = convert_DEG_RAD(img_width*ccd_img_get_pixel_size_ra(objs->img)/3600.0);
-  act_log_debug(act_log_msg("Image RA, Dec, Height, Width:  %f %f   %f (%f)  %f (%f)", ra_rad, dec_rad, img_height_rad, img_height*ccd_img_get_pixel_size_dec(objs->img), img_width_rad, img_width*ccd_img_get_pixel_size_ra(objs->img)));
+//   act_log_debug(act_log_msg("Image RA, Dec, Height, Width:  %f %f   %f (%f)  %f (%f)", ra_rad, dec_rad, img_height_rad, img_height*ccd_img_get_pixel_size_dec(objs->img), img_width_rad, img_width*ccd_img_get_pixel_size_ra(objs->img)));
   
   GdkGLContext *glcontext = gtk_widget_get_gl_context (objs->dra_ccdimg);
   GdkGLDrawable *gldrawable = gtk_widget_get_gl_drawable (objs->dra_ccdimg);
@@ -1027,9 +1029,13 @@ static void update_colour_transl(Imgdisp *objs)
   }
   glUseProgram(objs->glsl_prog);
   
-  float coltbl_size = imglut_get_num_points(objs->lut);
-  float scale = (coltbl_size - 1.0) / coltbl_size * (objs->bright_lim - objs->faint_lim);
-  float offset = (coltbl_size - 1.0) / coltbl_size * objs->faint_lim + 1.0 / (2.0 * coltbl_size); 
+  float num, scale, offset;
+  num = 1.0 / imglut_get_num_points(objs->lut);
+  if (fabs(objs->bright_lim - objs->faint_lim) > 0.0001)
+    scale = (1.0 - num) / (objs->bright_lim - objs->faint_lim);
+  else
+    scale = (1.0 - num) * 10000;
+  offset = 0.5*num - objs->faint_lim*scale;
   
   GLint scale_loc = glGetUniformLocation(objs->glsl_prog, "scale");
   GLint offset_loc = glGetUniformLocation(objs->glsl_prog, "offset");

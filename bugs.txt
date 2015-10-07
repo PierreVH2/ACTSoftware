@@ -1,10 +1,17 @@
 Current bugs/notes:
 
 ACQ - Pattern matching improving - all images seem to be offset by a few arcmin
-ACQ - Images stored in actnew.ccd_img database table have negative start times
-ACQ - Bright/faint scalers not really useful, change maths behind it
+ACQ - Add facility for on-screen markers
 ACQ - Time left indicator freaks out when elapsed and waiting for image
-ACQ - IMGDISP Ra, Dec display incorrect (probably due to recent switch from ra hours to ra deg in imgdisp)
+ACQ - Imgdisp equatorial coordinates calculated relative to centre of image, not aperture centre
+ACQ - Default target id is 0
+
+
+Revision 572 fixes:
+
+ACQ - Images stored in actnew.ccd_img database table have negative start times
+ACQ - IMGDISP RA, Dec display incorrect (probably due to recent switch from ra hours to ra deg in imgdisp)
+ACQ - Changed how bright/faint scalers work
 
 
 Revision 466 fixes:

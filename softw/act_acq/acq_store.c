@@ -656,13 +656,14 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
     act_log_error(act_log_msg("Failed to allocate memory for SQL query string."));
     return FALSE;
   }
-  sprintf(qrystr, "INSERT INTO ccd_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, tel_ra_h, tel_dec_d) VALUES (%lu, %lu, %hhu, %f, DATE(FROM_UNIXTIME(%lf)),(UNIX_TIMESTAMP(DATE(FROM_UNIXTIME(%lf))) - %lf)/3600.0, %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
+  gdouble start_time_s = fmod(ccd_img_get_start_datetime(img), 60*60*24);
+  sprintf(qrystr, "INSERT INTO ccd_img (targ_id, user_id, type, exp_t_s, start_date, start_time_h, win_start_x, win_start_y, win_width, win_height, prebin_x, prebin_y, tel_ra_h, tel_dec_d) VALUES (%lu, %lu, %hhu, %f, DATE(FROM_UNIXTIME(%d)), %lf, %hu, %hu, %hu, %hu, %hu, %hu, %f, %f);", 
           ccd_img_get_targ_id(img),
           ccd_img_get_user_id(img),
           img_type_acq_to_db(ccd_img_get_img_type(img)),
           ccd_img_get_integ_t(img),
-          ccd_img_get_start_datetime(img),
-          ccd_img_get_start_datetime(img), ccd_img_get_start_datetime(img),
+          trunc(ccd_img_get_start_datetime(img) - start_time_s),
+          start_time_s / 3600.0,
           ccd_img_get_win_start_x(img),
           ccd_img_get_win_start_y(img),
           ccd_img_get_win_width(img),
