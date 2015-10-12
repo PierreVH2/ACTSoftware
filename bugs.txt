@@ -4,6 +4,14 @@ ACQ - Pattern matching improving - all images seem to be offset by a few arcmin
 ACQ - Add facility for on-screen markers
 ACQ - Time left indicator freaks out when elapsed and waiting for image
 ACQ - Imgdisp equatorial coordinates calculated relative to centre of image, not aperture centre
+ACQ - Image points not within 0..360 in RA (possibly Dec also not in correct range)
+ACQ - Double check RA, Dec GSC queries near borders
+
+
+Revision 574 fixes:
+
+acq_store.c - in function coord_constraint, test for proximity to boundary checked for ra_d_fk5~24.0, should be ra_d_fk5~360.0
+acq_store.c - region lists were concatenated without comma-separators
 
 
 Revision 573 fixes:

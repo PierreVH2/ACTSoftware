@@ -662,7 +662,7 @@ static gboolean store_img(MYSQL *conn, CcdImg *img)
           ccd_img_get_user_id(img),
           img_type_acq_to_db(ccd_img_get_img_type(img)),
           ccd_img_get_integ_t(img),
-          trunc(ccd_img_get_start_datetime(img) - start_time_s),
+          (int)trunc(ccd_img_get_start_datetime(img) - start_time_s),
           start_time_s / 3600.0,
           ccd_img_get_win_start_x(img),
           ccd_img_get_win_start_y(img),
@@ -949,7 +949,7 @@ static void region_list(MYSQL *conn, gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat r
       act_log_error(act_log_msg("Failed to extract region ID."));
       break;
     }
-    ret = sprintf(&constr_str[len], "%d", reg_id);
+    ret = sprintf(&constr_str[len], "%d,", reg_id);
     if (ret <= 0)
     {
       act_log_error(act_log_msg("Failed to write region ID to region list."));
@@ -957,8 +957,9 @@ static void region_list(MYSQL *conn, gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat r
     }
     len += ret;
   }
-  if ((ret <= 0) || (len ==0))
+  if ((ret <= 0) || (len == 0))
     return;
+  constr_str[len-1] = '\0';
   
   strcpy(reg_str, constr_str);
 }
@@ -972,7 +973,7 @@ static void coord_constraint(gfloat ra_d_fk5, gfloat dec_d_fk5, gfloat radius_d,
     sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>-90.0", dec_d_fk5+radius_d);
   else if (ra_d_fk5 - ra_radius_d < 0.0)
     sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>%lf AND (ra_d_fk5<%lf OR ra_d_fk5>%lf)", dec_d_fk5+radius_d, dec_d_fk5-radius_d, ra_d_fk5+ra_radius_d, ra_d_fk5-ra_radius_d+360.0);
-  else if (ra_d_fk5 + ra_radius_d >= 24.0)
+  else if (ra_d_fk5 + ra_radius_d >= 360.0)
     sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>%lf AND (ra_d_fk5<%lf OR ra_d_fk5>%lf)", dec_d_fk5+radius_d, dec_d_fk5-radius_d, ra_d_fk5+ra_radius_d-360.0, ra_d_fk5-ra_radius_d);
   else 
     sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>%lf AND ra_d_fk5<%lf AND ra_d_fk5>%lf", dec_d_fk5+radius_d, dec_d_fk5-radius_d, ra_d_fk5+ra_radius_d, ra_d_fk5-ra_radius_d);
