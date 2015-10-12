@@ -194,9 +194,9 @@ gfloat *ccd_img_get_img_data(CcdImg const *objs)
 
 gfloat ccd_img_get_pixel(CcdImg const *objs, gushort x, gushort y)
 {
-  if ((x >= ccd_img_get_img_width(objs)) || (y <= ccd_img_get_img_height(objs)))
+  if ((x >= ccd_img_get_img_width(objs)) || (y >= ccd_img_get_img_height(objs)))
     return -1.0;
-  return objs->img_data[x*ccd_img_get_img_height(objs)+y];
+  return objs->img_data[y*ccd_img_get_img_width(objs)+x];
 }
 
 void ccd_img_set_img_data(CcdImg *objs, gulong img_len, gfloat const *img_data)

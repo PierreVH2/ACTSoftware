@@ -220,7 +220,16 @@ int main(int argc, char** argv)
     .lbl_store_stat = lbl_store_stat,
     .btn_expose = btn_expose,
     .btn_cancel = btn_cancel,
+    .cur_targ_id = 1,
+    .cur_targ_name = malloc(8*sizeof(char)),
+    .cur_user_id = 1,
+    .cur_user_name = malloc(8*sizeof(char)),
+    .last_imgt = IMGT_NONE,
+    .last_integ_t = 1.0,
+    .last_repeat = 1,
   };
+  sprintf(objs.cur_targ_name, "ACT_ANY");
+  sprintf(objs.cur_user_name, "ACT_ANY");
   prog_change_mode(&objs, MODE_IDLE);
   
   // Connect signals
@@ -908,7 +917,7 @@ void change_target(GObject *acq_net, gulong new_targ_id, gchar *new_targ_name, g
 {
   (void) acq_net;
   struct acq_objects *objs = (struct acq_objects *)user_data;
-  if (objs->cur_user_id == new_targ_id)
+  if (objs->cur_targ_id == new_targ_id)
     return;
   objs->cur_targ_id = new_targ_id;
   if (objs->cur_targ_name != NULL)

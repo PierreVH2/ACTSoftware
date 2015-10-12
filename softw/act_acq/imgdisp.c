@@ -555,6 +555,14 @@ gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfl
   return 0;
 }
 
+gfloat imgdisp_get_img_value(GtkWidget *imgdisp, gulong pixel_x, gulong pixel_y)
+{
+  Imgdisp *objs = IMGDISP(imgdisp);
+  if (objs->img == NULL)
+    return -1.0;
+  return ccd_img_get_pixel(CCD_IMG(objs->img), pixel_x, pixel_y);
+}
+
 static void imgdisp_instance_init(GtkWidget *imgdisp)
 {
   Imgdisp *objs = IMGDISP(imgdisp);

@@ -28,6 +28,7 @@ gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_co
   gfloat viewp_y = imgdisp_coord_viewport_y(imgdisp, mouse_x, mouse_y);
   gfloat ra_h = imgdisp_coord_ra(imgdisp, mouse_x, mouse_y)/15.0;
   gfloat dec_d = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
+  gfloat val = imgdisp_get_img_value(imgdisp, pixel_x, pixel_y);
   
   struct rastruct ra;
   convert_H_HMSMS_ra(ra_h, &ra);
@@ -37,7 +38,7 @@ gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_co
   char *dec_str = dec_to_str(&dec);
 
   char str[256];
-  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %ld  ;  Y: %ld\nvX: %f  ;  vY: %f\nRA: %s  ;  Dec: %s", mouse_x, mouse_y, pixel_x, pixel_y, viewp_x, viewp_y, ra_str, dec_str);
+  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %ld  ;  Y: %ld  ;  val  %5.3f\nvX: %f  ;  vY: %f\nRA: %s  ;  Dec: %s", mouse_x, mouse_y, pixel_x, pixel_y, val, viewp_x, viewp_y, ra_str, dec_str);
   gtk_label_set_text(GTK_LABEL(lbl_coord), str);
   free(ra_str);
   free(dec_str);

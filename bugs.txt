@@ -4,7 +4,11 @@ ACQ - Pattern matching improving - all images seem to be offset by a few arcmin
 ACQ - Add facility for on-screen markers
 ACQ - Time left indicator freaks out when elapsed and waiting for image
 ACQ - Imgdisp equatorial coordinates calculated relative to centre of image, not aperture centre
-ACQ - Default target id is 0
+
+
+Revision 573 fixes:
+
+ACQ - Default target and user id were 0 (undefined), changed init for acq_objects struct in act_acq so these fields are initialised.
 
 
 Revision 572 fixes:
