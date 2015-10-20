@@ -661,6 +661,7 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   
   sprintf(msg_str, "Shift: %f\"  %f\"\nTrue: %f d  %f d", rashift, decshift, img_ra+rashift/3600.0, img_dec+decshift/3600.0);
   manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_INFO, msg_str);
+  act_log_debug(act_log_msg("Pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %6.2f\" %6.2f", img_ra, img_dec, img_ra+rashift/3600.0, img_dec+decshift/3600.0, rashift, decshift));
 }
 
 void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)

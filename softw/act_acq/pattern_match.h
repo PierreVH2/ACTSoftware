@@ -13,7 +13,7 @@
 #include <gtk/gtk.h>
 #include "point_list.h"
 
-#define DEFAULT_RADIUS  10.0
+#define DEFAULT_RADIUS  0.0148615804913014
 
 typedef struct _point_map_t
 { 
