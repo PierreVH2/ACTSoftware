@@ -123,6 +123,7 @@ int main(int argc, char** argv)
 {
   act_log_open();
   act_log_normal(act_log_msg("Starting"));
+  act_log_debug(act_log_msg("Pattern search radius: %f", DEFAULT_RADIUS));
   
   const char *host, *port, *sqlhost;
   gtk_init(&argc, &argv);

@@ -529,7 +529,7 @@ gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfl
 //   }
   
   winX = (float) viewport[2] - (float) mouse_x;
-  winY = (float) viewport[3] - (float)mouse_y;
+  winY = (float) viewport[3] - (float) mouse_y;
   
   gluUnProject (winX, winY, 1.0, modelview, projection, viewport, &posX, &posY, &posZ);
 //   act_log_debug(act_log_msg("Unproject (%f %f ; %lf %lf %lf)", winX, winY, posX, posY, posZ));
