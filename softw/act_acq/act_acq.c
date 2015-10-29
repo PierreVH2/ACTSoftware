@@ -794,6 +794,11 @@ PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
       act_log_error(act_log_msg("Failed to calculate RA and Dec of star %d in star list."));
       continue;
     }
+    /** NOTE: Should actually check bounds of coordinates */
+    if (tmp_ra < 0.0)
+      tmp_ra += 360.0;
+    else if (tmp_ra >= 360.0)
+      tmp_ra -= 360.0;
     act_log_debug(act_log_msg("    %6.2lf  %6.2lf      %10.5f  %10.5f", obj[i].x, obj[i].y, tmp_ra, tmp_dec));
     ret = point_list_append(star_list, tmp_ra, tmp_dec);
     if (!ret)
