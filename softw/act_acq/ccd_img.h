@@ -94,6 +94,7 @@ gulong ccd_img_get_user_id(CcdImg const *objs);
 void ccd_img_set_user(CcdImg *objs, gulong user_id, gchar const *user_name);
 void ccd_img_get_tel_pos(CcdImg const *objs, gfloat *tel_ra_d, gfloat *tel_dec_d);
 void ccd_img_set_tel_pos(CcdImg *objs, gfloat tel_ra_d, gfloat tel_dec_d);
+void ccd_img_get_pix_coord(CcdImg *objs, gfloat pix_x, gfloat pix_y, gfloat *ra_d, gfloat *dec_d);
 gulong ccd_img_get_img_len(CcdImg const *objs);
 gfloat *ccd_img_get_img_data(CcdImg const *objs);
 gfloat ccd_img_get_pixel(CcdImg const *objs, gushort x, gushort y);

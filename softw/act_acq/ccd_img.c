@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include "ccd_img.h"
 
+#define CENT_X 203
+#define CENT_Y 144
+
 static void ccd_img_instance_init(GObject *ccd_img);
 static void ccd_img_class_init(CcdImgClass *klass);
 static void ccd_img_instance_dispose(GObject *ccd_img);
@@ -180,6 +183,24 @@ void ccd_img_set_tel_pos(CcdImg *objs, gfloat tel_ra_d, gfloat tel_dec_d)
 {
   objs->ra_d = tel_ra_d;
   objs->dec_d = tel_dec_d;
+}
+
+/**
+ * Algorithm from http://lambda.gsfc.nasa.gov/product/iras/coordproj.cfm
+ * TODO: Set image centre X,Y
+ */
+void ccd_img_get_pix_coord(CcdImg *objs, gfloat pix_x, gfloat pix_y, gfloat *ra_d, gfloat *dec_d)
+{
+  gdouble X, Y, D, B, XX, YY, img_ra=objs->ra_d*M_PI/180.0, img_dec=objs->dec_d*M_PI/180.0;
+  X = (CENT_X-pix_x) * (objs->pix_size_ra/3600.0) * M_PI / 180.0;
+  Y = -(CENT_Y-pix_y) * (objs->pix_size_dec/3600.0) * M_PI / 180.0;
+  D = atan(sqrt(X*X + Y*Y));
+  B = atan2(-X, Y);
+  XX = sin(img_dec) * sin(D) * cos(B) + cos(img_dec) * cos(D);
+  YY = sin(D) * sin(B);
+  
+  *ra_d = (img_ra + atan2(YY,XX)) * 180.0 / M_PI;  
+  *dec_d = asin(sin(img_dec)*cos(D) - cos(img_dec)*sin(D)*cos(B)) * 180.0 / M_PI;
 }
 
 gulong ccd_img_get_img_len(CcdImg const *objs)

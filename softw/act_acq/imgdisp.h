@@ -114,8 +114,8 @@ glong imgdisp_coord_pixel_x(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 glong imgdisp_coord_pixel_y(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 gfloat imgdisp_coord_ra(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
 gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y);
-gfloat imgdisp_get_img_value(GtkWidget *imgdisp, gulong pixel_x, gulong pixel_y);
 gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfloat *mouse_ra_d, gfloat *mouse_dec_d);
+gfloat imgdisp_get_img_value(GtkWidget *imgdisp, gulong pixel_x, gulong pixel_y);
 
 G_END_DECLS
 

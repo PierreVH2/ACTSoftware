@@ -494,6 +494,7 @@ gfloat imgdisp_coord_dec(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y)
 
 gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfloat *mouse_ra_d, gfloat *mouse_dec_d)
 {
+  /** TODO: Check coordinate ranges */
   Imgdisp *objs = IMGDISP(imgdisp);
   if (objs->img == NULL)
   {
@@ -548,6 +549,10 @@ gint imgdisp_coord_equat(GtkWidget *imgdisp, gulong mouse_x, gulong mouse_y, gfl
     ret_dec = posY > 0.0 ? ONEPI/2.0 : ONEPI/-2.0;
   }
   
+  if (ret_ra < 0.0)
+    ret_ra += 2*ONEPI;
+  else if (ret_ra > 360.0)
+    ret_ra -= 2*ONEPI;
   if (mouse_ra_d != NULL)
     *mouse_ra_d = convert_RAD_DEG(ret_ra);
   if (mouse_dec_d != NULL)

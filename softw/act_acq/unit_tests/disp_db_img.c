@@ -36,6 +36,7 @@ PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp);
 PointList *get_pat_points(gdouble ra_d, gdouble dec_d, gdouble equinox, gdouble radius_d);
 void precess_fk5(gdouble ra_in, gdouble dec_in, gdouble eq_in, gdouble *ra_d_fk5, gdouble *dec_d_fk5);
 gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_coord);
+gboolean mouse_button(GtkWidget* imgdisp, GdkEventMotion* motdata);
 void view_param_response(GtkWidget *dialog, gint response_id);
 void show_view_param(GtkWidget *btn_view_param, gpointer imgdisp);
 void match_pattern(GtkWidget *btn_match, gpointer imgdisp);
@@ -79,6 +80,7 @@ int main(int argc, char **argv)
   
   CcdImg *img = g_object_new (ccd_img_get_type(), NULL);
   ccd_img_set_img_type(img, IMGT_ACQ_OBJ);
+//   ccd_img_set_pixel_size(img, 2.3016,2.3189);
   ccd_img_set_pixel_size(img, 2.3170, 2.3264);
   if (get_img_info(img_id, img) < 0)
   {
@@ -107,8 +109,8 @@ int main(int argc, char **argv)
   imgdisp_set_img(imgdisp, img);
   gtk_widget_set_size_request(imgdisp, ccd_img_get_img_width(img)*1.5, ccd_img_get_img_height(img)*1.5);
   imgdisp_set_window(imgdisp, 0, 0, ccd_img_get_img_width(img), ccd_img_get_img_height(img));
-  imgdisp_set_flip_ew(imgdisp, TRUE);
-  imgdisp_set_grid(imgdisp, IMGDISP_GRID_EQUAT, 1.0, 1.0);
+  imgdisp_set_flip_ew(imgdisp, FALSE);
+  imgdisp_set_grid(imgdisp, IMGDISP_GRID_NONE, 1.0, 1.0);
     
   GtkWidget *btn_view_param = gtk_button_new_with_label("View parameters...");
   g_signal_connect(G_OBJECT(btn_view_param), "clicked", G_CALLBACK(show_view_param), imgdisp);
@@ -121,6 +123,7 @@ int main(int argc, char **argv)
   GtkWidget *lbl_coord = gtk_label_new("");
   gtk_box_pack_start(GTK_BOX(box_main), lbl_coord, TRUE, TRUE, 3);
   g_signal_connect (G_OBJECT(imgdisp), "motion-notify-event", G_CALLBACK (mouse_move), lbl_coord);
+  g_signal_connect (G_OBJECT(imgdisp), "button-press-event", G_CALLBACK(mouse_button), NULL);
 
   gtk_widget_show_all(wnd_main);
   gtk_main();
@@ -231,23 +234,40 @@ gboolean mouse_move(GtkWidget* imgdisp, GdkEventMotion* motdata, gpointer lbl_co
   glong pixel_y = imgdisp_coord_pixel_y(imgdisp, mouse_x, mouse_y);
   gfloat viewp_x = imgdisp_coord_viewport_x(imgdisp, mouse_x, mouse_y);
   gfloat viewp_y = imgdisp_coord_viewport_y(imgdisp, mouse_x, mouse_y);
-  gfloat ra_h = imgdisp_coord_ra(imgdisp, mouse_x, mouse_y)/15.0;
-  gfloat dec_d = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
+  gfloat ra_d, dec_d;
+  CcdImg *img = CCD_IMG(imgdisp_get_img(imgdisp));
+  ccd_img_get_pix_coord(img, pixel_x, pixel_y, &ra_d, &dec_d);
+//   gfloat ra_h = imgdisp_coord_ra(imgdisp, mouse_x, mouse_y)/15.0;
+//   gfloat dec_d = imgdisp_coord_dec(imgdisp, mouse_x, mouse_y);
   gfloat val = imgdisp_get_img_value(imgdisp, pixel_x, pixel_y);
   
   struct rastruct ra;
-  convert_H_HMSMS_ra(ra_h, &ra);
+  convert_H_HMSMS_ra(ra_d/15.0, &ra);
   char *ra_str = ra_to_str(&ra);
   struct decstruct dec;
   convert_D_DMS_dec(dec_d, &dec);
   char *dec_str = dec_to_str(&dec);
   
   char str[256];
-  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %ld  ;  Y: %ld  ;  val  %5.3f\nvX: %f  ;  vY: %f\nRA: %s  ;  Dec: %s", mouse_x, mouse_y, pixel_x, pixel_y, val, viewp_x, viewp_y, ra_str, dec_str);
+  sprintf(str, "mX: %lu  ;  mY: %lu\nX: %ld  ;  Y: %ld  ;  val  %5.3f\nvX: %f  ;  vY: %f\nRA: %s  ;  Dec: %s\nRA_d: %12.6f  ;  Dec_d: %12.6f", mouse_x, mouse_y, pixel_x, pixel_y, val, viewp_x, viewp_y, ra_str, dec_str, ra_d, dec_d);
   gtk_label_set_text(GTK_LABEL(lbl_coord), str);
   free(ra_str);
   free(dec_str);
   
+  return FALSE;
+}
+
+gboolean mouse_button(GtkWidget* imgdisp, GdkEventMotion* motdata)
+{
+  glong pixel_x = imgdisp_coord_pixel_x(imgdisp, motdata->x, motdata->y);
+  glong pixel_y = imgdisp_coord_pixel_y(imgdisp, motdata->x, motdata->y);
+  gfloat tel_ra, tel_dec, img_ra, img_dec, disp_ra, disp_dec;
+  CcdImg *img = CCD_IMG(imgdisp_get_img(imgdisp));
+  ccd_img_get_tel_pos(img, &tel_ra, &tel_dec);
+  ccd_img_get_pix_coord(img, pixel_x, pixel_y, &img_ra, &img_dec);
+  imgdisp_coord_equat(imgdisp, motdata->x, motdata->y, &disp_ra, &disp_dec);
+  
+  fprintf(stderr, "%5lu  %5lu    %12.6f  %12.6f    %12.6f  %12.6f\n", pixel_x, pixel_y, (tel_ra-img_ra)*60, (tel_dec-img_dec)*60, (tel_ra-disp_ra)*60, (tel_dec-disp_dec)*60);
   return FALSE;
 }
 
@@ -287,7 +307,7 @@ void match_pattern(GtkWidget *btn_match, gpointer imgdisp)
   equinox = ccd_img_get_start_datetime(img);
   PointList *pat_pts = get_pat_points(ra_d, dec_d, equinox, PAT_SEARCH_RADIUS);
   gint num_pat = point_list_get_num_used(pat_pts);
-  act_log_debug(act_log_msg("number of catalog stars in vicinity: %d\n", num_pat));
+  act_log_debug(act_log_msg("Number of catalog stars in vicinity: %d\n", num_pat));
   if (num_pat < MIN_NUM_STARS)
   {
     act_log_error(act_log_msg("Too few catalog stars in vicinity (%d must be %d)", num_pat, MIN_NUM_STARS));
@@ -296,7 +316,7 @@ void match_pattern(GtkWidget *btn_match, gpointer imgdisp)
   }
   
   // Match the two lists of points
-  GSList *map = find_point_list_map(img_pts, pat_pts, DEFAULT_RADIUS);
+  GSList *map = find_point_list_map(img_pts, pat_pts, 3./3600.0);
   gint num_match;
   point_list_clear(img_pts);
   point_list_clear(pat_pts);
@@ -328,7 +348,7 @@ void match_pattern(GtkWidget *btn_match, gpointer imgdisp)
   point_list_map_free(map);
   g_slist_free(map);
   
-  act_log_debug(act_log_msg("Pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %6.2f\" %6.2f", ra_d, dec_d, ra_d+rashift/3600.0, dec_d+decshift/3600.0, rashift, decshift));
+  act_log_debug(act_log_msg("Pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %12.6f %12.6f", ra_d, dec_d, ra_d+rashift, dec_d+decshift, rashift, decshift));
 }
 
 PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
@@ -356,21 +376,26 @@ PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
   act_log_debug(act_log_msg("  %d stars in image", num_stars));
   
   PointList *star_list = point_list_new_with_length(num_stars);
-  gfloat tmp_ra, tmp_dec;
+  gfloat tmp_ra, tmp_dec, equinox = ccd_img_get_start_datetime(img);
+  gdouble ra_fk5, dec_fk5;
   for (i=0; i<num_stars; i++)
   {
-    ret = imgdisp_coord_equat(imgdisp, obj[i].x, obj[i].y, &tmp_ra, &tmp_dec);
+    ccd_img_get_pix_coord(img, obj[i].x, obj[i].y, &tmp_ra, &tmp_dec);
+//     ret = imgdisp_coord_equat(imgdisp, obj[i].x, obj[i].y, &tmp_ra, &tmp_dec);
     if (ret < 0)
     {
       act_log_error(act_log_msg("Failed to calculate RA and Dec of star %d in star list."));
       continue;
     }
-    if (tmp_ra < 0.0)
-      tmp_ra += 360.0;
-    else if (tmp_ra >= 360.0)
-      tmp_ra -= 360.0;
-    act_log_debug(act_log_msg("    %6.2lf  %6.2lf      %10.5f  %10.5f", obj[i].x, obj[i].y, tmp_ra, tmp_dec));
-    ret = point_list_append(star_list, tmp_ra, tmp_dec);
+//     ra_fk5 = tmp_ra;
+//     dec_fk5 = tmp_dec;
+    precess_fk5(tmp_ra, tmp_dec, equinox, &ra_fk5, &dec_fk5);
+//     if (tmp_ra < 0.0)
+//       tmp_ra += 360.0;
+//     else if (tmp_ra >= 360.0)
+//       tmp_ra -= 360.0;
+    act_log_debug(act_log_msg("    %6.2lf  %6.2lf      %10.5f  %10.5f", obj[i].x, obj[i].y, ra_fk5, dec_fk5));
+    ret = point_list_append(star_list, ra_fk5, dec_fk5);
     if (!ret)
       act_log_debug(act_log_msg("Failed to add identified star %d to stars list."));
   }
@@ -459,6 +484,7 @@ PointList *get_pat_points(gdouble ra_d, gdouble dec_d, gdouble equinox, gdouble 
   if ((rowcount <= 0) || (mysql_num_fields(result) != 2))
   {
     fprintf(stderr, "Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).\n", rowcount, mysql_num_fields(result));
+    fprintf(stderr, "\t%f %f %f %f\n", ra_d_fk5, dec_d_fk5, radius_d, ra_radius_d);
     mysql_free_result(result);
     return point_list_new();
   }
@@ -512,6 +538,14 @@ void precess_fk5(gdouble ra_in, gdouble dec_in, gdouble eq_in, gdouble *ra_d_fk5
   sd = cos(ra_rad + xa)*sin(ta)*cos(dec_rad) + cos(ta)*sin(dec_rad);
   dec_rad = asin(sd);
   ra_rad = atan2(sacd, cacd) + za;
+  if (ra_rad < 0.0)
+    ra_rad += 2*ONEPI;
+  else if (ra_rad > 2*ONEPI)
+    ra_rad -= 2*ONEPI;
+  if (dec_rad < -1*ONEPI)
+    dec_rad += 2*ONEPI;
+  else if (dec_rad > ONEPI)
+    dec_rad -= 2*ONEPI;
   *ra_d_fk5 = ra_rad * 180.0 / ONEPI;
   *dec_d_fk5 = dec_rad * 180.0 / ONEPI;
 }
