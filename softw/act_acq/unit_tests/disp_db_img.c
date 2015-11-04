@@ -316,7 +316,7 @@ void match_pattern(GtkWidget *btn_match, gpointer imgdisp)
   }
   
   // Match the two lists of points
-  GSList *map = find_point_list_map(img_pts, pat_pts, 3./3600.0);
+  GSList *map = find_point_list_map(img_pts, pat_pts, 10./3600.0);
   gint num_match;
   point_list_clear(img_pts);
   point_list_clear(pat_pts);
