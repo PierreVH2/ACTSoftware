@@ -24,7 +24,7 @@
 #define IMGDB_UNAME   "act_acq"
 #define IMGDB_PASSWD  NULL
 
-#define MIN_NUM_STARS            4
+#define MIN_NUM_STARS            5
 #define MIN_MATCH_FRAC           0.4
 #define PAT_SEARCH_RADIUS        1.0
 
@@ -81,7 +81,8 @@ int main(int argc, char **argv)
   CcdImg *img = g_object_new (ccd_img_get_type(), NULL);
   ccd_img_set_img_type(img, IMGT_ACQ_OBJ);
 //   ccd_img_set_pixel_size(img, 2.3016,2.3189);
-  ccd_img_set_pixel_size(img, 2.3170, 2.3264);
+//   ccd_img_set_pixel_size(img, 2.3170, 2.3264);
+  ccd_img_set_pixel_size(img, 2.30680331438202, 2.23796007923311);
   if (get_img_info(img_id, img) < 0)
   {
     act_log_error(act_log_msg("Failed to get image %d info.", img_id));
