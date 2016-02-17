@@ -659,10 +659,12 @@ void manual_pattern_match(struct acq_objects *objs, CcdImg *img)
   point_list_map_calc_offset(map, &rashift, &decshift, NULL, NULL);
   point_list_map_free(map);
   g_slist_free(map);
+  point_list_clear(img_pts);
+  point_list_clear(pat_pts);
   
-  sprintf(msg_str, "Shift: %f\"  %f\"\nTrue: %f d  %f d", rashift, decshift, img_ra+rashift/3600.0, img_dec+decshift/3600.0);
+  sprintf(msg_str, "Shift: %f\"  %f\"\nTrue: %f d  %f d", rashift, decshift, img_ra+rashift, img_dec+decshift);
   manual_pattern_match_msg(gtk_widget_get_toplevel(objs->box_main), GTK_MESSAGE_INFO, msg_str);
-  act_log_debug(act_log_msg("Pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %6.2f\" %6.2f", img_ra, img_dec, img_ra+rashift/3600.0, img_dec+decshift/3600.0, rashift, decshift));
+  act_log_debug(act_log_msg("Manual pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %6.2f\" %6.2f\"", img_ra, img_dec, img_ra+rashift, img_dec+decshift, rashift/3600.0, decshift/3600.0));
 }
 
 void manual_pattern_match_msg(GtkWidget *parent, guint type, const char *msg)
@@ -745,6 +747,8 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
     point_list_map_calc_offset(map, &rashift, &decshift, NULL, NULL);
     obsnstat = OBSNSTAT_GOOD;
   }
+  point_list_clear(img_pts);
+  point_list_clear(pat_pts);
   if (map != NULL)
   {
     point_list_map_free(map);
@@ -753,6 +757,7 @@ void image_auto_target_set(struct acq_objects *objs, CcdImg *img)
   }
   
   // Send response
+  act_log_debug(act_log_msg("Auto pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %6.2f\" %6.2f\"", img_ra, img_dec, img_ra+rashift, img_dec+decshift, rashift/3600.0, decshift/3600.0));
   if ((rashift < TARGSET_CENT_RADIUS) && (decshift < TARGSET_CENT_RADIUS))
     acq_net_send_targset_response(objs->net, obsnstat, rashift, decshift, TRUE);
   else

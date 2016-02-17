@@ -135,7 +135,7 @@ gint acq_net_send_targset_response(AcqNet *objs, gchar status, gdouble adj_ra_d,
     return -1;
   }
   PENDING_MSG_TARGSET(objs)->status = status;
-  PENDING_MSG_TARGSET(objs)->adj_ra_h = convert_DEG_H(adj_ra_d/15.0);
+  PENDING_MSG_TARGSET(objs)->adj_ra_h = convert_DEG_H(adj_ra_d);
   PENDING_MSG_TARGSET(objs)->adj_dec_d = adj_dec_d;
   PENDING_MSG_TARGSET(objs)->targ_cent = targ_cent;
   int ret = acq_net_send(objs->net_chan, (struct act_msg *)objs->pending_msg);
