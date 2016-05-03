@@ -1,7 +1,8 @@
 /* Compile from local directory with:
  * gcc -Wall -Wextra `pkg-config --cflags gtk+-2.0 gtkglext-1.0` -I../ -I../../../libs/ 
- * ./disp_db_img.c ../ccd_img.c ../imgdisp.c ../view_param_dialog.c ../../../libs/act_log.c ../../../libs/act_timecoord.c 
- * `pkg-config --libs gtk+-2.0 gtkglext-1.0` -lmysqlclient -lm -o ./disp_db_img
+ * ./disp_db_img.c ../ccd_img.c ../imgdisp.c ../view_param_dialog.c ../sep/*.c ../point_list.c ../pattern_match.c
+ * ../../../libs/act_log.c ../../../libs/act_timecoord.c `pkg-config --libs gtk+-2.0 gtkglext-1.0` -lmysqlclient -lm
+ * -o ./disp_db_img
  */
 
 #include <gtk/gtk.h>
@@ -179,7 +180,9 @@ gint get_img_info(gint img_id, CcdImg *img)
   
   ccd_img_set_integ_t(img, exp_t_s);
   ccd_img_set_window(img, read_x, read_y, read_width, read_height, read_pbnx, read_pbny);
-  ccd_img_set_tel_pos(img, read_ra*15.0, read_dec);
+  gdouble ra_fk5, dec_fk5;
+  precess_fk5(read_ra*15.0, read_dec, 2000.0 + (gdouble)read_days / 365.25, &ra_fk5, &dec_fk5);
+  ccd_img_set_tel_pos(img, ra_fk5, dec_fk5);
   ccd_img_set_start_datetime(img, 2000.0 + (gdouble)read_days / 365.25);
   
   return 0;
@@ -268,7 +271,7 @@ gboolean mouse_button(GtkWidget* imgdisp, GdkEventMotion* motdata)
   ccd_img_get_pix_coord(img, pixel_x, pixel_y, &img_ra, &img_dec);
   imgdisp_coord_equat(imgdisp, motdata->x, motdata->y, &disp_ra, &disp_dec);
   
-  fprintf(stderr, "%5lu  %5lu    %12.6f  %12.6f    %12.6f  %12.6f\n", pixel_x, pixel_y, (tel_ra-img_ra)*60, (tel_dec-img_dec)*60, (tel_ra-disp_ra)*60, (tel_dec-disp_dec)*60);
+  fprintf(stderr, "%5lu  %5lu    %12.6f  %12.6f\n", pixel_x, pixel_y, img_ra, img_dec);
   return FALSE;
 }
 
@@ -349,12 +352,12 @@ void match_pattern(GtkWidget *btn_match, gpointer imgdisp)
   point_list_map_free(map);
   g_slist_free(map);
   
-  act_log_debug(act_log_msg("Pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %12.6f %12.6f", ra_d, dec_d, ra_d+rashift, dec_d+decshift, rashift, decshift));
+  act_log_debug(act_log_msg("Pattern match result:  %12.6f %12.6f  %12.6f %12.6f  %12.6f %12.6f", ra_d, dec_d, ra_d-rashift, dec_d-decshift, rashift, decshift));
 }
 
 PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
 {
-  float conv[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1};
+//   float conv[9] = {1, 2, 1, 2, 4, 2, 1, 2, 1};
   float mean=0.0, stddev=0.0;
   int i, num_pix=ccd_img_get_img_len(img);
   float const *img_data = ccd_img_get_img_data(img);
@@ -368,7 +371,9 @@ PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
   
   sepobj *obj = NULL;
   int ret, num_stars;
-  ret = sep_extract((void *)img_data, NULL, SEP_TFLOAT, SEP_TFLOAT, 0, ccd_img_get_win_width(img), ccd_img_get_win_height(img), mean+3*stddev, 5, conv, 3, 3, 32, 0.005, 1, 1.0, &obj, &num_stars);
+  ret = sep_extract((void *)img_data, NULL, SEP_TFLOAT, SEP_TFLOAT, 0, ccd_img_get_win_width(img), ccd_img_get_win_height(img), 1.5*mean, 5, NULL, 0, 0, 32, 0.005, 1, 1.0, &obj, &num_stars);
+  
+//   ret = sep_extract((void *)img_data, NULL, SEP_TFLOAT, SEP_TFLOAT, 0, ccd_img_get_win_width(img), ccd_img_get_win_height(img), mean+3*stddev, 5, conv, 3, 3, 32, 0.005, 1, 1.0, &obj, &num_stars);
   if (ret != 0)
   {
     act_log_error(act_log_msg("Failed to extract stars from image - SEP error code %d", ret));
@@ -390,12 +395,14 @@ PointList *image_extract_stars(CcdImg *img, GtkWidget *imgdisp)
     }
 //     ra_fk5 = tmp_ra;
 //     dec_fk5 = tmp_dec;
-    precess_fk5(tmp_ra, tmp_dec, equinox, &ra_fk5, &dec_fk5);
+//     precess_fk5(tmp_ra, tmp_dec, equinox, &ra_fk5, &dec_fk5);
 //     if (tmp_ra < 0.0)
 //       tmp_ra += 360.0;
 //     else if (tmp_ra >= 360.0)
 //       tmp_ra -= 360.0;
-    act_log_debug(act_log_msg("    %6.2lf  %6.2lf      %10.5f  %10.5f", obj[i].x, obj[i].y, ra_fk5, dec_fk5));
+    ra_fk5 = tmp_ra;
+    dec_fk5 = tmp_dec;
+    act_log_debug(act_log_msg("    %6.2lf  %6.2lf      %10.5f  %10.5f      %10.5f  %10.5f", obj[i].x, obj[i].y, tmp_ra, tmp_dec, ra_fk5, dec_fk5));
     ret = point_list_append(star_list, ra_fk5, dec_fk5);
     if (!ret)
       act_log_debug(act_log_msg("Failed to add identified star %d to stars list."));
@@ -411,7 +418,9 @@ PointList *get_pat_points(gdouble ra_d, gdouble dec_d, gdouble equinox, gdouble 
   MYSQL_RES *result;
   MYSQL_ROW row;
   
-  precess_fk5(ra_d, dec_d, equinox, &ra_d_fk5, &dec_d_fk5);
+//   precess_fk5(ra_d, dec_d, equinox, &ra_d_fk5, &dec_d_fk5);
+  ra_d_fk5 = ra_d;
+  dec_d_fk5 = dec_d;
   gdouble ra_radius_d = radius_d / cos(dec_d_fk5*ONEPI/180.0);
   
   if (dec_d_fk5 + radius_d >= 90.0)
@@ -474,6 +483,7 @@ PointList *get_pat_points(gdouble ra_d, gdouble dec_d, gdouble equinox, gdouble 
     sprintf(constr_str, "dec_d_fk5<%lf AND dec_d_fk5>%lf AND ra_d_fk5<%lf AND ra_d_fk5>%lf", dec_d_fk5+radius_d, dec_d_fk5-radius_d, ra_d_fk5+ra_radius_d, ra_d_fk5-ra_radius_d);
   
   sprintf(qrystr, "SELECT ra_d_fk5, dec_d_fk5 FROM gsc1 WHERE reg_id IN (%s) AND (%s)", reg_list, constr_str);
+  act_log_debug(act_log_msg(qrystr));
   mysql_query(conn, qrystr);
   result = mysql_store_result(conn);
   if (result == NULL)
