@@ -143,6 +143,7 @@ void process_image(gint img_id)
     point_list_map_free(map);
     g_slist_free(map);
     map = NULL;
+    num_match = 0;
   }
   if (map == NULL)
   {
