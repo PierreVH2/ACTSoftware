@@ -132,21 +132,21 @@ void process_image(gint img_id)
   }
   
   fprintf(stderr, "Matching pattern... ");
-  patmatch_radius = PAT_MATCH_RADIUS/20.0;
-  while ((map == NULL) && (patmatch_radius<PAT_MATCH_RADIUS*10.0))
+  for (patmatch_radius=PAT_MATCH_RADIUS/10.0; patmatch_radius<=PAT_MATCH_RADIUS*10.0; patmatch_radius*=2.0)
   {
-    patmatch_radius *= 2.0;
     map = find_point_list_map(img_stars, pat_stars, patmatch_radius);
+    if (map == NULL)
+      continue;
+    num_match = g_slist_length(map);
+    if (num_match / (float)num_stars >= MIN_MATCH_FRAC)
+      break;
+    point_list_map_free(map);
+    g_slist_free(map);
+    map = NULL;
   }
   if (map == NULL)
   {
     fprintf(stderr, "Failed to find point mapping for image %d. ", img_id);
-    goto finalise;
-  }
-  num_match = g_slist_length(map);
-  if (num_match / (float)num_stars < MIN_MATCH_FRAC)
-  {
-    fprintf(stderr, "Too few stars mapped to pattern (%d mapped, %d required). ", num_match, (int)(MIN_MATCH_FRAC*num_stars));
     goto finalise;
   }
   point_list_map_calc_offset(map, &shift_ra, &shift_dec, NULL, NULL);
