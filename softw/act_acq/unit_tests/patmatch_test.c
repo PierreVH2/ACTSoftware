@@ -77,10 +77,10 @@ int main(int argc, char **argv)
   {
     if (sscanf(img_row[0], "%d", &img_id) != 1)
     {
-      fprintf(stderr, "Failed to extract image ID (%s)\n", img_row[0]);
+      fprintf(stderr, "Failed to extract image ID (%s).\n", img_row[0]);
       continue;
     }
-    fprintf(stderr, "Processing image %d\n", img_id);
+    fprintf(stderr, "Processing image %d.\n", img_id);
     process_image(img_id);
   }
   
@@ -95,21 +95,22 @@ void process_image(gint img_id)
   GSList *map = NULL;
   gint num_stars=0, num_pat=0, num_match=0;
   gfloat tel_ra=0.0, tel_dec=0.0, tel_eq=0.0, shift_ra=0.0, shift_dec=0.0;
-  gdouble tel_ra_fk5=0.0, tel_dec_fk5=0.0;
+  gdouble tel_ra_fk5=0.0, tel_dec_fk5=0.0, patmatch_radius=0.0;
   
+  fprintf(stderr, "Fetching image... ");
   img = g_object_new (ccd_img_get_type(), NULL);
   ccd_img_set_img_type(img, IMGT_ACQ_OBJ);
   ccd_img_set_pixel_size(img, 2.30680331438202, 2.23796007923311);
   if (get_img_info(img_id, img) < 0)
   {
-    fprintf(stderr, "Failed to get image %d info.\n", img_id);
+    fprintf(stderr, "Failed to get image %d info. ", img_id);
     g_object_unref(img);
     img = NULL;
     goto finalise;
   }
   if (get_img_data(img_id, img) != 0)
   {
-    fprintf(stderr, "Failed to get image %d data.\n", img_id);
+    fprintf(stderr, "Failed to get image %d data. ", img_id);
     g_object_unref(img);
     img = NULL;
     goto finalise;
@@ -117,33 +118,42 @@ void process_image(gint img_id)
   ccd_img_get_tel_pos(img, &tel_ra, &tel_dec);
   tel_eq = ccd_img_get_start_datetime(img);
   precess_fk5(tel_ra, tel_dec, tel_eq, &tel_ra_fk5, &tel_dec_fk5);
-    
+  
+  fprintf(stderr, "Extracting stars... ");
   img_stars = get_img_stars(img);
   num_stars = point_list_get_num_used(img_stars);
+  fprintf(stderr, "Fetching pattern... ");
   pat_stars = get_pat_points(img, PAT_SEARCH_RADIUS);
   num_pat = point_list_get_num_used(pat_stars);
   if ((num_stars < MIN_NUM_STARS) || (num_pat < MIN_NUM_STARS))
   {
-    fprintf(stderr, "Too few stars available (%d, %d)\n", num_stars, num_pat);
+    fprintf(stderr, "Too few stars available (%d, %d). ", num_stars, num_pat);
     goto finalise;
   }
   
-  map = find_point_list_map(img_stars, pat_stars, PAT_MATCH_RADIUS);
+  fprintf(stderr, "Matching pattern... ");
+  patmatch_radius = PAT_MATCH_RADIUS/20.0;
+  while ((map == NULL) && (patmatch_radius<PAT_MATCH_RADIUS*10.0))
+  {
+    patmatch_radius *= 2.0;
+    map = find_point_list_map(img_stars, pat_stars, patmatch_radius);
+  }
   if (map == NULL)
   {
-    fprintf(stderr, "Failed to find point mapping for image %d.\n", img_id);
+    fprintf(stderr, "Failed to find point mapping for image %d. ", img_id);
     goto finalise;
   }
   num_match = g_slist_length(map);
   if (num_match / (float)num_stars < MIN_MATCH_FRAC)
   {
-    fprintf(stderr, "Too few stars mapped to pattern (%d mapped, %d required)\n", num_match, (int)(MIN_MATCH_FRAC*num_stars));
+    fprintf(stderr, "Too few stars mapped to pattern (%d mapped, %d required). ", num_match, (int)(MIN_MATCH_FRAC*num_stars));
     goto finalise;
   }
   point_list_map_calc_offset(map, &shift_ra, &shift_dec, NULL, NULL);
   
   finalise:
-  printf("%5d\t%12.6f  %12.6f  %6.1f\t%12.6f  %12.6f  %6.1f\t%6d  %6d  %6d\t%6.1f  %6.1f\t%12.6f  %12.6f  %6.1f\n", img_id, tel_ra, tel_dec, tel_eq, tel_ra_fk5, tel_dec_fk5, 2000.0, num_stars, num_pat, num_match, shift_ra*3600.0, shift_dec*3600.0, tel_ra_fk5-shift_ra, tel_dec_fk5-shift_dec, 2000.0);
+  fprintf(stderr, "\n");
+  printf("%5d  %12.6f\t%12.6f  %12.6f  %6.1f\t%12.6f  %12.6f  %6.1f\t%6d  %6d  %6d\t%6.1f  %6.1f\t%12.6f  %12.6f  %6.1f\n", img_id, patmatch_radius, tel_ra, tel_dec, tel_eq, tel_ra_fk5, tel_dec_fk5, 2000.0, num_stars, num_pat, num_match, shift_ra*3600.0, shift_dec*3600.0, tel_ra_fk5-shift_ra, tel_dec_fk5-shift_dec, 2000.0);
   
   print_image(img_id, img);
   print_stars(img_id, img_stars);
@@ -173,16 +183,16 @@ gint get_img_info(gint img_id, CcdImg *img)
   result = mysql_store_result(conn);
   if (result == NULL)
   {
-    fprintf(stderr, "Failed to retrieve information for image %d - %s.\n", img_id, mysql_error(conn));
+    fprintf(stderr, "Failed to retrieve information for image %d - %s. ", img_id, mysql_error(conn));
     return -1;
   }
   gint rowcount = mysql_num_rows(result);
   if (rowcount != 1)
   {
     if (rowcount == 0)
-      fprintf(stderr, "No image found with identifier %d.\n", img_id);
+      fprintf(stderr, "No image found with identifier %d. ", img_id);
     else
-      fprintf(stderr, "Too many images found with identifier %d - something is very wrong.\n", img_id);
+      fprintf(stderr, "Too many images found with identifier %d - something is very wrong. ", img_id);
     return -1;
   }
   row = mysql_fetch_row(result);
@@ -202,7 +212,7 @@ gint get_img_info(gint img_id, CcdImg *img)
   mysql_free_result(result);
   if (ret != 10)
   {
-    fprintf(stderr, "Failed to extract all necessary image information for image %d (%d parameters extracted)\n.", img_id, ret);
+    fprintf(stderr, "Failed to extract all necessary image information for image %d (%d parameters extracted). ", img_id, ret);
     return -1;
   }
   
@@ -224,13 +234,13 @@ gint get_img_data(gint img_id, CcdImg *img)
   result = mysql_store_result(conn);
   if (result == NULL)
   {
-    fprintf(stderr, "Failed to retrieve pixel data for image %d - %s.\n", img_id, mysql_error(conn));
+    fprintf(stderr, "Failed to retrieve pixel data for image %d - %s. ", img_id, mysql_error(conn));
     return -1;
   }
   gint rowcount = mysql_num_rows(result);
   if (rowcount != (gint)ccd_img_get_img_width(img) * ccd_img_get_img_height(img))
   {
-    fprintf(stderr, "Image size mismatch (database sent %d pixels, should be %d), image %d\n", (gint)ccd_img_get_img_width(img) * ccd_img_get_img_height(img), rowcount, img_id);
+    fprintf(stderr, "Image size mismatch (database sent %d pixels, should be %d), image %d. ", (gint)ccd_img_get_img_width(img) * ccd_img_get_img_height(img), rowcount, img_id);
     mysql_free_result(result);
     return -1;
   }
@@ -248,7 +258,7 @@ gint get_img_data(gint img_id, CcdImg *img)
   mysql_free_result(result);
   if (ret != rowcount)
   {
-    fprintf(stderr, "Not all pixels read (%d should be %d)\n", ret, rowcount);
+    fprintf(stderr, "Not all pixels read (%d should be %d). ", ret, rowcount);
     free(img_data);
     return -1;
   }
@@ -271,12 +281,12 @@ PointList *get_img_stars(CcdImg *img)
   ret = sep_extract((void *)img_data, NULL, SEP_TFLOAT, SEP_TFLOAT, 0, ccd_img_get_win_width(img), ccd_img_get_win_height(img), 1.5*mean, 5, NULL, 0, 0, 32, 0.005, 1, 1.0, &obj, &num_stars);
   if (ret != 0)
   {
-    fprintf(stderr, "Failed to extract stars from image - SEP error code %d\n", ret);
+    fprintf(stderr, "Failed to extract stars from image - SEP error code %d. ", ret);
     return point_list_new();
   }
   if (num_stars <= 0)
   {
-    fprintf(stderr, "No stars extracted from image (%d).\n", num_stars);
+    fprintf(stderr, "No stars extracted from image (%d). ", num_stars);
     return point_list_new();
   }
   
@@ -289,13 +299,13 @@ PointList *get_img_stars(CcdImg *img)
     ccd_img_get_pix_coord(img, obj[i].x, obj[i].y, &star_ra, &star_dec);
     if (ret < 0)
     {
-      fprintf(stderr, "Failed to calculate RA and Dec of star %d in star list.\n", i);
+      fprintf(stderr, "Failed to calculate RA and Dec of star %d in star list. ", i);
       continue;
     }
     precess_fk5(star_ra, star_dec, tel_eq, &star_ra_fk5, &star_dec_fk5);
     ret = point_list_append(star_list, star_ra_fk5, star_dec_fk5);
     if (!ret)
-      fprintf(stderr, "Failed to add identified star %d to stars list.\n", i);
+      fprintf(stderr, "Failed to add identified star %d to stars list. ", i);
   }
   
   free(obj);
@@ -331,13 +341,13 @@ PointList *get_pat_points(CcdImg *img, gfloat radius_d)
   result = mysql_store_result(conn);
   if (result == NULL)
   {
-    fprintf(stderr, "Could not retrieve catalog star regions - %s.\n", mysql_error(conn));
+    fprintf(stderr, "Could not retrieve catalog star regions - %s. ", mysql_error(conn));
     return point_list_new();
   }
   gint rowcount = mysql_num_rows(result);
   if ((rowcount <= 0) || (mysql_num_fields(result) != 1))
   {
-    fprintf(stderr, "Could not retrieve star catalog region entries - Invalid number of rows/columns returned (%d rows, %d columns).\n", rowcount, mysql_num_fields(result));
+    fprintf(stderr, "Could not retrieve star catalog region entries - Invalid number of rows/columns returned (%d rows, %d columns). ", rowcount, mysql_num_fields(result));
     mysql_free_result(result);
     return point_list_new();
   }
@@ -347,13 +357,13 @@ PointList *get_pat_points(CcdImg *img, gfloat radius_d)
     ret = sscanf(row[0], "%d", &reg_id);
     if (ret != 1)
     {
-      fprintf(stderr, "Failed to extract region ID.\n");
+      fprintf(stderr, "Failed to extract region ID. ");
       break;
     }
     ret = sprintf(&reg_list[len], "%d,", reg_id);
     if (ret <= 0)
     {
-      fprintf(stderr, "Failed to write region ID to region list.\n");
+      fprintf(stderr, "Failed to write region ID to region list. ");
       break;
     }
     len += ret;
@@ -380,14 +390,14 @@ PointList *get_pat_points(CcdImg *img, gfloat radius_d)
   result = mysql_store_result(conn);
   if (result == NULL)
   {
-    fprintf(stderr, "Could not retrieve catalog stars - %s.\n", mysql_error(conn));
+    fprintf(stderr, "Could not retrieve catalog stars - %s. ", mysql_error(conn));
     return point_list_new();
   }
   rowcount = mysql_num_rows(result);
   if ((rowcount <= 0) || (mysql_num_fields(result) != 2))
   {
-    fprintf(stderr, "Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns).\n", rowcount, mysql_num_fields(result));
-    fprintf(stderr, "\t%f %f %f %f\n", tel_ra_fk5, tel_dec_fk5, radius_d, ra_radius_d);
+    fprintf(stderr, "Could not retrieve star catalog entries - Invalid number of rows/columns returned (%d rows, %d columns). ", rowcount, mysql_num_fields(result));
+//    fprintf(stderr, "\t%f %f %f %f\n", tel_ra_fk5, tel_dec_fk5, radius_d, ra_radius_d);
     mysql_free_result(result);
     return point_list_new();
   }
@@ -395,7 +405,7 @@ PointList *get_pat_points(CcdImg *img, gfloat radius_d)
   PointList *list = point_list_new_with_length(rowcount);
   if (list == NULL)
   {
-    fprintf(stderr, "Failed to create point list for star catalog entries.\n");
+    fprintf(stderr, "Failed to create point list for star catalog entries. ");
     mysql_free_result(result);
     return point_list_new();
   }
@@ -409,7 +419,7 @@ PointList *get_pat_points(CcdImg *img, gfloat radius_d)
       OK = 0;
     if (!OK)
     {
-      fprintf(stderr, "Failed to extract all parameters for point from database.\n");
+      fprintf(stderr, "Failed to extract all parameters for point from database. ");
       break;
     }
     point_list_append(list, point_ra, point_dec);
@@ -417,12 +427,12 @@ PointList *get_pat_points(CcdImg *img, gfloat radius_d)
   mysql_free_result(result);
   if (!OK)
   {
-    fprintf(stderr, "Failed to retrieve all catalog stars from database.\n");
+    fprintf(stderr, "Failed to retrieve all catalog stars from database. ");
     point_list_clear(list);
     return point_list_new();
   }
   if (point_list_get_num_used(list) != (guint)rowcount)
-    fprintf(stderr, "Not all catalog stars extracted from database (%u should be %d).\n", point_list_get_num_used(list), rowcount);
+    fprintf(stderr, "Not all catalog stars extracted from database (%u should be %d). ", point_list_get_num_used(list), rowcount);
   return list;
 }
 
