@@ -25,8 +25,11 @@
 #define IMGDB_UNAME   "act_acq"
 #define IMGDB_PASSWD  NULL
 
-#define MIN_NUM_STARS            5
-#define MIN_MATCH_FRAC           0.4
+#define MIN_NUM_STARS(num_stars)            (num_stars>=4)
+#define MIN_MATCH(num_stars,num_match)      (num_match / (float)num_stars >= 0.4)
+#define MAX_SHIFT(ras,decs)                 (ras*ras+decs*decs<0.2)
+
+
 #define PAT_SEARCH_RADIUS        1.0
 #define PAT_MATCH_RADIUS         10./3600.0
 
@@ -47,6 +50,11 @@ MYSQL *conn = NULL;
 int main(int argc, char **argv)
 {
   gtk_init(&argc, &argv);
+  if (argc < 2)
+  {
+    fprintf(stderr, "Invalid input parameters. Please specify one or more image identifiers.\n");
+    return 1;
+  }
 
   conn = mysql_init(NULL);
   if (conn == NULL)
@@ -61,6 +69,19 @@ int main(int argc, char **argv)
     return 2;
   }
   
+  int i, img_id;
+  for (i=1; i<argc; i++)
+  {
+    if (sscanf(argv[i], "%d", &img_id) != 1)
+    {
+      fprintf(stderr, "Failed to extract image ID (%s).\n", argv[0]);
+      continue;
+    }
+    fprintf(stderr, "Processing image %d.\n", img_id);
+    process_image(img_id);
+  }
+  
+/*
   MYSQL_RES *img_res;
   MYSQL_ROW img_row;
   mysql_query(conn, "SELECT id FROM ccd_img WHERE type=2");
@@ -83,6 +104,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "Processing image %d.\n", img_id);
     process_image(img_id);
   }
+  */
   
   mysql_close(conn);
   return 0;
@@ -125,32 +147,41 @@ void process_image(gint img_id)
   fprintf(stderr, "Fetching pattern... ");
   pat_stars = get_pat_points(img, PAT_SEARCH_RADIUS);
   num_pat = point_list_get_num_used(pat_stars);
-  if ((num_stars < MIN_NUM_STARS) || (num_pat < MIN_NUM_STARS))
+  if ((!MIN_NUM_STARS(num_stars)) || (!MIN_NUM_STARS(num_pat)))
   {
     fprintf(stderr, "Too few stars available (%d, %d). ", num_stars, num_pat);
     goto finalise;
   }
   
   fprintf(stderr, "Matching pattern... ");
-  for (patmatch_radius=PAT_MATCH_RADIUS/10.0; patmatch_radius<=PAT_MATCH_RADIUS*10.0; patmatch_radius*=2.0)
+  for (patmatch_radius=PAT_MATCH_RADIUS/10.0; patmatch_radius<=PAT_MATCH_RADIUS*1000.0; patmatch_radius*=2.0)
   {
     map = find_point_list_map(img_stars, pat_stars, patmatch_radius);
     if (map == NULL)
       continue;
     num_match = g_slist_length(map);
-    if (num_match / (float)num_stars >= MIN_MATCH_FRAC)
-      break;
-    point_list_map_free(map);
-    g_slist_free(map);
-    map = NULL;
-    num_match = 0;
+    if (!MIN_MATCH(num_stars, num_match))
+    {
+      point_list_map_free(map);
+      g_slist_free(map);
+      map = NULL;
+      continue;
+    }
+    point_list_map_calc_offset(map, &shift_ra, &shift_dec, NULL, NULL);
+    if (MAX_SHIFT(shift_ra, shift_dec))
+    {
+      point_list_map_free(map);
+      g_slist_free(map);
+      map = NULL;
+      continue;
+    }
+    break;
   }
   if (map == NULL)
   {
     fprintf(stderr, "Failed to find point mapping for image %d. ", img_id);
     goto finalise;
   }
-  point_list_map_calc_offset(map, &shift_ra, &shift_dec, NULL, NULL);
   
   finalise:
   fprintf(stderr, "\n");
