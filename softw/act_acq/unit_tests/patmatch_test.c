@@ -26,12 +26,12 @@
 #define IMGDB_PASSWD  NULL
 
 #define MIN_NUM_STARS(num_stars)            (num_stars>=4)
-#define MIN_MATCH(num_stars,num_match)      (num_match / (float)num_stars >= 0.4)
-#define MAX_SHIFT(ras,decs)                 (ras*ras+decs*decs<0.2)
+#define MIN_MATCH(num_stars,num_match)      ((num_match / (float)num_stars >= 0.4) && (MIN_NUM_STARS(num_match)))
+#define MAX_SHIFT(ras,decs)                 ((ras*ras+decs*decs)<0.2)
 
 
 #define PAT_SEARCH_RADIUS        1.0
-#define PAT_MATCH_RADIUS         10./3600.0
+#define PAT_MATCH_RADIUS         30./3600.0
 
 void process_image(gint img_id);
 gint get_img_info(gint img_id, CcdImg *img);
@@ -116,8 +116,8 @@ void process_image(gint img_id)
   PointList *img_stars = NULL, *pat_stars = NULL;
   GSList *map = NULL;
   gint num_stars=0, num_pat=0, num_match=0;
-  gfloat tel_ra=0.0, tel_dec=0.0, tel_eq=0.0, shift_ra=0.0, shift_dec=0.0;
-  gdouble tel_ra_fk5=0.0, tel_dec_fk5=0.0, patmatch_radius=0.0;
+  gfloat tel_ra=0.0, tel_dec=0.0, tel_eq=0.0, shift_ra=0.0, shift_dec=0.0, patmatch_radius=-1.0;
+  gdouble tel_ra_fk5=0.0, tel_dec_fk5=0.0;
   
   fprintf(stderr, "Fetching image... ");
   img = g_object_new (ccd_img_get_type(), NULL);
@@ -154,9 +154,20 @@ void process_image(gint img_id)
   }
   
   fprintf(stderr, "Matching pattern... ");
-  for (patmatch_radius=PAT_MATCH_RADIUS/10.0; patmatch_radius<=PAT_MATCH_RADIUS*1000.0; patmatch_radius*=2.0)
+  map = find_point_list_map(img_stars, pat_stars, PAT_MATCH_RADIUS);
+  num_match = g_slist_length(map);
+  if (!MIN_MATCH(num_stars, num_match))
+    goto finalise;
+  point_list_map_calc_offset(map, &shift_ra, &shift_dec, NULL, NULL);
+  if (!MAX_SHIFT(shift_ra, shift_dec))
+    goto finalise;
+  patmatch_radius = PAT_MATCH_RADIUS;
+  
+/*
+  double pr;
+  for (pr=PAT_MATCH_RADIUS/10.0; pr<=0.01; pr*=2.0)
   {
-    map = find_point_list_map(img_stars, pat_stars, patmatch_radius);
+    map = find_point_list_map(img_stars, pat_stars, pr);
     if (map == NULL)
       continue;
     num_match = g_slist_length(map);
@@ -168,20 +179,27 @@ void process_image(gint img_id)
       continue;
     }
     point_list_map_calc_offset(map, &shift_ra, &shift_dec, NULL, NULL);
-    if (MAX_SHIFT(shift_ra, shift_dec))
+    if (!MAX_SHIFT(shift_ra, shift_dec))
     {
       point_list_map_free(map);
       g_slist_free(map);
       map = NULL;
       continue;
     }
+    patmatch_radius = pr;
     break;
   }
   if (map == NULL)
   {
-    fprintf(stderr, "Failed to find point mapping for image %d. ", img_id);
-    goto finalise;
+    fprintf(stderr, "Failed to find point mapping. ");
+    if (!MIN_MATCH(num_stars, num_match))
+      fprintf(stderr, "Too few stars mapped (%d). ", num_match);
+    else if (!MAX_SHIFT(shift_ra, shift_dec))
+      fprintf(stderr, "Shift too large (%f %f -> %f). ", shift_ra, shift_dec, shift_ra*shift_ra+shift_dec*shift_dec);
   }
+  else
+    fprintf(stderr, "Success. ");
+  */
   
   finalise:
   fprintf(stderr, "\n");
@@ -503,9 +521,17 @@ void print_image(gint img_id, CcdImg *img)
   sprintf(fname, "img_%04d.dat", img_id);
   FILE *fout = fopen(fname, "w");
   gushort x,y;
+  gfloat pix_ra, pix_dec, eq=ccd_img_get_start_datetime(img);
+  gdouble ra_fk5, dec_fk5;
   for (x=0; x<ccd_img_get_img_width(img); x++)
+  {
     for (y=0; y<ccd_img_get_img_height(img); y++)
-      fprintf(fout, "%4d\t%4d\t%10.6f\n", x, y, ccd_img_get_pixel(img, x, y));
+    {
+      ccd_img_get_pix_coord(img, x, y, &pix_ra, &pix_dec);
+      precess_fk5(pix_ra, pix_dec, eq, &ra_fk5, &dec_fk5);
+      fprintf(fout, "%12.6f\t%12.6f\t%10.6f\n", ra_fk5, dec_fk5, ccd_img_get_pixel(img, x, y));
+    }
+  }
   fclose(fout);
 }
 
