@@ -14,40 +14,32 @@
 
 drivers_start ()
 {
-    echo "Synchronising clock to gpst.salt"
-    ntpd -g -q -x
     echo "Loading ACT drivers"
-    modprobe time_driver
     modprobe plc_ldisc
     modprobe act_plc
     modprobe motor_driver
     modprobe merlin_driver
-    modprobe pmt_driver
-    echo "Testing for PLC"
-    nohup plc_hog $(find /dev \( -name ttyS* -o -name ttyUSB* \) ) &
+    # echo "Testing for PLC"
+    # nohup plc_hog $(find /dev \( -name ttyS* -o -name ttyUSB* \) ) &
     echo "Done"
 }
 
 drivers_stop ()
 {
   killall -s SIGINT plc_hog
-  if lsmod | grep -q ^pmt_driver ; then rmmod pmt_driver ; fi
   if lsmod | grep -q ^merlin_driver ; then rmmod merlin_driver ; fi
   if lsmod | grep -q ^motor_driver ; then rmmod motor_driver ; fi
   if lsmod | grep -q ^act_plc ; then rmmod act_plc ; fi
   if lsmod | grep -q ^plc_ldisc ; then rmmod plc_ldisc ; fi
-  if lsmod | grep -q ^time_driver ; then rmmod time_driver ; fi
 }
 
 drivers_force_stop ()
 {
   killall plc_hog
-  rmmod -f pmt_driver
   rmmod -f merlin_driver
   rmmod -f motor_driver
   rmmod -f act_plc
   rmmod -f plc_ldisc
-  rmmod -f time_driver
 }
 
 case "$1" in
@@ -67,11 +59,6 @@ case "$1" in
     ;;
   status)
     success=0
-    if [ ! -c /dev/act_time ] ;
-    then
-      echo "/dev/act_time missing"
-      success=1
-    fi
     if [ ! -c /dev/act_plc ] ;
     then
       echo "/dev/act_plc missing"
@@ -87,16 +74,6 @@ case "$1" in
       echo "/dev/act_merlin missing"
       success=1
     fi
-    if [ ! -c /dev/act_pmt ] ;
-    then
-      echo "/dev/act_pmt missing"
-      success=1
-    fi
-    if [ ! `lsmod | grep -q ^pmt_driver ` ] ;
-    then
-      echo "pmt_driver not loaded"
-      success=1
-    fi
     if [ ! `lsmod | grep -q ^merlin_driver` ] ;
     then
       echo "merlin_driver not loaded"
@@ -110,11 +87,6 @@ case "$1" in
     if [ ! `lsmod | grep -q ^act_plc` ] ;
     then
       echo "act_plc not loaded"
-      success=1
-    fi
-    if [ ! `lsmod | grep -q ^time_driver` ] ;
-    then
-      echo "time_driver not loaded"
       success=1
     fi
     if [ $success = 0 ] ; then echo "All ACT drivers loaded and ready." ; fi

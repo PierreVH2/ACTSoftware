@@ -40,7 +40,6 @@
 
 #ifndef ACQSIM
  #include <act_plc/act_plc.h>
- #include <time_driver/time_driver.h>
 #endif
 #include "merlin_driver.h"
 #include "ccd_defs.h"
@@ -240,7 +239,7 @@ int init_module(void)
       device_destroy(G_class_merlin, MKDEV(G_major, 0));
       class_destroy(G_class_merlin);
       unregister_chrdev(G_major, MERLIN_DEVICE_NAME);
-      return 1;
+      return -EIO;
     }
   #endif
   MSEC_SECNSEC(MIN_EXP_TIME_MS, G_modes.min_exp_t_sec, G_modes.min_exp_t_nanosec);

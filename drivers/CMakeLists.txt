@@ -1,13 +1,9 @@
 set(MODULE_HEADER_FILES     merlin_driver/merlin_driver.h merlin_driver/ccd_defs.h
-                            pmt_driver/pmt_driver.h pmt_driver/pmt_defs.h
-                            time_driver/time_driver.h time_driver/parapin.h
                             plc_ldisc/plc_ldisc.h
                             act_plc/act_plc.h act_plc/plc_definitions.h
                             motor_driver/motor_intfce.h motor_driver/motor_defs.h motor_driver/motor_driver.h motor_driver/soft_limits.h)
 
 set(MODULE_SOURCE_FILES     merlin_driver/merlin_driver.c
-                            pmt_driver/pmt_driver.c
-                            time_driver/time_driver.c
                             plc_ldisc/plc_ldisc.c
                             act_plc/act_plc.c
                             motor_driver/motor_driver.c
@@ -89,41 +85,10 @@ set(PLC_LDISC_OUTPUT_FILES     .plc_ldisc.ko.cmd
                                plc_ldisc.ko)
 
 
-set(PMT_DRIVER_INPUT_FILES     pmt_driver/pmt_driver.c
-                               pmt_driver/pmt_driver.h
-                               pmt_driver/pmt_defs.h)
-
-set(PMT_DRIVER_OUTPUT_FILES    pmt_driver.o
-                               .pmt_driver.o.cmd
-                               pmt_driver.mod.c
-                               pmt_driver/.pmt_driver.o.cmd
-                               pmt_driver/pmt_driver.o
-                               .pmt_driver.ko.cmd
-                               pmt_driver.ko
-                               pmt_driver.mod.o
-                               .pmt_driver.mod.o.cmd)
-
-
-set(TIME_DRIVER_INPUT_FILES    time_driver/time_driver.c
-                               time_driver/time_driver.h
-                               time_driver/parapin.h)
-
-set(TIME_DRIVER_OUTPUT_FILES   time_driver.mod.c
-                               .time_driver.o.cmd
-                               time_driver.mod.o
-                               time_driver/.time_driver.o.cmd
-                               time_driver/time_driver.o
-                               time_driver.o
-                               .time_driver.ko.cmd
-                               .time_driver.mod.o.cmd
-                               time_driver.ko)
-
 set(MISC_OUTPUT_FILES          modules.order
                                Module.symvers
                                .tmp_versions
-                               .tmp_versions/time_driver.mod
                                .tmp_versions/act_plc.mod
-                               .tmp_versions/pmt_driver.mod
                                .tmp_versions/merlin_driver.mod
                                .tmp_versions/plc_ldisc.mod
                                .tmp_versions/motor_driver.mod)
@@ -132,11 +97,9 @@ set(MODULE_OUTPUT_FILES        ${MOTOR_DRIVER_OUTPUT_FILES}
                                ${ACT_PLC_OUTPUT_FILES}
                                ${MERLIN_DRIVER_OUTPUT_FILES}
                                ${PLC_LDISC_OUTPUT_FILES}
-                               ${PMT_DRIVER_OUTPUT_FILES}
-                               ${TIME_DRIVER_OUTPUT_FILES}
                                ${MISC_OUTPUT_FILES})
 
-set(DRIVER_FILES               merlin_driver.ko pmt_driver.ko time_driver.ko plc_ldisc.ko act_plc.ko motor_driver.ko)
+set(DRIVER_FILES               merlin_driver.ko plc_ldisc.ko act_plc.ko motor_driver.ko)
 set(DRIVER_TARGET_NAME         act_drivers)
 set(DRIVER_BIN_DIR             ${CMAKE_BINARY_DIR}/drivers)
 set(MODULE_SOURCE_DIR          ${PROJECT_SOURCE_DIR}/drivers)
@@ -148,9 +111,7 @@ set(KBUILD_INSTALL_CMD         ${CMAKE_MAKE_PROGRAM} -C ${KERNEL_DIR} M=${MODULE
 file(COPY ${MOTOR_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/motor_driver/)
 file(COPY ${ACT_PLC_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/act_plc/)
 file(COPY ${PLC_LDISC_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/plc_ldisc/)
-file(COPY ${TIME_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/time_driver)
 file(COPY ${MERLIN_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/merlin_driver/)
-file(COPY ${PMT_DRIVER_INPUT_FILES} DESTINATION ${MODULE_BUILD_DIR}/pmt_driver/)
 file(COPY "${MODULE_SOURCE_DIR}/Makefile" DESTINATION ${MODULE_BUILD_DIR})
 
 add_custom_command (OUTPUT  ${DRIVER_FILES}

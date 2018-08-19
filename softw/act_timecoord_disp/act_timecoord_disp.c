@@ -12,8 +12,8 @@
  */
 
 #include <stdio.h>
-#include <sys/ioctl.h>
 #include <netdb.h>
+#include <time.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -27,7 +27,6 @@
 #include <argtable2.h>
 #include <math.h>
 #include <gtk/gtk.h>
-#include <time_driver.h>
 #include <act_ipc.h>
 #include <act_positastro.h>
 #include <act_timecoord.h>
@@ -81,7 +80,7 @@ void disp_coords();
 struct act_msg_time G_msg_time;
 struct act_msg_coord *G_msg_coord = NULL;
 
-int G_netsock_fd, G_time_fd;
+int G_netsock_fd;
 int G_signal_pipe[2];
 struct formobjects G_form_objs;
 /** \} */
@@ -205,56 +204,35 @@ void create_big_dialog(GtkWidget *button, gpointer user_data)
  *    -# Subtract integer multiples of 1 day.
  *  -# Calculate universal date.
  */
-unsigned char get_meantime(int time_fd, struct timestruct *loct, struct datestruct *locd, struct timestruct *unit, struct datestruct *unid)
+unsigned char get_meantime(struct timestruct *loct, struct datestruct *locd, struct timestruct *unit, struct datestruct *unid)
 {
-  unsigned long new_unit, tmp;
-  int ret_val;
-
-  ret_val = ioctl(time_fd, IOCTL_GET_UNITIME, (unsigned long)(&new_unit));
-  if (ret_val < 0)
-  {
-    act_log_error(act_log_msg("Error communicating with time driver - %s", strerror(abs(ret_val))));
+  struct timespec systime;
+  int ret = clock_gettime(CLOCK_REALTIME, &systime);
+  if (ret != 0) {
+    act_log_error(act_log_msg("Error getting system tiem - %s", strerror(ret)));
     return FALSE;
   }
-  tmp = new_unit;
-  unit->milliseconds = tmp % 1000;
-  tmp /= 1000;
-  unit->seconds = tmp % 60;
-  tmp /= 60;
-  unit->minutes = tmp % 60;
-  tmp /= 60;
-  unit->hours = tmp % 24;
-
-  time_t systime_sec = time(NULL);
-  struct tm *timedate = gmtime(&systime_sec);
-  unid->year = timedate->tm_year+1900;
-  unid->month = timedate->tm_mon;
-  unid->day = timedate->tm_mday-1;
-  struct timestruct systime;
-  systime.hours = timedate->tm_hour;
-  systime.minutes = timedate->tm_min;
-  systime.seconds = timedate->tm_sec;
-  systime.milliseconds = 0;
-  check_systime_discrep(unid, &systime, unit);
-
-  tmp = new_unit + 86400000 + (unsigned long)(TIMEZONE*3600000);
-  tmp %= 86400000;
-  loct->milliseconds = tmp % 1000;
-  tmp /= 1000;
-  loct->seconds = tmp % 60;
-  tmp /= 60;
-  loct->minutes = tmp % 60;
-  tmp /= 60;
-  loct->hours = tmp % 24;
-
-  timedate = localtime(&systime_sec);
-  locd->year = timedate->tm_year+1900;
-  locd->month = timedate->tm_mon;
-  locd->day = timedate->tm_mday-1;
-  systime.hours = timedate->tm_hour;
-  systime.minutes = timedate->tm_min;
-  systime.seconds = timedate->tm_sec;
-  check_systime_discrep(locd, &systime, loct);
+  
+  time_t systime_sec = systime.tv_sec;
+  struct tm *time_convert;
+  
+  time_convert = gmtime(&systime_sec);
+  unid->year = time_convert->tm_year + 1900;
+  unid->month = time_convert->tm_mon;
+  unid->day = time_convert->tm_mday-1;
+  unit->hours = time_convert->tm_hour;
+  unit->minutes = time_convert->tm_min;
+  unit->seconds = time_convert->tm_sec;
+  unit->milliseconds = systime.tv_nsec / 1000000;
+  
+  time_convert = localtime(&systime_sec);
+  locd->year = time_convert->tm_year + 1900;
+  locd->month = time_convert->tm_mon;
+  locd->day = time_convert->tm_mday-1;
+  loct->hours = time_convert->tm_hour;
+  loct->minutes = time_convert->tm_min;
+  loct->seconds = time_convert->tm_sec;
+  loct->milliseconds = systime.tv_nsec / 1000000;
 
   return TRUE;
 }
@@ -629,7 +607,7 @@ gboolean timeout(gpointer user_data)
 
 gboolean disptimes_timeout()
 {
-  if (!get_meantime(G_time_fd, &G_msg_time.loct, &G_msg_time.locd, &G_msg_time.unit, &G_msg_time.unid))
+  if (!get_meantime(&G_msg_time.loct, &G_msg_time.locd, &G_msg_time.unit, &G_msg_time.unid))
     act_log_error(act_log_msg("Error reading mean date/time."));
   G_msg_time.gjd = calc_GJD (&G_msg_time.unid, &G_msg_time.unit);
   if (G_msg_coord != NULL)
@@ -685,14 +663,6 @@ int main(int argc, char** argv)
   fcntl(G_netsock_fd, F_SETOWN, getpid());
   int oflags = fcntl(G_netsock_fd, F_GETFL);
   fcntl(G_netsock_fd, F_SETFL, oflags | FASYNC);
-
-  G_time_fd = open("/dev/" TIME_DEVICE_NAME, O_RDWR);
-  if (G_time_fd < 0)
-  {
-    act_log_error(act_log_msg("Can't open device file: /dev/%s", TIME_DEVICE_NAME));
-    close(G_netsock_fd);
-    return 1;
-  }
 
   memset(&G_form_objs, 0, sizeof(struct formobjects));
   GtkWidget* box_main = gtk_table_new(2,5,TRUE);
@@ -807,7 +777,6 @@ int main(int argc, char** argv)
   g_source_remove(guicheck_to_id);
   g_source_remove(iowatch_id);
   close(G_netsock_fd);
-  close(G_time_fd);
   act_log_normal(act_log_msg("Exiting"));
   return 0;
 }

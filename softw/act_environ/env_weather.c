@@ -20,8 +20,8 @@
 #define REL_HUM_WARN_PERC      85.0
 #define REL_HUM_LIMIT_PERC     90.0
 /// Maximum permissible altitude of the Sun (degrees)
-#define SUN_ALT_WARN_DEG       -10.0
-#define SUN_ALT_LIMIT_DEG      -5.0
+#define SUN_ALT_WARN_DEG       -5.0
+#define SUN_ALT_LIMIT_DEG       0.0
 /// Maximum permissible cloud levels
 #define CLOUD_COVER_WARN       40.0
 #define CLOUD_COVER_LIMIT      60.0
@@ -598,8 +598,8 @@ static void process_msg_environ(EnvWeather *objs, struct act_msg_environ *msg_en
 {
   memcpy(msg_environ, &objs->all_env, sizeof(struct act_msg_environ));
   // Override weather warnings for now
-//   msg_environ->weath_ok = TRUE;
-//   msg_environ->status_active = ACTIVE_TIME_NIGHT;
+   msg_environ->weath_ok = TRUE;
+   msg_environ->status_active = ACTIVE_TIME_NIGHT;
 }
 
 static void process_msg_targset(EnvWeather *objs, struct act_msg_targset *msg_targset)
